@@ -27,26 +27,43 @@ export function isWeekend(date: string): boolean {
   return w === 0 || w === 6;
 }
 
+/** Ngày nghỉ lễ do quản trị viên khai báo (chỉ áp dụng ở chế độ giờ thật) */
+const holidays = new Set<string>();
+
+export function setHolidays(dates: Iterable<string>) {
+  holidays.clear();
+  for (const d of dates) holidays.add(d);
+}
+
+export function isHoliday(date: string): boolean {
+  return holidays.has(date);
+}
+
+/** Ngày không giao dịch: T7, CN, ngày lễ (khi skipWeekends) */
+function isOff(date: string, skipWeekends: boolean): boolean {
+  return skipWeekends && (isWeekend(date) || holidays.has(date));
+}
+
 export function addDays(date: string, n: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
-/** Cộng n ngày giao dịch (bỏ T7, CN nếu skipWeekends) */
+/** Cộng n ngày giao dịch (bỏ T7, CN, ngày lễ nếu skipWeekends) */
 export function addTradingDays(date: string, n: number, skipWeekends: boolean): string {
   let d = date;
   let left = n;
   while (left > 0) {
     d = addDays(d, 1);
-    if (!skipWeekends || !isWeekend(d)) left--;
+    if (!isOff(d, skipWeekends)) left--;
   }
   return d;
 }
 
 export function prevTradingDay(date: string, skipWeekends: boolean): string {
   let d = addDays(date, -1);
-  while (skipWeekends && isWeekend(d)) d = addDays(d, -1);
+  while (isOff(d, skipWeekends)) d = addDays(d, -1);
   return d;
 }
 
@@ -69,8 +86,8 @@ export const SESSION = {
 
 export function phaseAt(ms: number, mode: MarketMode): SessionPhase {
   if (mode === 'SIMULATED_24_7') return 'CONTINUOUS';
-  const { minutes: m, weekday } = vnParts(ms);
-  if (weekday === 0 || weekday === 6) return 'CLOSED';
+  const { minutes: m, weekday, date } = vnParts(ms);
+  if (weekday === 0 || weekday === 6 || holidays.has(date)) return 'CLOSED';
   if (m < SESSION.preOpen) return 'CLOSED';
   if (m < SESSION.atoStart) return 'PRE_OPEN';
   if (m < SESSION.continuousStart) return 'ATO';
@@ -86,8 +103,8 @@ export function phaseAt(ms: number, mode: MarketMode): SessionPhase {
 export function currentTradeDate(ms: number, mode: MarketMode): string {
   const p = vnParts(ms);
   if (mode === 'SIMULATED_24_7') return p.date;
-  const weekend = p.weekday === 0 || p.weekday === 6;
-  if (!weekend && p.minutes >= SESSION.preOpen) return p.date;
+  const off = p.weekday === 0 || p.weekday === 6 || holidays.has(p.date);
+  if (!off && p.minutes >= SESSION.preOpen) return p.date;
   return prevTradingDay(p.date, true);
 }
 

@@ -145,7 +145,7 @@ export interface HoldingDTO {
 
 export interface LedgerDTO {
   id: number;
-  type: 'DEPOSIT' | 'BUY' | 'SELL' | 'FEE' | 'TAX' | 'RESET';
+  type: 'DEPOSIT' | 'BUY' | 'SELL' | 'FEE' | 'TAX' | 'RESET' | 'ADJUST';
   amount: number;
   balanceAfter: number;
   orderId: number | null;

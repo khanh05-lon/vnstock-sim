@@ -16,6 +16,7 @@ const LEDGER_LABEL: Record<string, string> = {
   FEE: 'Phí GD',
   TAX: 'Thuế',
   RESET: 'Đặt lại TK',
+  ADJUST: 'Điều chỉnh',
 };
 
 function Pager({ page, total, onChange }: { page: number; total: number; onChange(p: number): void }) {

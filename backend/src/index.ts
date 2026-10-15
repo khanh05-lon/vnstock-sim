@@ -25,6 +25,7 @@ import { tradingRoutes } from './routes/trading';
 import { seedDemoUser, seedMarket } from './seed/seed';
 import { attachSocket, socketNotifier } from './socket';
 import { TradingEngine } from './trading/engine';
+import { installAdmin } from './admin';
 
 async function main() {
   const started = Date.now();
@@ -82,6 +83,8 @@ async function main() {
       await engine.settle();
     },
   };
+  // Quản trị & vận hành (phải đứng trước các route /api khác: chặn tài khoản bị khoá)
+  await installAdmin({ app, io, db, market, engine, providerName: provider.name, settlementDays: config.settlementDays });
 
   app.get('/api/health', async (_req, res) => {
     // Dùng cho healthcheck của Docker / giám sát: 503 khi mất kết nối CSDL

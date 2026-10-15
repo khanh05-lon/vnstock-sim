@@ -104,6 +104,14 @@ data-service giới hạn ≤ 120 request/phút tới nguồn (`UPSTREAM_RPM`) v
 
 **Giới hạn**: chỉ 92 mã trong danh mục seed (độ rộng thị trường, tổng KL/GT trên thẻ chỉ số tính theo rổ này); tên, ngành, EPS/BVPS vẫn là số liệu seed; nến 1 phút chỉ có từ lúc server chạy; dữ liệu trễ vài giây; API của VCI là API web không chính thức nên có thể thay đổi. Khi chuyển một CSDL đang dùng giả lập sang `vnstock`, nên xoá `backend/data` để danh mục/giá vốn của tài khoản cũng theo giá thật.
 
+## Quản trị & vận hành
+
+- Trang **Quản trị** (`/admin`, chỉ hiện với tài khoản quản trị viên) gồm 6 mục: Tổng quan · Người dùng · Lệnh giao dịch · Vận hành thị trường · Dữ liệu & sao lưu · Nhật ký.
+- Tài khoản quản trị đầu tiên được tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` (giá trị mẫu cho dev nằm trong `backend/.env.example`; khi `NODE_ENV=production` bắt buộc tự đặt).
+- Quản trị viên có thể: tạo / khoá / mở khoá / xoá tài khoản, cấp hoặc thu quyền, điều chỉnh vốn ảo, đặt lại tài khoản, huỷ hộ lệnh, tạm ngừng nhận lệnh (toàn hệ thống hoặc theo mã), đăng thông báo hệ thống, khai báo ngày nghỉ lễ, tải bản sao lưu JSON, xem nhật ký quản trị và log máy chủ. Mọi thao tác đều được ghi vào bảng `admin_audit_log`.
+- Trang pháp lý mẫu: `/dieu-khoan`, `/chinh-sach-bao-mat` (bản demo, cần luật sư rà soát trước khi dùng thật).
+- Khảo sát chịu tải (máy chủ local đang chạy): `npm run loadtest -w backend -- --users 30 --orders 20`. Báo cáo JSON được ghi vào `backend/data/loadtest-*.json`. Với PGlite đo được khoảng 26–33 thao tác lệnh / giây; chạy nhiều người dùng thật thì nên dùng PostgreSQL.
+
 ## Quy tắc nghiệp vụ
 
 Định nghĩa trong [`shared/src/index.ts`](shared/src/index.ts) (cần đối chiếu quy định hiện hành nếu dùng cho mục đích khác):

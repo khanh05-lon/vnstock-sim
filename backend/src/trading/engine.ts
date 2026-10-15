@@ -66,6 +66,9 @@ export class TradingEngine {
   /** Lệnh đang chờ khớp theo mã — cache để kiểm tra điều kiện khớp mà không phải truy vấn DB mỗi tick */
   private open = new Map<string, Map<number, Resting>>();
 
+  /** Cờ vận hành do quản trị viên đặt: ngừng nhận lệnh + ngừng khớp lệnh (toàn hệ thống hoặc theo mã) */
+  readonly control = { haltAll: false, haltReason: '', haltedSymbols: new Set<string>() };
+
   constructor(
     private db: Database,
     private market: MarketAccess,
@@ -98,6 +101,7 @@ export class TradingEngine {
     const info = this.market.info(input.symbol);
     const q = this.market.quote(input.symbol);
     if (!info || !q) throw badRequest('SYMBOL', `Mã ${input.symbol} không tồn tại`);
+    this.assertNotHalted(input.symbol);
     const { side, orderType: type, qty } = input;
     const ex = info.exchange;
 
@@ -174,6 +178,7 @@ export class TradingEngine {
       if (!o) throw notFound('Không tìm thấy lệnh');
       if (!OPEN.includes(o.status)) throw badRequest('NOT_MODIFIABLE', 'Lệnh đã khớp hết hoặc đã bị huỷ');
       if (o.order_type !== 'LO') throw badRequest('NOT_MODIFIABLE', 'Chỉ sửa được lệnh LO');
+      this.assertNotHalted(o.symbol);
       const info = this.market.info(o.symbol)!;
       const q = this.market.quote(o.symbol)!;
       const newPrice = input.price ?? o.price!;
@@ -218,6 +223,21 @@ export class TradingEngine {
     return this.getOrder(userId, id);
   }
 
+  /** Quản trị viên huỷ hộ 1 lệnh (kèm lý do hiển thị cho nhà đầu tư) */
+  async adminCancel(id: number, reason: string): Promise<OrderDTO> {
+    const row = await this.closeOrder(id, null, 'CANCELLED', reason);
+    if (!row) throw badRequest('NOT_CANCELLABLE', 'Lệnh đã khớp hết hoặc đã bị huỷ');
+    return toOrderDTO(row);
+  }
+
+  /** Huỷ mọi lệnh đang chờ của 1 người dùng (dùng khi khoá tài khoản) */
+  async cancelAllForUser(userId: string, reason: string): Promise<number> {
+    const rows = await this.db.many<{ id: number }>(`SELECT id FROM orders WHERE user_id = $1 AND status IN ('PENDING','PARTIAL')`, [userId]);
+    let n = 0;
+    for (const { id } of rows) if (await this.closeOrder(id, null, 'CANCELLED', reason)) n++;
+    return n;
+  }
+
   async getOrder(userId: string, id: number): Promise<OrderDTO> {
     const row = await this.db.one<OrderRow>('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [id, userId]);
     if (!row) throw notFound('Không tìm thấy lệnh');
@@ -249,8 +269,9 @@ export class TradingEngine {
   /* ============================ sự kiện thị trường ============================ */
 
   async onTick(symbols: Set<string>, trades: Map<string, { price: number; vol: number }>): Promise<void> {
-    if (this.market.phase !== 'CONTINUOUS') return;
+    if (this.market.phase !== 'CONTINUOUS' || this.control.haltAll) return;
     for (const sym of symbols) {
+      if (this.control.haltedSymbols.has(sym)) continue;
       const book = this.open.get(sym);
       if (!book || book.size === 0) continue;
       const q = this.market.quote(sym);
@@ -330,6 +351,13 @@ export class TradingEngine {
     }
     const ph = this.market.phase;
     if (!PLACE_PHASES[type].includes(ph)) throw badRequest('SESSION', `Không thể đặt lệnh ${type} khi thị trường đang ở trạng thái: ${PHASE_LABEL[ph]}`);
+  }
+
+  private assertNotHalted(symbol: string) {
+    if (this.control.haltAll) {
+      throw badRequest('HALTED', `Hệ thống đang tạm ngừng nhận lệnh${this.control.haltReason ? `: ${this.control.haltReason}` : ''}`);
+    }
+    if (this.control.haltedSymbols.has(symbol)) throw badRequest('SYMBOL_HALTED', `Mã ${symbol} đang bị tạm ngừng giao dịch`);
   }
 
   private assertCanAmend() {

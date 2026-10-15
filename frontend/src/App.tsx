@@ -15,6 +15,8 @@ const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -69,6 +71,9 @@ export function App() {
                   </RequireAuth>
                 }
               />
+              <Route path="admin" element={<AdminPage />} />
+              <Route path="dieu-khoan" element={<LegalPage kind="terms" />} />
+              <Route path="chinh-sach-bao-mat" element={<LegalPage kind="privacy" />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>

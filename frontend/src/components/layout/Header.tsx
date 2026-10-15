@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, History, LogOut, Moon, Settings, Sun, Wallet } from 'lucide-react';
+import { ChevronDown, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { PHASE_LABEL } from '@vss/shared';
 import { cn, fmtCompact, fmtPct, signTone, toneText } from '../../lib/format';
 import { usePortfolio } from '../../lib/queries';
+import { useAdminMe } from '../../lib/admin';
 import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
 import { useUi } from '../../store/ui';
@@ -179,6 +180,7 @@ function UserMenu() {
 
 export function Header() {
   const token = useAuth((s) => s.token);
+  const { isAdmin } = useAdminMe();
   const theme = useUi((s) => s.theme);
   const toggleTheme = useUi((s) => s.toggleTheme);
   return (
@@ -200,6 +202,19 @@ export function Header() {
             {n.label}
           </NavLink>
         ))}
+        {isAdmin && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
+                isActive ? 'text-brand' : 'text-tx-2 hover:text-tx-1',
+              )
+            }
+          >
+            <ShieldCheck size={15} /> Quản trị
+          </NavLink>
+        )}
       </nav>
       <SessionBadge />
       <button

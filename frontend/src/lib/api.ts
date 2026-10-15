@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export async function api<T>(path: string, opts: { method?: Method; body?: unknown } = {}): Promise<T> {
   const token = useAuth.getState().token;
@@ -29,8 +29,10 @@ export async function api<T>(path: string, opts: { method?: Method; body?: unkno
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    if (res.status === 401 && token) useAuth.getState().logout();
-    throw new ApiError(res.status, data?.error?.code ?? 'ERROR', data?.error?.message ?? `Lỗi ${res.status}`);
+    const code = data?.error?.code ?? 'ERROR';
+    // Hết phiên hoặc tài khoản bị quản trị viên khoá → đăng xuất ngay
+    if (token && (res.status === 401 || code === 'ACCOUNT_LOCKED')) useAuth.getState().logout();
+    throw new ApiError(res.status, code, data?.error?.message ?? `Lỗi ${res.status}`);
   }
   return data as T;
 }

@@ -23,4 +23,6 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 - Generic `Tabs`/`UnderlineTabs` dùng `NoInfer<T>` — truyền `value` có kiểu union cụ thể.
 - Nguồn giá: `MARKET_PROVIDER=mock|vnstock`. `RealProvider` (`backend/src/market/vnstock/`) có `live` thay đổi động: khi `live`, MarketService poll cả ngoài phiên liên tục, không warm-up mô phỏng, phiên ATO/ATC chờ giá khớp thật (`pendingAuction`). Mất nguồn → tự uỷ quyền cho MockProvider. GT của VCI tính theo triệu đồng (data-service đổi sang đồng).
 - `Database.open()` không truyền thư mục (PGlite in-memory, dùng trong test) trả cột DATE dạng `Date` thay vì chuỗi — trong test dùng `::text` khi so ngày.
+- Quản trị: `backend/src/admin/` — `installAdmin()` phải gọi TRƯỚC các route `/api` khác (middleware chặn tài khoản bị khoá + cập nhật `last_seen_at`). `AdminStore` giữ trong RAM danh sách TK bị khoá, cờ tạm ngừng (`engine.control`), thông báo; lưu bền trong `market_meta` (key `admin.*`). Mọi thao tác quản trị phải gọi `audit()`.
+- Ngày nghỉ lễ là trạng thái module trong `lib/calendar.ts` (`setHolidays`) — test dùng lịch phải tự `setHolidays([])`.
 - JWT có claim `ms` (thời điểm cấp, mili-giây) để thu hồi đúng token cấp cùng giây với lần đổi mật khẩu.
