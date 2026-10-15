@@ -10,10 +10,10 @@ import {
   type SessionPhase,
   type StockInfo,
 } from '@vss/shared';
-import { Database } from '../src/db';
-import { migrate } from '../src/migrate';
+import type { Database } from '../src/db';
 import { createUserAccount } from '../src/seed/seed';
 import { noopNotifier, TradingEngine, type MarketAccess } from '../src/trading/engine';
+import { closeTestDb, openTestDb } from './helpers/db';
 
 interface FakeQuote {
   info: StockInfo;
@@ -87,8 +87,7 @@ async function holding(symbol: string) {
 }
 
 async function setup(settlementDays = 2) {
-  db = await Database.open();
-  await migrate(db);
+  db = await openTestDb();
   await db.exec(`INSERT INTO stocks (symbol, exchange, name, industry, listed_shares, eps, bvps) VALUES
     ('FPT','HOSE','FPT','Test',1000000000,1000,10000), ('SHS','HNX','SHS','Test',1000000000,1000,10000), ('ABB','UPCOM','ABB','Test',1000000000,1000,10000)`);
   const user = await db.tx((tx) => createUserAccount(tx, 'test@example.test', 'x', 'Tester'));
@@ -117,7 +116,7 @@ async function setup(settlementDays = 2) {
 
 describe('TradingEngine', () => {
   beforeEach(() => setup());
-  afterEach(() => db.close());
+  afterEach(() => closeTestDb(db));
 
   it('lệnh mua LO khớp ngay qua nhiều bước giá, trừ tiền + phí đúng, giải phóng phong toả', async () => {
     const o = await engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 100_100, qty: 2_500 });
@@ -203,6 +202,14 @@ describe('TradingEngine', () => {
     expect(acct.cash_hold).toBeLessThanOrEqual(acct.cash_balance);
   });
 
+  it('10 lệnh mua song song, mỗi lệnh ~30% sức mua: đúng 3 lệnh được nhận, phong toả khớp tổng', async () => {
+    const o = { symbol: 'FPT', side: 'BUY' as const, orderType: 'LO' as const, price: 99_000, qty: 3_000 };
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => engine.placeOrder(userId, o)));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+    for (const r of results) if (r.status === 'rejected') expect((r.reason as { code?: string }).code).toBe('INSUFFICIENT_CASH');
+    expect((await account()).cash_hold).toBe(3 * buyHoldAmount(99_000, 3_000));
+  });
+
   it('lệnh MP quét sổ lệnh, phần dư chuyển thành LO; không có đối ứng thì bị huỷ', async () => {
     const o = await engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'MP', qty: 9_000 });
     expect(o.filledQty).toBe(8_000);
@@ -239,7 +246,7 @@ describe('TradingEngine', () => {
 
 describe('Bán ngay khi SETTLEMENT_DAYS=0', () => {
   beforeEach(() => setup(0));
-  afterEach(() => db.close());
+  afterEach(() => closeTestDb(db));
 
   it('cổ phiếu về ngay, bán được trong cùng phiên', async () => {
     await engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 100_000, qty: 1_000 });

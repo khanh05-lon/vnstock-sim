@@ -279,6 +279,22 @@ export const changePasswordSchema = z
   })
   .strict();
 
+export const forgotPasswordSchema = z
+  .object({
+    email: registerSchema.shape.email,
+  })
+  .strict();
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(20, 'Link đặt lại mật khẩu không hợp lệ').max(200, 'Link đặt lại mật khẩu không hợp lệ'),
+    password: registerSchema.shape.password,
+  })
+  .strict();
+
+/** Thời hạn của link đặt lại mật khẩu (phút) */
+export const PASSWORD_RESET_TTL_MIN = 30;
+
 export const placeOrderSchema = z
   .object({
     symbol: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3,10}$/, 'Mã chứng khoán không hợp lệ'),

@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { modifyOrderSchema, placeOrderSchema } from '@vss/shared';
 import type { Database } from '../db';
 import { requireAuth, type AuthedRequest } from '../lib/auth';
 import { ah, badRequest, notFound } from '../lib/errors';
+import { limiter } from '../lib/rateLimit';
+import { config } from '../config';
 import type { MarketService } from '../market/marketService';
 import type { TradingEngine } from '../trading/engine';
 import {
@@ -63,12 +64,11 @@ export function tradingRoutes(db: Database, market: MarketService, engine: Tradi
   const r = Router();
   r.use(requireAuth);
 
-  const orderLimiter = rateLimit({
+  // Theo từng người dùng (sau requireAuth nên luôn có user id)
+  const orderLimiter = limiter({
     windowMs: 60_000,
-    limit: 120,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: { code: 'RATE_LIMIT', message: 'Bạn đặt lệnh quá nhanh, vui lòng chậm lại' } },
+    limit: config.rateLimit.ordersPerMinute,
+    message: 'Bạn đặt lệnh quá nhanh, vui lòng chậm lại',
   });
 
   /* ------------------------------ tài khoản ------------------------------ */

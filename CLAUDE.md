@@ -23,3 +23,4 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 - Generic `Tabs`/`UnderlineTabs` dùng `NoInfer<T>` — truyền `value` có kiểu union cụ thể.
 - Nguồn giá: `MARKET_PROVIDER=mock|vnstock`. `RealProvider` (`backend/src/market/vnstock/`) có `live` thay đổi động: khi `live`, MarketService poll cả ngoài phiên liên tục, không warm-up mô phỏng, phiên ATO/ATC chờ giá khớp thật (`pendingAuction`). Mất nguồn → tự uỷ quyền cho MockProvider. GT của VCI tính theo triệu đồng (data-service đổi sang đồng).
 - `Database.open()` không truyền thư mục (PGlite in-memory, dùng trong test) trả cột DATE dạng `Date` thay vì chuỗi — trong test dùng `::text` khi so ngày.
+- JWT có claim `ms` (thời điểm cấp, mili-giây) để thu hồi đúng token cấp cùng giây với lần đổi mật khẩu.

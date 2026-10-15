@@ -1,6 +1,6 @@
 import type { Server } from 'socket.io';
 import type { Candle, IndexSnapshot, SessionInfo, StockSnapshot, TradeTick } from '@vss/shared';
-import { verifyToken } from './lib/auth';
+import { isTokenCurrent, verifyToken } from './lib/auth';
 import type { MarketService } from './market/marketService';
 import type { Notifier } from './trading/engine';
 
@@ -16,11 +16,16 @@ import type { Notifier } from './trading/engine';
 export function attachSocket(io: Server, market: MarketService) {
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
-    if (typeof token === 'string' && token) {
-      const user = verifyToken(token);
-      if (user) socket.data.user = user;
-    }
-    next();
+    const user = typeof token === 'string' && token ? verifyToken(token) : null;
+    if (!user) return next();
+    // Token phát hành trước lần đổi mật khẩu gần nhất → kết nối như khách (không nhận sự kiện riêng)
+    isTokenCurrent(user).then(
+      (ok) => {
+        if (ok) socket.data.user = { id: user.id, email: user.email };
+        next();
+      },
+      () => next(),
+    );
   });
 
   io.on('connection', (socket) => {

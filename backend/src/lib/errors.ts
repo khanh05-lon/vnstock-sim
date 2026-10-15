@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
+import { log } from './logger';
 
 export class AppError extends Error {
   constructor(
@@ -22,7 +23,7 @@ export const ah =
     fn(req, res, next).catch(next);
   };
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ZodError) {
     const issue = err.issues[0];
     res.status(400).json({ error: { code: 'VALIDATION', message: issue?.message ?? 'Dữ liệu không hợp lệ', field: issue?.path.join('.') } });
@@ -36,6 +37,12 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     res.status(400).json({ error: { code: 'BAD_JSON', message: 'JSON không hợp lệ' } });
     return;
   }
-  console.error('[error]', err);
+  // Lỗi 4xx của middleware (vd. body quá lớn → 413)
+  const status = (err as { status?: unknown }).status;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    res.status(status).json({ error: { code: 'BAD_REQUEST', message: status === 413 ? 'Dữ liệu gửi lên quá lớn' : 'Yêu cầu không hợp lệ' } });
+    return;
+  }
+  log.error('[http] lỗi không xử lý được', { err, reqId: res.locals.reqId, method: req.method, path: req.originalUrl.split('?')[0] });
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Lỗi hệ thống, vui lòng thử lại' } });
 }
