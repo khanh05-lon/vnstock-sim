@@ -3,3 +3,5 @@ dist
 .env
 backend/data
 *.log
+data-service/.venv
+__pycache__

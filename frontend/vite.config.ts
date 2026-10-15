@@ -2,13 +2,16 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+// VSS_API: địa chỉ backend để proxy (mặc định :4000) — tiện chạy song song một backend khác
+const api = process.env.VSS_API || 'http://localhost:4000';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: Number(process.env.VSS_WEB_PORT) || 5173,
     proxy: {
-      '/api': 'http://localhost:4000',
-      '/socket.io': { target: 'http://localhost:4000', ws: true },
+      '/api': api,
+      '/socket.io': { target: api, ws: true },
     },
   },
 });

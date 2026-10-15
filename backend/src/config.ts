@@ -22,6 +22,14 @@ if (mode !== 'SIMULATED_24_7' && mode !== 'REAL_HOURS') {
   throw new Error(`MARKET_MODE không hợp lệ: ${mode}`);
 }
 
+const provider = process.env.MARKET_PROVIDER || 'mock';
+if (provider !== 'mock' && provider !== 'vnstock') {
+  throw new Error(`MARKET_PROVIDER không hợp lệ: ${provider} (mock | vnstock)`);
+}
+if (provider === 'vnstock' && mode !== 'REAL_HOURS') {
+  console.warn('[config] MARKET_PROVIDER=vnstock nên đi cùng MARKET_MODE=REAL_HOURS — với SIMULATED_24_7, ngoài giờ giao dịch sẽ chạy giả lập.');
+}
+
 export const config = {
   port: int('PORT', 4000),
   corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim()),
@@ -29,6 +37,15 @@ export const config = {
   jwtExpiresIn: '7d',
   dataDir: path.resolve(process.cwd(), process.env.DATA_DIR ?? './data/pgdata'),
   marketMode: mode,
+  /** mock: giá giả lập; vnstock: giá thật qua data-service (tự về giả lập khi nguồn lỗi) */
+  marketProvider: provider as 'mock' | 'vnstock',
+  vnstock: {
+    url: process.env.VNSTOCK_URL || 'http://127.0.0.1:8001',
+    pollMs: int('VNSTOCK_POLL_MS', 3000),
+    staleMs: int('VNSTOCK_STALE_MS', 20_000),
+    historyDays: int('VNSTOCK_HISTORY_DAYS', 500),
+    maxRequestsPerMinute: int('VNSTOCK_MAX_RPM', 120),
+  },
   settlementDays: int('SETTLEMENT_DAYS', 2),
   tickIntervalMs: int('TICK_INTERVAL_MS', 1000),
   demoEmail: process.env.DEMO_EMAIL ?? '',

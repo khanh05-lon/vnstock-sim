@@ -9,6 +9,10 @@ import { Database } from './db';
 import { errorHandler, notFound } from './lib/errors';
 import { MarketService } from './market/marketService';
 import { MockProvider } from './market/mockProvider';
+import type { MarketDataProvider } from './market/types';
+import { VnstockClient } from './market/vnstock/client';
+import { syncRealHistory } from './market/vnstock/history';
+import { RealProvider } from './market/vnstock/realProvider';
 import { migrate } from './migrate';
 import { authRoutes } from './routes/auth';
 import { marketRoutes } from './routes/market';
@@ -23,9 +27,10 @@ async function main() {
   const db = await Database.open(config.dataDir);
   await migrate(db);
   await seedMarket(db, config.marketMode);
+  const provider = await createProvider(db);
   await seedDemoUser(db, config.demoEmail, config.demoPassword, config.marketMode);
 
-  const market = new MarketService(db, new MockProvider(), { mode: config.marketMode, tickIntervalMs: config.tickIntervalMs });
+  const market = new MarketService(db, provider, { mode: config.marketMode, tickIntervalMs: config.tickIntervalMs });
   await market.init();
 
   const app = express();
@@ -49,7 +54,15 @@ async function main() {
   };
 
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, mode: config.marketMode, tradeDate: market.tradeDate, phase: market.phase, openOrders: engine.openOrderCount() });
+    res.json({
+      ok: true,
+      mode: config.marketMode,
+      provider: provider.name,
+      feed: market.feed(),
+      tradeDate: market.tradeDate,
+      phase: market.phase,
+      openOrders: engine.openOrderCount(),
+    });
   });
   app.use('/api/auth', authRoutes(db));
   app.use('/api/market', marketRoutes(market));
@@ -62,7 +75,7 @@ async function main() {
 
   server.listen(config.port, () => {
     console.log(
-      `[api] http://localhost:${config.port}  •  chế độ ${config.marketMode}  •  ngày GD ${market.tradeDate}  •  khởi động ${Date.now() - started}ms`,
+      `[api] http://localhost:${config.port}  •  chế độ ${config.marketMode}  •  nguồn ${provider.name} (${market.feed()})  •  ngày GD ${market.tradeDate}  •  khởi động ${Date.now() - started}ms`,
     );
   });
 
@@ -78,6 +91,24 @@ async function main() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
+
+/** MARKET_PROVIDER=vnstock: nạp lịch sử nến ngày thật rồi dùng RealProvider; mặc định dùng giả lập */
+async function createProvider(db: Database): Promise<MarketDataProvider> {
+  if (config.marketProvider !== 'vnstock') return new MockProvider();
+  const { url, pollMs, staleMs, historyDays, maxRequestsPerMinute } = config.vnstock;
+  const client = new VnstockClient(url, { maxPerMinute: maxRequestsPerMinute });
+  if (!(await client.waitReady(20_000))) console.warn(`[vnstock] data-service ${url} chưa phản hồi — hãy chạy \`npm run data-service\``);
+  try {
+    const r = await syncRealHistory(db, client, { mode: config.marketMode, days: historyDays });
+    if (r.bars) {
+      console.log(`[vnstock] lịch sử thật: ${r.stocks} mã, ${r.indices} chỉ số, ${r.bars} nến (${r.full ? 'nạp toàn bộ' : `bù ${r.days} phiên`})`);
+    }
+    if (r.missing.length) console.warn(`[vnstock] nguồn không có lịch sử cho: ${r.missing.join(', ')} — giữ dữ liệu giả lập`);
+  } catch (err) {
+    console.warn(`[vnstock] không tải được lịch sử từ ${url} (${err instanceof Error ? err.message : err}) — dùng lịch sử đang có trong CSDL`);
+  }
+  return new RealProvider(client, { mode: config.marketMode, pollMs, staleMs });
 }
 
 main().catch((err) => {

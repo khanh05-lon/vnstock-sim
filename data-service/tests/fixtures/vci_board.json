@@ -1,0 +1,559 @@
+[
+ {
+  "listingInfo": {
+   "code": "VN000000ACV6",
+   "symbol": "ACV",
+   "ceiling": 47400,
+   "floor": 35200,
+   "refPrice": 41300,
+   "stockType": "STOCK",
+   "board": "UPCOM",
+   "exercisePrice": 0,
+   "exerciseRatio": "0.0:1",
+   "tradingStatus": "TRADING_ACTIVATED",
+   "tradingStatusCode": "20",
+   "tradingStatusGroup": "2",
+   "securityStatus": "N",
+   "maturityDate": null,
+   "lastTradingDate": null,
+   "underlyingSymbol": null,
+   "issuerName": "ACV",
+   "issueDate": null,
+   "listedShare": 3582324023,
+   "couponRate": 0,
+   "yield": 0,
+   "receivedTime": "2026-10-15T01:44:46.464Z",
+   "sendingTime": "20261015 01:44:46.463",
+   "messageType": "d",
+   "type": "STOCK",
+   "enOrganName": "Airports Corporation of Vietnam",
+   "enOrganShortName": "Airports of Vietnam",
+   "organName": "Tổng Công ty Cảng Hàng không Việt Nam - CTCP",
+   "organShortName": "Cảng Hàng không VN",
+   "ticker": "ACV",
+   "mappingSymbol": null,
+   "productGrpID": "UPX",
+   "partition": 4,
+   "indexType": null,
+   "tradingDate": "2026-10-15",
+   "lstTradingStatus": null,
+   "isDelisted": 0,
+   "icbCode2": null,
+   "id": "64",
+   "rECode": "0",
+   "recode": "0"
+  },
+  "bidAsk": {
+   "code": "VN000000ACV6",
+   "messageType": "X",
+   "receivedTime": "2026-10-15T08:00:03.409Z",
+   "session": "ENDED",
+   "symbol": "ACV",
+   "time": "2026-10-15T08:00:00.060Z",
+   "transactionTime": "080000060",
+   "askPrices": [
+    {
+     "price": 41100,
+     "volume": 1500
+    },
+    {
+     "price": 41200,
+     "volume": 9700
+    },
+    {
+     "price": 41300,
+     "volume": 9500
+    },
+    {
+     "price": 41400,
+     "volume": 17200
+    },
+    {
+     "price": 41500,
+     "volume": 29500
+    },
+    {
+     "price": 41600,
+     "volume": 9100
+    },
+    {
+     "price": 41700,
+     "volume": 11300
+    },
+    {
+     "price": 41800,
+     "volume": 20100
+    },
+    {
+     "price": 41900,
+     "volume": 18400
+    },
+    {
+     "price": 42000,
+     "volume": 86900
+    }
+   ],
+   "bidPrices": [
+    {
+     "price": 41000,
+     "volume": 8400
+    },
+    {
+     "price": 40900,
+     "volume": 18200
+    },
+    {
+     "price": 40800,
+     "volume": 21800
+    },
+    {
+     "price": 40700,
+     "volume": 14000
+    },
+    {
+     "price": 40600,
+     "volume": 19600
+    },
+    {
+     "price": 40500,
+     "volume": 18000
+    },
+    {
+     "price": 40400,
+     "volume": 10000
+    },
+    {
+     "price": 40300,
+     "volume": 2100
+    },
+    {
+     "price": 40200,
+     "volume": 2500
+    },
+    {
+     "price": 40100,
+     "volume": 20200
+    }
+   ],
+   "bidCount": 249400,
+   "askCount": 800800,
+   "estMatchVolG3": 0
+  },
+  "matchPrice": {
+   "accumulatedValue": 18728.22,
+   "accumulatedVolume": 456400,
+   "accumulatedValueG1": 18728.22,
+   "accumulatedVolumeG1": 456400,
+   "matchPriceATO": 0,
+   "matchVolumeATO": 0,
+   "matchPriceATC": 0,
+   "matchVolumeATC": 0,
+   "tradingSessionID": "99",
+   "isLastATO": false,
+   "isLastATC": false,
+   "avgMatchPrice": 41034.662576687115,
+   "code": "VN000000ACV6",
+   "currentRoom": 1694925867,
+   "foreignBuyVolume": 22500,
+   "foreignSellVolume": 0,
+   "foreignBuyValue": 923140000,
+   "foreignSellValue": 0,
+   "highest": 41700,
+   "lowest": 40800,
+   "matchPrice": 41000,
+   "openPrice": 41300,
+   "firstTimeMatchPrice": "2026-10-15T02:00:00.306Z",
+   "matchType": "s",
+   "matchVol": 300,
+   "messageType": "MT",
+   "receivedTime": "2026-10-15T09:19:00.013Z",
+   "sendingTime": "20261015 08:00:01.419",
+   "session": "ENDED",
+   "symbol": "ACV",
+   "time": "2026-10-15T08:00:00.060Z",
+   "totalRoom": 1755595286,
+   "totalBuyOrders": 800800,
+   "totalSellOrders": 249400,
+   "bidCount": 249400,
+   "askCount": 800800,
+   "underlying": null,
+   "openInterest": null,
+   "stockType": "STOCK",
+   "partition": 4,
+   "isMatchPrice": false,
+   "ceilingPrice": 47400,
+   "floorPrice": 35200,
+   "referencePrice": 41300,
+   "icbCode2": null,
+   "id": "64",
+   "isRE": false,
+   "lastATO": false,
+   "lastATC": false,
+   "re": false
+  }
+ },
+ {
+  "listingInfo": {
+   "code": "VN000000FPT1",
+   "symbol": "FPT",
+   "ceiling": 61000,
+   "floor": 53200,
+   "refPrice": 57100,
+   "stockType": "STOCK",
+   "board": "HSX",
+   "exercisePrice": 0,
+   "exerciseRatio": "0.0:1",
+   "tradingStatus": "TRADING_ACTIVATED",
+   "tradingStatusCode": "20",
+   "tradingStatusGroup": "2",
+   "securityStatus": "N",
+   "maturityDate": null,
+   "lastTradingDate": null,
+   "underlyingSymbol": null,
+   "issuerName": "FPT",
+   "issueDate": null,
+   "listedShare": 1714326422,
+   "couponRate": 0,
+   "yield": 0,
+   "receivedTime": "2026-10-15T01:43:47.249Z",
+   "sendingTime": "20261015 01:43:47.248",
+   "messageType": "d",
+   "type": "STOCK",
+   "enOrganName": "FPT Corporation",
+   "enOrganShortName": "FPT Corp",
+   "organName": "Công ty Cổ phần FPT",
+   "organShortName": "FPT Corp",
+   "ticker": "FPT",
+   "mappingSymbol": null,
+   "productGrpID": "STO",
+   "partition": 5,
+   "indexType": null,
+   "tradingDate": "2026-10-15",
+   "lstTradingStatus": null,
+   "isDelisted": 0,
+   "icbCode2": null,
+   "id": "2133",
+   "rECode": "0",
+   "recode": "0"
+  },
+  "bidAsk": {
+   "code": "VN000000FPT1",
+   "messageType": "X",
+   "receivedTime": "2026-10-15T07:45:08.111Z",
+   "session": "ENDED",
+   "symbol": "FPT",
+   "time": "2026-10-15T07:45:00.002Z",
+   "transactionTime": "074500002",
+   "askPrices": [
+    {
+     "price": 58100,
+     "volume": 82600
+    },
+    {
+     "price": 58200,
+     "volume": 161400
+    },
+    {
+     "price": 58300,
+     "volume": 42300
+    }
+   ],
+   "bidPrices": [
+    {
+     "price": 58000,
+     "volume": 1300
+    },
+    {
+     "price": 57900,
+     "volume": 3900
+    },
+    {
+     "price": 57800,
+     "volume": 1400
+    }
+   ],
+   "bidCount": 0,
+   "askCount": 0,
+   "estMatchVolG3": 0
+  },
+  "matchPrice": {
+   "accumulatedValue": 287054.53,
+   "accumulatedVolume": 4964400,
+   "accumulatedValueG1": 287054.53,
+   "accumulatedVolumeG1": 4964400,
+   "matchPriceATO": 57500,
+   "matchVolumeATO": 56000,
+   "matchPriceATC": 58000,
+   "matchVolumeATC": 152500,
+   "tradingSessionID": "99",
+   "isLastATO": false,
+   "isLastATC": false,
+   "avgMatchPrice": 57822.602932882124,
+   "code": "VN000000FPT1",
+   "currentRoom": 358237640,
+   "foreignBuyVolume": 868221,
+   "foreignSellVolume": 605912,
+   "foreignBuyValue": 50206928200,
+   "foreignSellValue": 35001680900,
+   "highest": 58200,
+   "lowest": 57300,
+   "matchPrice": 58000,
+   "openPrice": 57500,
+   "firstTimeMatchPrice": "2026-10-15T02:15:00.004Z",
+   "matchType": "unknown",
+   "matchVol": 152500,
+   "messageType": "MT",
+   "receivedTime": "2026-10-15T08:33:08.412Z",
+   "sendingTime": "20261015 07:45:02.535",
+   "session": "ENDED",
+   "symbol": "FPT",
+   "time": "2026-10-15T07:45:00.002Z",
+   "totalRoom": 840019946,
+   "totalBuyOrders": 0,
+   "totalSellOrders": 0,
+   "bidCount": 0,
+   "askCount": 0,
+   "underlying": null,
+   "openInterest": null,
+   "stockType": "STOCK",
+   "partition": 5,
+   "isMatchPrice": false,
+   "ceilingPrice": 61000,
+   "floorPrice": 53200,
+   "referencePrice": 57100,
+   "icbCode2": null,
+   "id": "2133",
+   "isRE": false,
+   "lastATO": false,
+   "lastATC": false,
+   "re": false
+  }
+ },
+ {
+  "listingInfo": {
+   "code": "VN000000SHS3",
+   "symbol": "SHS",
+   "ceiling": 13200,
+   "floor": 10800,
+   "refPrice": 12000,
+   "stockType": "STOCK",
+   "board": "HNX",
+   "exercisePrice": 0,
+   "exerciseRatio": "0.0:1",
+   "tradingStatus": "TRADING_ACTIVATED",
+   "tradingStatusCode": "20",
+   "tradingStatusGroup": "2",
+   "securityStatus": "N",
+   "maturityDate": null,
+   "lastTradingDate": null,
+   "underlyingSymbol": null,
+   "issuerName": "SHS",
+   "issueDate": null,
+   "listedShare": 899462220,
+   "couponRate": 0,
+   "yield": 0,
+   "receivedTime": "2026-10-15T01:43:36.381Z",
+   "sendingTime": "20261015 01:43:36.380",
+   "messageType": "d",
+   "type": "STOCK",
+   "enOrganName": "Sai Gon - Ha Noi Securities Joint Stock Company",
+   "enOrganShortName": "Sai Gon - Ha Noi Securities",
+   "organName": "Công ty Cổ phần Chứng khoán Sài Gòn - Hà Nội",
+   "organShortName": "Chứng khoán SG - HN",
+   "ticker": "SHS",
+   "mappingSymbol": null,
+   "productGrpID": "STX",
+   "partition": 3,
+   "indexType": null,
+   "tradingDate": "2026-10-15",
+   "lstTradingStatus": null,
+   "isDelisted": 0,
+   "icbCode2": null,
+   "id": "3033",
+   "rECode": "0",
+   "recode": "0"
+  },
+  "bidAsk": {
+   "code": "VN000000SHS3",
+   "messageType": "X",
+   "receivedTime": "2026-10-15T07:45:03.113Z",
+   "session": "ENDED",
+   "symbol": "SHS",
+   "time": "2026-10-15T07:45:00.077Z",
+   "transactionTime": "074500077",
+   "askPrices": [
+    {
+     "price": 12300,
+     "volume": 290000
+    },
+    {
+     "price": 12400,
+     "volume": 451100
+    },
+    {
+     "price": 12500,
+     "volume": 850600
+    },
+    {
+     "price": 12600,
+     "volume": 404400
+    },
+    {
+     "price": 12700,
+     "volume": 650400
+    },
+    {
+     "price": 12800,
+     "volume": 561300
+    },
+    {
+     "price": 12900,
+     "volume": 620400
+    },
+    {
+     "price": 13000,
+     "volume": 652900
+    },
+    {
+     "price": 13100,
+     "volume": 557600
+    },
+    {
+     "price": 13200,
+     "volume": 1351500
+    }
+   ],
+   "bidPrices": [
+    {
+     "price": 12200,
+     "volume": 784700
+    },
+    {
+     "price": 12100,
+     "volume": 764000
+    },
+    {
+     "price": 12000,
+     "volume": 1078900
+    },
+    {
+     "price": 11900,
+     "volume": 494400
+    },
+    {
+     "price": 11800,
+     "volume": 526100
+    },
+    {
+     "price": 11700,
+     "volume": 456100
+    },
+    {
+     "price": 11600,
+     "volume": 268400
+    },
+    {
+     "price": 11500,
+     "volume": 213200
+    },
+    {
+     "price": 11400,
+     "volume": 80800
+    },
+    {
+     "price": 11300,
+     "volume": 163900
+    }
+   ],
+   "bidCount": 5768000,
+   "askCount": 6390200,
+   "estMatchVolG3": 0
+  },
+  "matchPrice": {
+   "accumulatedValue": 204682.49000000002,
+   "accumulatedVolume": 16615500,
+   "accumulatedValueG1": 204670.29,
+   "accumulatedVolumeG1": 16614500,
+   "matchPriceATO": 0,
+   "matchVolumeATO": 0,
+   "matchPriceATC": 12200,
+   "matchVolumeATC": 291500,
+   "tradingSessionID": "99",
+   "isLastATO": false,
+   "isLastATC": false,
+   "avgMatchPrice": 12318.768017814693,
+   "code": "VN000000SHS3",
+   "currentRoom": 354951466,
+   "foreignBuyVolume": 560500,
+   "foreignSellVolume": 1187927,
+   "foreignBuyValue": 6883340000,
+   "foreignSellValue": 14718684000,
+   "highest": 12700,
+   "lowest": 11900,
+   "matchPrice": 12200,
+   "openPrice": 12200,
+   "firstTimeMatchPrice": "2026-10-15T07:55:00.787Z",
+   "matchType": "s",
+   "matchVol": 291500,
+   "messageType": "MT",
+   "receivedTime": "2026-10-15T09:19:03.722Z",
+   "sendingTime": "20261015 08:00:01.222",
+   "session": "ENDED",
+   "symbol": "SHS",
+   "time": "2026-10-15T08:00:00.792Z",
+   "totalRoom": 440736487,
+   "totalBuyOrders": 6390200,
+   "totalSellOrders": 4830500,
+   "bidCount": 4830500,
+   "askCount": 6390200,
+   "underlying": null,
+   "openInterest": null,
+   "stockType": "STOCK",
+   "partition": 3,
+   "isMatchPrice": false,
+   "ceilingPrice": 13200,
+   "floorPrice": 10800,
+   "referencePrice": 12000,
+   "icbCode2": null,
+   "id": "3033",
+   "isRE": false,
+   "lastATO": false,
+   "lastATC": false,
+   "re": false
+  }
+ },
+ {
+  "listingInfo": {
+   "symbol": "VNINDEX",
+   "type": "INDEX"
+  },
+  "bidAsk": {
+   "type": null,
+   "code": "",
+   "symbol": "VNINDEX",
+   "bidPrices": [],
+   "askPrices": [],
+   "session": "",
+   "bidCount": 0,
+   "askCount": 0
+  },
+  "matchPrice": {
+   "type": null,
+   "code": "",
+   "symbol": "VNINDEX",
+   "matchPrice": 0,
+   "matchVol": 0,
+   "highest": 0,
+   "lowest": 0,
+   "foreignBuyVolume": 0,
+   "foreignSellVolume": 0,
+   "foreignBuyValue": 0,
+   "foreignSellValue": 0,
+   "session": "",
+   "referencePrice": 0,
+   "ceilingPrice": 0,
+   "floorPrice": 0,
+   "accumulatedVolume": 0
+  }
+ }
+]

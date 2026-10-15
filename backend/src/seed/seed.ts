@@ -59,7 +59,7 @@ export function generateHistory(s: SeedStock, dates: string[]): DayBar[] {
   return bars;
 }
 
-async function insertBatched(q: Queryable, table: string, cols: string[], rows: unknown[][], conflict = '') {
+export async function insertBatched(q: Queryable, table: string, cols: string[], rows: unknown[][], conflict = '') {
   const per = cols.length;
   const chunk = Math.floor(5000 / per);
   for (let i = 0; i < rows.length; i += chunk) {
@@ -163,6 +163,15 @@ export async function seedDemoUser(db: Database, email: string, password: string
   const hash = await bcrypt.hash(password, 10);
   const td = currentTradeDate(Date.now(), mode);
   const buyDate = prevTradingDay(prevTradingDay(prevTradingDay(td, true), true), true);
+  // Giá mua theo giá đóng cửa gần nhất trong CSDL (giả lập hoặc lịch sử thật), dự phòng bằng giá seed
+  const closes = new Map(
+    (
+      await db.many<{ symbol: string; close: number }>(
+        'SELECT DISTINCT ON (symbol) symbol, close FROM ohlcv_daily WHERE trade_date < $1 ORDER BY symbol, trade_date DESC',
+        [td],
+      )
+    ).map((r) => [r.symbol, r.close]),
+  );
   const positions: [string, number, number][] = [
     ['FPT', 2_000, 0.95],
     ['HPG', 10_000, 0.97],
@@ -175,7 +184,7 @@ export async function seedDemoUser(db: Database, email: string, password: string
     let balance = RULES.initialCapital;
     for (const [symbol, qty, factor] of positions) {
       const seed = SEED_STOCKS.find((s) => s.symbol === symbol)!;
-      const price = roundToTick(seed.exchange, seed.ref * factor);
+      const price = roundToTick(seed.exchange, (closes.get(symbol) ?? seed.ref) * factor);
       const value = price * qty;
       const fee = calcFee(value);
       const executedAt = `${buyDate}T03:${String(10 + positions.findIndex((p) => p[0] === symbol) * 7).padStart(2, '0')}:00Z`;

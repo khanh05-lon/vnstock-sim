@@ -91,6 +91,8 @@ export interface SessionInfo {
   phase: SessionPhase;
   tradeDate: string;
   serverTime: number;
+  /** LIVE = bảng giá lấy từ nguồn thật, SIM = giả lập */
+  feed?: 'LIVE' | 'SIM';
 }
 
 export interface OrderDTO {

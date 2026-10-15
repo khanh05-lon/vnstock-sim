@@ -22,6 +22,14 @@
         "dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "vnstock-data",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "D:/VS-CODE/vnstock-sim/data-service/run.mjs"
+      ],
+      "port": 8001
     }
   ]
 }

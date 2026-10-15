@@ -64,6 +64,14 @@ function SessionBadge() {
       <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : open ? 'bg-up pulse-dot' : 'bg-ref')} />
       <span className="text-tx-2">{session ? PHASE_LABEL[session.phase] : 'Đang kết nối…'}</span>
       <span className="num font-medium text-tx-1">{clock}</span>
+      {session?.feed && (
+        <span
+          className={cn('rounded px-1.5 py-px text-[10px] font-semibold', session.feed === 'LIVE' ? 'bg-up/15 text-up' : 'bg-bg-3 text-tx-3')}
+          title={session.feed === 'LIVE' ? 'Bảng giá lấy từ dữ liệu thị trường thật' : 'Giá giả lập (chưa có dữ liệu thật hoặc ngoài giờ giao dịch)'}
+        >
+          {session.feed === 'LIVE' ? 'Giá thật' : 'Giả lập'}
+        </span>
+      )}
     </div>
   );
 }

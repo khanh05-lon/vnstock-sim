@@ -3,7 +3,7 @@
 Web chứng khoán đầy đủ chức năng ở chế độ **giao dịch ảo (paper trading)**: bảng giá realtime HOSE/HNX/UPCOM, biểu đồ nến chuyên nghiệp, đặt lệnh LO/MP/ATO/ATC, khớp lệnh theo sổ lệnh, phí, thuế, thanh toán T+2, danh mục và sao kê.
 Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** (bố cục terminal giao dịch, nền tối, typography).
 
-> ⚠️ Toàn bộ giá, chỉ số và thông tin doanh nghiệp là **dữ liệu giả lập** phục vụ học tập — không phải giá thật, không phải khuyến nghị đầu tư.
+> ⚠️ Mặc định toàn bộ giá, chỉ số và thông tin doanh nghiệp là **dữ liệu giả lập** phục vụ học tập. Có thể bật **giá thật** (bảng giá + nến ngày HOSE/HNX/UPCOM) bằng `MARKET_PROVIDER=vnstock` — xem [Dữ liệu thị trường thật](#dữ-liệu-thị-trường-thật-vnstock). Dù dùng nguồn nào, giao dịch đều bằng vốn ảo và không phải khuyến nghị đầu tư.
 
 ## Tính năng
 
@@ -42,7 +42,8 @@ npm run dev
 Các lệnh khác:
 
 ```bash
-npm test            # unit test bộ khớp lệnh + quy tắc giá (vitest)
+npm test            # unit test bộ khớp lệnh, quy tắc giá, map dữ liệu thật (vitest)
+npm run test:data-service   # unit test chuẩn hoá dữ liệu của data-service (Python)
 npm run typecheck   # kiểm tra kiểu FE + BE
 npm run build       # build frontend production
 ```
@@ -52,11 +53,56 @@ npm run build       # build frontend production
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `MARKET_MODE` | `SIMULATED_24_7` | `SIMULATED_24_7`: thị trường chạy liên tục; `REAL_HOURS`: theo giờ HOSE (ATO 9:00–9:15, liên tục, nghỉ trưa 11:30–13:00, ATC 14:30–14:45) |
+| `MARKET_PROVIDER` | `mock` | `mock`: giá giả lập; `vnstock`: giá thật qua data-service (nên dùng cùng `MARKET_MODE=REAL_HOURS`) |
+| `VNSTOCK_URL` | `http://127.0.0.1:8001` | Địa chỉ data-service |
+| `VNSTOCK_POLL_MS` | `3000` | Chu kỳ lấy bảng giá trong khung 8:30–15:05 (ngoài giờ: mỗi phút) |
+| `VNSTOCK_STALE_MS` | `20000` | Quá thời gian này không lấy được dữ liệu thật → tự chuyển sang giả lập |
+| `VNSTOCK_HISTORY_DAYS` | `500` | Số phiên nến ngày nạp từ nguồn ở lần đầu |
+| `VNSTOCK_MAX_RPM` | `120` | Giới hạn số request backend gửi tới data-service mỗi phút |
 | `SETTLEMENT_DAYS` | `2` | Số ngày thanh toán T+N. Đặt `0` để bán được ngay sau khi mua (tiện test) |
 | `TICK_INTERVAL_MS` | `1000` | Chu kỳ cập nhật giá |
 | `JWT_SECRET` | — | Khoá ký token, đặt chuỗi ngẫu nhiên dài |
 | `DATA_DIR` | `./data/pgdata` | Nơi lưu CSDL |
 | `DEMO_EMAIL` / `DEMO_PASSWORD` | demo | Tài khoản demo được seed (để trống để tắt) |
+
+## Dữ liệu thị trường thật (vnstock)
+
+Backend có 2 nguồn dữ liệu cài đặt cùng interface `MarketDataProvider` ([`backend/src/market/types.ts`](backend/src/market/types.ts)):
+
+- **`MockProvider`** — giả lập (mặc định).
+- **`RealProvider`** ([`backend/src/market/vnstock`](backend/src/market/vnstock)) — lấy bảng giá thật định kỳ từ **data-service** (FastAPI, thư mục [`data-service/`](data-service)).
+
+Chạy (cần Python ≥ 3.10):
+
+```bash
+# trong backend/.env:  MARKET_PROVIDER=vnstock  và  MARKET_MODE=REAL_HOURS
+npm run data-service:setup   # lần đầu: tạo data-service/.venv, cài fastapi + uvicorn + httpx
+npm run dev:vnstock          # data-service :8001 + API :4000 + web :5173
+```
+
+Hoặc chạy riêng `npm run data-service` rồi `npm run dev`. Khi đang hiển thị giá thật, header có nhãn **"Giá thật"**; khi chạy giả lập là **"Giả lập"**. `GET /api/health` trả thêm `provider` và `feed` (`LIVE`/`SIM`).
+
+**Nguồn dữ liệu.** data-service gọi trực tiếp API công khai của VCI (trading.vietcap.com.vn) — chính là nguồn mặc định mà thư viện Python [vnstock](https://github.com/thinh-vu/vnstock) dùng, miễn phí, không cần key. Không cài gói `vnstock` vì dự án này trên PyPI đang ở trạng thái *quarantined* (không tải được). Muốn đổi nguồn chỉ cần sửa `data-service/app/vci.py` + `normalize.py`, schema trả cho backend giữ nguyên.
+
+| Endpoint data-service | Nội dung | Cache |
+|---|---|---|
+| `GET /board?symbols=FPT,HPG,…` | Bảng giá: TC/trần/sàn, mở/cao/thấp/khớp, KL & GT luỹ kế (khớp lệnh), 3 bước giá mua/bán, giá khớp ATO/ATC, khối ngoại, KL niêm yết | 2 giây |
+| `GET /history?symbols=FPT,VNINDEX&days=500` | Nến ngày cổ phiếu và chỉ số (`VNINDEX`, `VN30`, `HNXINDEX`, `UPCOMINDEX`) | 30 phút |
+| `GET /indices` | Giá trị 4 chỉ số (nến ngày gần nhất) | 10 giây |
+| `GET /health` | Trạng thái nguồn, số request tới nguồn trong 1 phút | — |
+
+data-service giới hạn ≤ 120 request/phút tới nguồn (`UPSTREAM_RPM`) và gộp các request trùng; backend chỉ gửi 1 request bảng giá mỗi `VNSTOCK_POLL_MS` (≈ 20 request/phút trong giờ giao dịch, 1 request/phút ngoài giờ).
+
+**Cách RealProvider dùng dữ liệu thật**
+
+- Lần đầu chạy (hoặc khi CSDL đang chứa lịch sử giả lập) nạp ~500 phiên nến ngày thật cho 92 mã + 4 chỉ số, thay toàn bộ lịch sử giả lập; các lần sau chỉ tải bù vài phiên (đánh dấu trong bảng `market_meta`). KL niêm yết cũng cập nhật theo nguồn.
+- Khởi động giữa phiên: đồng bộ thẳng trạng thái hiện tại của nguồn, không mô phỏng phần phiên đã qua. Sau đó mỗi lần KL luỹ kế tăng Δ → 1 giao dịch Δ tại giá khớp cuối (vẽ nến 1 phút, băng khớp lệnh, khớp lệnh LO của người dùng); tổng GT luôn khớp với nguồn.
+- Sổ lệnh lấy từ nguồn. Lệnh người dùng "ăn" thanh khoản thì phần đã ăn được trừ khỏi các bản cập nhật sau cho tới khi mức giá đó rời sổ lệnh.
+- ATO/ATC: không sinh KL giả; lệnh ATO/ATC của người dùng khớp theo giá khớp thật khi nguồn công bố (chờ tối đa 30 giây).
+- TC/trần/sàn theo nguồn (đã điều chỉnh khi có quyền); VN-Index, VN30, HNX-Index, UPCOM-Index lấy giá trị thật.
+- **Tự chuyển về giả lập** khi data-service lỗi hoặc quá `VNSTOCK_STALE_MS` không có dữ liệu (mô phỏng tiếp từ giá thật hiện tại); khi nguồn có lại thì đồng bộ về giá thật. Với `MARKET_MODE=SIMULATED_24_7`, ngoài giờ giao dịch (kể cả nghỉ trưa) cũng chạy giả lập.
+
+**Giới hạn**: chỉ 92 mã trong danh mục seed (độ rộng thị trường, tổng KL/GT trên thẻ chỉ số tính theo rổ này); tên, ngành, EPS/BVPS vẫn là số liệu seed; nến 1 phút chỉ có từ lúc server chạy; dữ liệu trễ vài giây; API của VCI là API web không chính thức nên có thể thay đổi. Khi chuyển một CSDL đang dùng giả lập sang `vnstock`, nên xoá `backend/data` để danh mục/giá vốn của tài khoản cũng theo giá thật.
 
 ## Quy tắc nghiệp vụ
 
@@ -76,14 +122,17 @@ npm run build       # build frontend production
 
 ```
 MockProvider ──poll()──▶ MarketService ──events──▶ Socket.io ──▶ React (Zustand store)
- (giá giả lập)           │ trạng thái giá, nến 1m,        board / indices / trades / candle
+ (giá giả lập)     ▲     │ trạng thái giá, nến 1m,        board / indices / trades / candle
+RealProvider ──────┘     │
+ │ (giá thật, tự về Mock khi lỗi)
+ └─HTTP─▶ data-service (FastAPI) ──▶ VCI
                          │ chỉ số, phiên, rollover ngày
                          └─hooks──▶ TradingEngine ──▶ PGlite (PostgreSQL)
                                     đặt/sửa/huỷ, khớp lệnh, T+2      ▲
 Express REST /api/* ─────────────────────────────────────────────────┘
 ```
 
-- **Đổi sang dữ liệu thật**: viết một class cài đặt interface `MarketDataProvider` ([`backend/src/market/types.ts`](backend/src/market/types.ts)) — đệm dữ liệu từ vnstock / SSI FastConnect / DNSE và trả ra ở mỗi `poll()` — rồi thay `new MockProvider()` trong `backend/src/index.ts`.
+- **Nguồn dữ liệu**: chọn bằng `MARKET_PROVIDER` (`createProvider` trong `backend/src/index.ts`). Muốn thêm nguồn khác (SSI FastConnect, DNSE…) chỉ cần cài đặt `MarketDataProvider` hoặc thay phần gọi nguồn trong data-service.
 - **Đổi sang Supabase**: chạy `backend/migrations/*.sql` trên Supabase và thay lớp `Database` trong `backend/src/db.ts` bằng client `pg` (giao diện `many/one/exec/tx` giữ nguyên).
 
 ### Sơ đồ dữ liệu
@@ -127,10 +176,11 @@ Socket.io: `board`, `indices`, `session` (mọi client); `trades`, `candle` (sau
 
 ```
 vnstock-sim/
+├─ data-service/              FastAPI lấy bảng giá + nến ngày thật (app/vci.py, app/normalize.py, tests/)
 ├─ shared/src/index.ts        quy tắc giá, kiểu, schema zod dùng chung
 ├─ backend/
 │  ├─ migrations/001_init.sql
-│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên)
+│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên); vnstock/ = RealProvider
 │  ├─ src/trading/            TradingEngine (khớp lệnh, phong toả, T+2), DTO
 │  ├─ src/routes/             auth, market, trading
 │  ├─ src/seed/               danh sách mã, sinh lịch sử, tài khoản demo

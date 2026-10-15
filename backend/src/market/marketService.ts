@@ -85,6 +85,9 @@ export class MarketService extends EventEmitter {
   private ticking = false;
   private tickCount = 0;
   private timer: NodeJS.Timeout | null = null;
+  /** Nguồn thật: phiên định kỳ chờ giá khớp ATO/ATC của nguồn trong một khoảng ngắn */
+  private pendingAuction: { kind: 'ATO' | 'ATC'; until: number; done: Set<string> } | null = null;
+  private lastFeed: SessionInfo['feed'] = 'SIM';
 
   constructor(
     private db: Database,
@@ -135,6 +138,7 @@ export class MarketService extends EventEmitter {
       this.list.push(s);
       this.recent.set(r.symbol, []);
     }
+    await this.provider.start?.(this.list);
 
     const td = currentTradeDate(now, this.opts.mode);
     const snaps = await this.db.many<SnapshotDbRow>('SELECT * FROM price_snapshots');
@@ -168,6 +172,7 @@ export class MarketService extends EventEmitter {
         );
         for (const p of pts) this.indices.find((i) => i.code === p.code)?.points.push({ ts: p.ts, value: p.value });
         this.phase = phaseAt(now, this.opts.mode);
+        this.lastFeed = this.feed();
         return;
       }
       await this.rollover(td, now);
@@ -190,6 +195,7 @@ export class MarketService extends EventEmitter {
     }
     await this.warmUp(now);
     await this.persistSnapshots();
+    this.lastFeed = this.feed();
   }
 
   start() {
@@ -198,6 +204,7 @@ export class MarketService extends EventEmitter {
   }
 
   async stop() {
+    this.provider.stop?.();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     await this.flushPending(true);
@@ -248,7 +255,12 @@ export class MarketService extends EventEmitter {
   }
 
   session(): SessionInfo {
-    return { mode: this.opts.mode, phase: this.phase, tradeDate: this.tradeDate, serverTime: Date.now() };
+    return { mode: this.opts.mode, phase: this.phase, tradeDate: this.tradeDate, serverTime: Date.now(), feed: this.feed() };
+  }
+
+  /** LIVE = đang hiển thị dữ liệu thật từ nguồn; SIM = giả lập */
+  feed(): NonNullable<SessionInfo['feed']> {
+    return this.provider.live ? 'LIVE' : 'SIM';
   }
 
   indexSnapshots(): IndexSnapshot[] {
@@ -325,20 +337,28 @@ export class MarketService extends EventEmitter {
         this.phase = ph;
         if (prev === 'ATO') await this.runAuction('ATO', now);
         if (prev === 'ATC') {
-          await this.runAuction('ATC', now);
-          await this.hooks.onDayEnd?.(this.tradeDate);
+          // nguồn thật: onDayEnd chạy sau khi đã có giá khớp ATC (xem resolveAuction)
+          const deferred = await this.runAuction('ATC', now);
+          if (!deferred) await this.hooks.onDayEnd?.(this.tradeDate);
         }
         this.emit('session', this.session());
       }
 
       const tradesBySym = new Map<string, ProviderTrade>();
-      if (ph === 'CONTINUOUS') {
+      // Nguồn thật vẫn được poll ngoài phiên liên tục để bảng giá luôn khớp với nguồn (bộ khớp lệnh tự bỏ qua)
+      if (ph === 'CONTINUOUS' || this.provider.live) {
         const res = this.provider.poll(this.list, now, this.opts.tickIntervalMs);
         for (const t of res.trades) {
           this.applyTrade(t.symbol, t.price, t.vol, t.side, now, t.foreign);
           tradesBySym.set(t.symbol, t);
         }
         for (const sym of res.touched) this.dirty.add(sym);
+      }
+      if (this.pendingAuction) await this.resolveAuction(now);
+      const feed = this.feed();
+      if (feed !== this.lastFeed) {
+        this.lastFeed = feed;
+        this.emit('session', this.session());
       }
       this.rollMinutes(now);
 
@@ -506,19 +526,55 @@ export class MarketService extends EventEmitter {
     }
   }
 
-  private async runAuction(kind: 'ATO' | 'ATC', nowMs: number) {
+  /** Trả true nếu phiên định kỳ được hoãn tới khi nguồn thật có giá khớp */
+  private async runAuction(kind: 'ATO' | 'ATC', nowMs: number): Promise<boolean> {
+    if (this.provider.live) {
+      // Nguồn thật: KL khớp ATO/ATC đã nằm trong KL luỹ kế của nguồn — chỉ chờ giá khớp thật để khớp lệnh người dùng
+      this.pendingAuction = { kind, until: nowMs + 30_000, done: new Set() };
+      await this.resolveAuction(nowMs);
+      return true;
+    }
     const prices = new Map<string, number>();
     for (const s of this.list) {
-      const price = this.provider.auctionPrice(s);
+      const price = this.provider.auctionPrice(s, kind);
       const vol = Math.max(1, Math.round((5 + s.liq * 80) * (0.5 + Math.random()))) * 100;
       this.applyTrade(s.info.symbol, price, vol, price >= (s.last || s.ref) ? 'B' : 'S', nowMs, false);
       prices.set(s.info.symbol, price);
     }
     if (!this.warming) await this.hooks.onAuction?.(kind, prices);
+    return false;
+  }
+
+  private async resolveAuction(nowMs: number) {
+    const pa = this.pendingAuction!;
+    const prices = new Map<string, number>();
+    for (const s of this.list) {
+      const sym = s.info.symbol;
+      if (pa.done.has(sym)) continue;
+      const price = this.provider.auctionPrice(s, pa.kind);
+      if (price > 0) {
+        prices.set(sym, price);
+        pa.done.add(sym);
+      }
+    }
+    if (prices.size) await this.hooks.onAuction?.(pa.kind, prices);
+    if (pa.done.size < this.list.length && nowMs < pa.until) return;
+    this.pendingAuction = null;
+    if (pa.kind === 'ATC') await this.hooks.onDayEnd?.(this.tradeDate);
   }
 
   /** Mô phỏng nhanh khoảng thời gian đã qua trong phiên để bảng giá/biểu đồ có dữ liệu ngay khi mở */
   private async warmUp(now: number) {
+    if (this.provider.live) {
+      // Nguồn thật: không mô phỏng phần phiên đã qua, chỉ đồng bộ trạng thái hiện tại của nguồn
+      this.warming = true;
+      const res = this.provider.poll(this.list, now, 0);
+      for (const tr of res.trades) this.applyTrade(tr.symbol, tr.price, tr.vol, tr.side, now, tr.foreign);
+      this.warming = false;
+      this.dirty.clear();
+      this.phase = phaseAt(now, this.opts.mode);
+      return;
+    }
     const td = this.tradeDate;
     let start: number;
     let end: number;
@@ -550,6 +606,7 @@ export class MarketService extends EventEmitter {
   }
 
   private async rollover(newDate: string, now: number) {
+    this.pendingAuction = null;
     await this.finalizeDay();
     for (const s of this.list) {
       this.setRef(s, s.volume > 0 ? s.last : s.ref);
@@ -638,6 +695,8 @@ export class MarketService extends EventEmitter {
   }
 
   private indexValue(ix: IndexState): number {
+    const real = this.provider.indexValue?.(ix.code, this.tradeDate);
+    if (real) return real;
     if (!ix.capRef) return ix.prevClose;
     return (ix.prevClose * capOf(ix.members, false)) / ix.capRef;
   }
