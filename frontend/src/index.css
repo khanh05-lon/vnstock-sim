@@ -1,0 +1,305 @@
+@import 'tailwindcss';
+
+/*
+ * Bảng màu tham khảo SSI iBoard (màu giá bảng điện VN) và Binance (nền, panel, chữ).
+ * Quy ước VN: tím = trần, xanh lam = sàn, vàng = tham chiếu, xanh lá = tăng, đỏ = giảm.
+ */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-0: #0b0e11;
+  --bg-1: #12161c;
+  --bg-2: #181d25;
+  --bg-3: #1f2630;
+  --bg-4: #2b3139;
+  --line: #222932;
+  --line-2: #323a46;
+  --tx-1: #eaecef;
+  --tx-2: #a3acb9;
+  --tx-3: #6c7686;
+  --brand: #f0b90b;
+  --brand-2: #fcd535;
+  --brand-ink: #181a20;
+  --up: #0ecb81;
+  --down: #f6465d;
+  --ref: #f5d90a;
+  --ceil: #e24bff;
+  --floor: #1fc8ff;
+  --info: #3b82f6;
+  --row-alt: #0f1318;
+  --col-hl: #161b23;
+  --overlay: rgb(0 0 0 / 0.6);
+  --shadow: 0 12px 40px rgb(0 0 0 / 0.45);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg-0: #f4f5f7;
+  --bg-1: #ffffff;
+  --bg-2: #f7f8fa;
+  --bg-3: #eef0f3;
+  --bg-4: #e3e6eb;
+  --line: #e6e8ec;
+  --line-2: #d5d9e0;
+  --tx-1: #1e2329;
+  --tx-2: #4f5866;
+  --tx-3: #8a93a1;
+  --brand: #e5a800;
+  --brand-2: #f0b90b;
+  --brand-ink: #181a20;
+  --up: #03a66d;
+  --down: #e0294a;
+  --ref: #b38600;
+  --ceil: #a21caf;
+  --floor: #0284c7;
+  --info: #2563eb;
+  --row-alt: #fafbfc;
+  --col-hl: #f3f5f8;
+  --overlay: rgb(15 23 42 / 0.45);
+  --shadow: 0 12px 40px rgb(15 23 42 / 0.15);
+}
+
+@theme inline {
+  --color-bg-0: var(--bg-0);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-4: var(--bg-4);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-tx-1: var(--tx-1);
+  --color-tx-2: var(--tx-2);
+  --color-tx-3: var(--tx-3);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+  --color-brand-ink: var(--brand-ink);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-ref: var(--ref);
+  --color-ceil: var(--ceil);
+  --color-floor: var(--floor);
+  --color-info: var(--info);
+  --color-row-alt: var(--row-alt);
+  --color-col-hl: var(--col-hl);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg-0);
+    color: var(--tx-1);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  input,
+  select {
+    font: inherit;
+  }
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-4) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--bg-4);
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .panel {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .input {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 6px;
+    background: var(--bg-3);
+    border: 1px solid transparent;
+    color: var(--tx-1);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .input:hover {
+    border-color: var(--line-2);
+  }
+  .input:focus {
+    border-color: var(--brand);
+  }
+  .input[aria-invalid='true'] {
+    border-color: var(--down);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      opacity 0.15s;
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+  }
+  .btn-brand {
+    background: var(--brand);
+    color: var(--brand-ink);
+  }
+  .btn-brand:hover:not(:disabled) {
+    background: var(--brand-2);
+  }
+  .btn-ghost {
+    background: var(--bg-3);
+    color: var(--tx-1);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--bg-4);
+  }
+  .btn-up {
+    background: var(--up);
+    color: #fff;
+  }
+  .btn-up:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .btn-down {
+    background: var(--down);
+    color: #fff;
+  }
+  .btn-down:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .label {
+    font-size: 12px;
+    color: var(--tx-3);
+  }
+  .tbl th {
+    font-weight: 500;
+    color: var(--tx-3);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .tbl td {
+    white-space: nowrap;
+  }
+}
+
+/* Hiệu ứng nháy ô giá khi thay đổi */
+@keyframes flash-up {
+  0% {
+    background-color: color-mix(in srgb, var(--up) 45%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes flash-down {
+  0% {
+    background-color: color-mix(in srgb, var(--down) 45%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@keyframes flash-neutral {
+  0% {
+    background-color: color-mix(in srgb, var(--tx-3) 35%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 0.9s ease-out;
+}
+.flash-down {
+  animation: flash-down 0.9s ease-out;
+}
+.flash-neutral {
+  animation: flash-neutral 0.9s ease-out;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker-track {
+  animation: ticker 60s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down,
+  .flash-neutral,
+  .pulse-dot,
+  .ticker-track {
+    animation: none;
+  }
+}

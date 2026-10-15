@@ -1,0 +1,16 @@
+{
+  "name": "vnstock-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sàn giao dịch chứng khoán Việt Nam mô phỏng (paper trading)",
+  "workspaces": ["shared", "backend", "frontend"],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "test": "npm run test -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

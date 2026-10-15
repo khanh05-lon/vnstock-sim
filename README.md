@@ -1,0 +1,143 @@
+# VNStock Sim — Sàn chứng khoán Việt Nam mô phỏng
+
+Web chứng khoán đầy đủ chức năng ở chế độ **giao dịch ảo (paper trading)**: bảng giá realtime HOSE/HNX/UPCOM, biểu đồ nến chuyên nghiệp, đặt lệnh LO/MP/ATO/ATC, khớp lệnh theo sổ lệnh, phí, thuế, thanh toán T+2, danh mục và sao kê.
+Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** (bố cục terminal giao dịch, nền tối, typography).
+
+> ⚠️ Toàn bộ giá, chỉ số và thông tin doanh nghiệp là **dữ liệu giả lập** phục vụ học tập — không phải giá thật, không phải khuyến nghị đầu tư.
+
+## Tính năng
+
+| Trang | Nội dung |
+|---|---|
+| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/Theo dõi, lọc ngành, tìm mã, sắp xếp cột |
+| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume + đường tham chiếu; sổ lệnh có thanh độ sâu (bấm giá để điền form); băng khớp lệnh realtime; form đặt lệnh (sức mua, tối đa, 25/50/75/100%, phí, thuế, xác nhận); lệnh chờ / sổ lệnh / danh mục / hồ sơ doanh nghiệp; sửa & huỷ lệnh |
+| **Thị trường** (`/market`) | Biểu đồ chỉ số trong ngày/3T/1N/tất cả; độ rộng từng sàn; **heatmap treemap** theo ngành (diện tích = vốn hoá); top tăng/giảm/GTGD/khối ngoại; hiệu suất ngành |
+| **Tài sản** (`/portfolio`) | NAV, tiền mặt, sức mua, phong toả, lãi/lỗ chưa & đã thực hiện, phí, thuế; bảng danh mục (khả dụng / chờ về T+2 / chờ bán); donut phân bổ; khớp gần đây; đặt lại tài khoản |
+| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền; lọc ngày/mã/chiều/trạng thái; phân trang; xuất CSV |
+| **Đăng nhập / Đăng ký** | Mở tài khoản nhận 1 tỷ vốn ảo; nút "tài khoản demo" có sẵn danh mục; đổi mật khẩu |
+
+Thêm: giao diện **tối/sáng**, responsive mobile, thông báo khớp lệnh realtime, đồng hồ & trạng thái phiên.
+
+## Công nghệ
+
+- **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS v4, React Router, TanStack Query, Zustand, Socket.io client, TradingView Lightweight Charts v5, lucide-react, sonner
+- **Backend**: Node.js + Express + TypeScript (tsx), Socket.io, Zod, JWT + bcrypt, helmet, rate limit
+- **CSDL**: PostgreSQL nhúng **PGlite** (chạy ngay, không cần cài đặt) — schema SQL chuẩn, chuyển sang Supabase/Postgres thật được
+- **Chung**: package `@vss/shared` chứa quy tắc nghiệp vụ, kiểu dữ liệu và schema validate dùng cho cả FE và BE
+
+## Chạy nhanh
+
+Yêu cầu Node.js ≥ 20.
+
+```bash
+npm install
+cp backend/.env.example backend/.env   # rồi đổi JWT_SECRET
+npm run dev
+```
+
+- Web: http://localhost:5173 · API: http://localhost:4000
+- Lần chạy đầu tự tạo dữ liệu: 92 mã, ~500 phiên lịch sử, 4 chỉ số và một tài khoản demo (email/mật khẩu nằm trong `backend/.env.example`). Ở trang đăng nhập có nút **"Trải nghiệm nhanh với tài khoản demo"**.
+- Xoá thư mục `backend/data` để tạo lại dữ liệu từ đầu.
+
+Các lệnh khác:
+
+```bash
+npm test            # unit test bộ khớp lệnh + quy tắc giá (vitest)
+npm run typecheck   # kiểm tra kiểu FE + BE
+npm run build       # build frontend production
+```
+
+## Cấu hình (`backend/.env`)
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `MARKET_MODE` | `SIMULATED_24_7` | `SIMULATED_24_7`: thị trường chạy liên tục; `REAL_HOURS`: theo giờ HOSE (ATO 9:00–9:15, liên tục, nghỉ trưa 11:30–13:00, ATC 14:30–14:45) |
+| `SETTLEMENT_DAYS` | `2` | Số ngày thanh toán T+N. Đặt `0` để bán được ngay sau khi mua (tiện test) |
+| `TICK_INTERVAL_MS` | `1000` | Chu kỳ cập nhật giá |
+| `JWT_SECRET` | — | Khoá ký token, đặt chuỗi ngẫu nhiên dài |
+| `DATA_DIR` | `./data/pgdata` | Nơi lưu CSDL |
+| `DEMO_EMAIL` / `DEMO_PASSWORD` | demo | Tài khoản demo được seed (để trống để tắt) |
+
+## Quy tắc nghiệp vụ
+
+Định nghĩa trong [`shared/src/index.ts`](shared/src/index.ts) (cần đối chiếu quy định hiện hành nếu dùng cho mục đích khác):
+
+- Biên độ: HOSE ±7%, HNX ±10%, UPCOM ±15% — trần làm tròn xuống, sàn làm tròn lên theo bước giá
+- Bước giá HOSE: < 10.000 → 10đ; 10.000–49.950 → 50đ; ≥ 50.000 → 100đ. HNX/UPCOM: 100đ
+- Lô chẵn 100 CP; tối đa 500.000 CP/lệnh (HOSE), 1.000.000 (HNX/UPCOM)
+- Loại lệnh: HOSE `LO/MP/ATO/ATC`, HNX `LO/MP/ATC`, UPCOM `LO`
+- Phí 0,15% mỗi chiều, thuế TNCN 0,1% khi bán; giá vốn bao gồm phí mua
+- Lệnh mua phong toả `giá × KL + phí` (MP/ATO/ATC phong toả theo giá trần); lệnh bán phong toả cổ phiếu
+- Lệnh MP quét tối đa 3 bước giá, phần dư chuyển thành LO cao/thấp hơn 1 bước giá; không có đối ứng thì huỷ
+- Cuối phiên, lệnh chưa khớp hết hiệu lực và được giải phóng phong toả
+- Không bán khống, không margin. Tiền dùng số nguyên VNĐ (BIGINT), mọi thay đổi tiền/CP nằm trong 1 transaction có khoá dòng
+
+## Kiến trúc
+
+```
+MockProvider ──poll()──▶ MarketService ──events──▶ Socket.io ──▶ React (Zustand store)
+ (giá giả lập)           │ trạng thái giá, nến 1m,        board / indices / trades / candle
+                         │ chỉ số, phiên, rollover ngày
+                         └─hooks──▶ TradingEngine ──▶ PGlite (PostgreSQL)
+                                    đặt/sửa/huỷ, khớp lệnh, T+2      ▲
+Express REST /api/* ─────────────────────────────────────────────────┘
+```
+
+- **Đổi sang dữ liệu thật**: viết một class cài đặt interface `MarketDataProvider` ([`backend/src/market/types.ts`](backend/src/market/types.ts)) — đệm dữ liệu từ vnstock / SSI FastConnect / DNSE và trả ra ở mỗi `poll()` — rồi thay `new MockProvider()` trong `backend/src/index.ts`.
+- **Đổi sang Supabase**: chạy `backend/migrations/*.sql` trên Supabase và thay lớp `Database` trong `backend/src/db.ts` bằng client `pg` (giao diện `many/one/exec/tx` giữ nguyên).
+
+### Sơ đồ dữ liệu
+
+```mermaid
+erDiagram
+  users ||--|| accounts : has
+  users ||--o{ orders : places
+  users ||--o{ trades : owns
+  users ||--o{ holdings : holds
+  users ||--o{ settlement_lots : awaits
+  users ||--o{ transactions_ledger : records
+  users ||--o{ watchlists : watches
+  orders ||--o{ trades : fills
+  stocks ||--o{ ohlcv_daily : has
+  stocks ||--o{ ohlcv_intraday : has
+  stocks ||--|| price_snapshots : state
+  accounts { bigint cash_balance bigint cash_hold bigint initial_capital }
+  orders { text side text order_type bigint price int qty int filled_qty text status bigint hold_amount }
+  holdings { int qty_total int qty_available int qty_hold int qty_pending bigint total_cost }
+```
+
+## API
+
+| Method | Đường dẫn | Mô tả |
+|---|---|---|
+| POST | `/api/auth/register` · `/login` · `/demo` | Đăng ký / đăng nhập / tài khoản demo → `{ token, user }` |
+| GET | `/api/auth/me` · POST `/api/auth/change-password` | Thông tin / đổi mật khẩu |
+| GET | `/api/market/session` · `/stocks` · `/stocks/:symbol` · `/indices` | Phiên, bảng giá, chi tiết mã (kèm khớp gần nhất), chỉ số |
+| GET | `/api/market/stocks/:symbol/candles?tf=1m\|5m\|15m\|1h\|1D\|1W\|1M` | Nến |
+| GET | `/api/market/indices/:code/history?tf=1m\|1D` | Lịch sử chỉ số |
+| GET | `/api/account` · `/api/portfolio` · POST `/api/account/reset` | Tài khoản, danh mục, đặt lại |
+| GET/POST | `/api/orders?scope=open\|today\|all` | Danh sách / đặt lệnh |
+| PATCH/DELETE | `/api/orders/:id` | Sửa / huỷ lệnh |
+| GET | `/api/trades` · `/api/ledger` | Lịch sử khớp, sao kê (lọc `from`, `to`, `symbol`, `side`) |
+| GET/POST/DELETE | `/api/watchlist` | Danh sách theo dõi |
+
+Socket.io: `board`, `indices`, `session` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account` (riêng người dùng, xác thực bằng `auth.token`).
+
+## Cấu trúc thư mục
+
+```
+vnstock-sim/
+├─ shared/src/index.ts        quy tắc giá, kiểu, schema zod dùng chung
+├─ backend/
+│  ├─ migrations/001_init.sql
+│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên)
+│  ├─ src/trading/            TradingEngine (khớp lệnh, phong toả, T+2), DTO
+│  ├─ src/routes/             auth, market, trading
+│  ├─ src/seed/               danh sách mã, sinh lịch sử, tài khoản demo
+│  └─ test/                   vitest
+└─ frontend/src/
+   ├─ pages/                  Board, Trade, Market, Portfolio, History, Auth
+   ├─ components/             board, trade, chart, market, portfolio, layout, common
+   ├─ store/                  zustand (market, auth, ui/ticket)
+   └─ hooks/ lib/             realtime socket, api, queries, format
+```
