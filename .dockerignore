@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.env
+**/*.log
+**/__pycache__
+.git
+.github
+.claude
+backend/data
+backups
+data-service/.venv
+docs

@@ -1,0 +1,22 @@
+# Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt) cho DOMAIN.
+# DOMAIN=localhost → dùng chứng chỉ nội bộ (tự ký) để thử trên máy.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# API + Socket.io (WebSocket) + giao diện đều do app phục vụ
+	reverse_proxy app:4000 {
+		# Chờ app khởi động lại (vd. khi cập nhật phiên bản) thay vì trả lỗi 502 ngay
+		lb_try_duration 30s
+	}
+
+	header {
+		# Bắt trình duyệt luôn dùng HTTPS trong 1 năm
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
