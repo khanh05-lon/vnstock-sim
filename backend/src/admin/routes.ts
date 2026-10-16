@@ -1,76 +1,54 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import type { Server } from 'socket.io';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { RULES, registerSchema } from '@vss/shared';
 import { config } from '../config';
-import type { Database, Queryable } from '../db';
-import { requireAuth, type AuthedRequest } from '../lib/auth';
+import { markEmailVerified, requireAuth, type AuthedRequest } from '../lib/auth';
+import { accountLockedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
-import type { MarketService } from '../market/marketService';
-import type { TradingEngine } from '../trading/engine';
+import { sendLater } from '../routes/auth';
 import { createUserAccount } from '../seed/seed';
 import { toHoldingDTO, toLedgerDTO, toOrderDTO, type HoldingRow, type LedgerRow, type OrderRow } from '../trading/dto';
+import { exportBackup, serializeBackup } from './backup';
+import { audit, dateStr, forbidden, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
+import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
-import type { AdminStore } from './store';
+import { mountMarketAdmin } from './marketAdmin';
 
-export interface AdminDeps {
-  db: Database;
-  io: Server;
-  market: MarketService;
-  engine: TradingEngine;
-  store: AdminStore;
-  providerName: string;
-  settlementDays: number;
-}
+export type { AdminDeps } from './common';
 
-interface AdminCtx {
-  id: string;
-  email: string;
-}
-type AdminRequest = Request & { admin: AdminCtx };
-
-const forbidden = (msg: string) => new AppError(403, 'FORBIDDEN', msg);
-const uuid = z.string().uuid('Mã người dùng không hợp lệ');
-const reasonSchema = z.string().trim().min(3, 'Lý do tối thiểu 3 ký tự').max(200, 'Lý do tối đa 200 ký tự');
-const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày không hợp lệ (YYYY-MM-DD)');
-
-/** Các bảng dữ liệu nghiệp vụ — dùng cho thống kê dung lượng và bản sao lưu */
-const TABLES: { name: string; group: string; desc: string }[] = [
-  { name: 'users', group: 'Người dùng', desc: 'Tài khoản đăng nhập, vai trò, trạng thái khoá' },
+/** Các bảng dữ liệu — dùng cho thống kê dung lượng */
+export const TABLES: { name: string; group: string; desc: string }[] = [
+  { name: 'users', group: 'Người dùng', desc: 'Tài khoản đăng nhập, vai trò, trạng thái khoá, 2FA, tuỳ chọn' },
   { name: 'accounts', group: 'Người dùng', desc: 'Tiền mặt, phong toả, vốn ban đầu' },
   { name: 'watchlists', group: 'Người dùng', desc: 'Danh sách theo dõi' },
+  { name: 'recovery_codes', group: 'Người dùng', desc: 'Mã khôi phục 2FA (đã băm)' },
+  { name: 'password_reset_tokens', group: 'Người dùng', desc: 'Link đặt lại mật khẩu (đã băm, 30 phút)' },
+  { name: 'email_verification_tokens', group: 'Người dùng', desc: 'Link xác thực email (đã băm, 24 giờ)' },
   { name: 'orders', group: 'Giao dịch', desc: 'Toàn bộ lệnh đã đặt' },
   { name: 'trades', group: 'Giao dịch', desc: 'Mỗi lần khớp lệnh' },
+  { name: 'conditional_orders', group: 'Giao dịch', desc: 'Lệnh điều kiện: cắt lỗ, chốt lời, trailing stop, OCO' },
   { name: 'holdings', group: 'Giao dịch', desc: 'Danh mục cổ phiếu nắm giữ' },
   { name: 'settlement_lots', group: 'Giao dịch', desc: 'Lô cổ phiếu chờ về T+2' },
+  { name: 'cash_settlements', group: 'Giao dịch', desc: 'Tiền bán chờ về T+2 (và phần đã ứng trước)' },
   { name: 'transactions_ledger', group: 'Giao dịch', desc: 'Sao kê tiền' },
-  { name: 'stocks', group: 'Thị trường', desc: 'Danh mục mã chứng khoán' },
+  { name: 'nav_daily', group: 'Giao dịch', desc: 'Tài sản ròng cuối ngày (biểu đồ hiệu quả, bảng xếp hạng)' },
+  { name: 'stocks', group: 'Thị trường', desc: 'Danh mục mã chứng khoán (cả mã đã huỷ niêm yết)' },
+  { name: 'warrants', group: 'Thị trường', desc: 'Thông tin chứng quyền: mã cơ sở, tỷ lệ, giá thực hiện, đáo hạn' },
+  { name: 'bonds', group: 'Thị trường', desc: 'Thông tin trái phiếu: mệnh giá, lãi suất, kỳ trả lãi, đáo hạn' },
+  { name: 'corporate_actions', group: 'Thị trường', desc: 'Sự kiện quyền: cổ tức, chia tách, quyền mua' },
+  { name: 'ca_entitlements', group: 'Giao dịch', desc: 'Quyền của từng nhà đầu tư theo sự kiện' },
   { name: 'ohlcv_daily', group: 'Thị trường', desc: 'Nến ngày' },
   { name: 'ohlcv_intraday', group: 'Thị trường', desc: 'Nến 1 phút (giữ 7 ngày)' },
   { name: 'index_daily', group: 'Thị trường', desc: 'Chỉ số theo ngày' },
   { name: 'index_intraday', group: 'Thị trường', desc: 'Chỉ số theo phút (giữ 7 ngày)' },
   { name: 'price_snapshots', group: 'Thị trường', desc: 'Trạng thái giá mới nhất, lưu mỗi 10 giây' },
-  { name: 'market_meta', group: 'Vận hành', desc: 'Cấu hình vận hành (ngừng giao dịch, thông báo)' },
+  { name: 'market_meta', group: 'Vận hành', desc: 'Cấu hình vận hành (ngừng giao dịch, thông báo, tham số giao dịch)' },
   { name: 'market_holidays', group: 'Vận hành', desc: 'Ngày nghỉ lễ' },
   { name: 'admin_audit_log', group: 'Vận hành', desc: 'Nhật ký thao tác quản trị' },
-];
-
-/** Bảng đưa vào bản sao lưu JSON (không gồm dữ liệu giá có thể sinh lại) */
-const EXPORT_TABLES: { name: string; sql: string }[] = [
-  { name: 'users', sql: 'SELECT id, email, full_name, role, status, locked_reason, created_at, last_seen_at FROM users ORDER BY created_at' },
-  { name: 'accounts', sql: 'SELECT * FROM accounts' },
-  { name: 'watchlists', sql: 'SELECT * FROM watchlists' },
-  { name: 'orders', sql: 'SELECT * FROM orders ORDER BY id' },
-  { name: 'trades', sql: 'SELECT * FROM trades ORDER BY id' },
-  { name: 'holdings', sql: 'SELECT * FROM holdings' },
-  { name: 'settlement_lots', sql: 'SELECT * FROM settlement_lots ORDER BY id' },
-  { name: 'transactions_ledger', sql: 'SELECT * FROM transactions_ledger ORDER BY id' },
-  { name: 'market_holidays', sql: 'SELECT * FROM market_holidays ORDER BY holiday_date' },
-  { name: 'market_meta', sql: `SELECT * FROM market_meta WHERE key LIKE 'admin.%'` },
-  { name: 'admin_audit_log', sql: 'SELECT * FROM admin_audit_log ORDER BY id' },
+  { name: 'system_alerts', group: 'Vận hành', desc: 'Lịch sử cảnh báo vận hành (giám sát tự động)' },
 ];
 
 function dirSize(dir: string): number {
@@ -96,13 +74,6 @@ function safeDbUrl(): string | null {
   }
 }
 
-async function audit(q: Queryable, admin: AdminCtx, action: string, targetType: string | null, targetId: string | null, detail: Record<string, unknown> = {}) {
-  await q.many(
-    'INSERT INTO admin_audit_log (admin_id, admin_email, action, target_type, target_id, detail) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
-    [admin.id, admin.email, action, targetType, targetId, JSON.stringify(detail)],
-  );
-}
-
 interface UserRow {
   id: string;
   email: string;
@@ -112,12 +83,16 @@ interface UserRow {
   locked_reason: string | null;
   created_at: Date;
   last_seen_at: Date | null;
+  email_verified_at: Date | null;
+  totp_enabled_at: Date | null;
 }
+
+const ADMIN_USER_COLS = 'id, email, full_name, role, status, locked_reason, created_at, last_seen_at, email_verified_at, totp_enabled_at';
 
 const iso = (d: Date | string | null) => (d == null ? null : new Date(d).toISOString());
 
 export function adminRoutes(deps: AdminDeps) {
-  const { db, io, market, engine, store } = deps;
+  const { db, io, market, engine, store, mailer } = deps;
   const r = Router();
 
   /** Chỉ quản trị viên đang hoạt động; vai trò đọc lại từ CSDL ở mỗi request để thu quyền có hiệu lực ngay */
@@ -133,6 +108,9 @@ export function adminRoutes(deps: AdminDeps) {
 
   const broadcast = () => io.emit('system', store.status());
 
+  // Tham số giao dịch, danh mục mã, khôi phục dữ liệu
+  mountMarketAdmin(r, deps, broadcast);
+
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();
     const users = new Set(sockets.map((s) => (s.data as { user?: { id: string } }).user?.id).filter(Boolean));
@@ -140,17 +118,25 @@ export function adminRoutes(deps: AdminDeps) {
   };
 
   /** NAV mọi tài khoản = tiền mặt + Σ KL × giá định giá hiện tại */
+  /** NAV mọi tài khoản = tiền mặt + tiền chờ về + cổ phiếu (giá hiện hành) − nợ ký quỹ; mốc lãi/lỗ = vốn đã góp */
   const navs = async () => {
-    const accts = await db.many<{ user_id: string; cash_balance: number; initial_capital: number }>(
-      'SELECT user_id, cash_balance, initial_capital FROM accounts',
-    );
+    const accts = await db.many<{
+      user_id: string;
+      cash_balance: number;
+      cash_pending: number;
+      loan_balance: number;
+      loan_interest: number;
+      initial_capital: number;
+      contributed: number;
+    }>('SELECT user_id, cash_balance, cash_pending, loan_balance, loan_interest, initial_capital, contributed FROM accounts');
     const holds = await db.many<{ user_id: string; symbol: string; qty_total: number }>('SELECT user_id, symbol, qty_total FROM holdings');
     const stock = new Map<string, number>();
     for (const h of holds) stock.set(h.user_id, (stock.get(h.user_id) ?? 0) + h.qty_total * market.markPrice(h.symbol));
     const out = new Map<string, { nav: number; initial: number; cash: number; stock: number }>();
     for (const a of accts) {
       const s = stock.get(a.user_id) ?? 0;
-      out.set(a.user_id, { nav: a.cash_balance + s, initial: a.initial_capital, cash: a.cash_balance, stock: s });
+      const nav = a.cash_balance + Number(a.cash_pending) + s - Number(a.loan_balance) - Number(a.loan_interest);
+      out.set(a.user_id, { nav, initial: Number(a.contributed) || a.initial_capital, cash: a.cash_balance, stock: s });
     }
     return out;
   };
@@ -257,6 +243,7 @@ export function adminRoutes(deps: AdminDeps) {
       }
       const rows = await db.many<UserRow & { cash_balance: number; cash_hold: number; initial_capital: number; orders_count: number; trades_count: number }>(
         `SELECT u.id, u.email, u.full_name, u.role, u.status, u.locked_reason, u.created_at, u.last_seen_at,
+                u.email_verified_at, u.totp_enabled_at,
                 a.cash_balance, a.cash_hold, a.initial_capital,
                 (SELECT count(*)::int FROM orders o WHERE o.user_id = u.id) AS orders_count,
                 (SELECT count(*)::int FROM trades t WHERE t.user_id = u.id) AS trades_count
@@ -280,6 +267,8 @@ export function adminRoutes(deps: AdminDeps) {
             lockedReason: u.locked_reason,
             createdAt: iso(u.created_at),
             lastSeenAt: iso(u.last_seen_at),
+            emailVerified: u.email_verified_at != null,
+            twoFactorEnabled: u.totp_enabled_at != null,
             online: online.userIds.has(u.id),
             cashBalance: u.cash_balance,
             cashHold: u.cash_hold,
@@ -298,7 +287,7 @@ export function adminRoutes(deps: AdminDeps) {
     '/users/:id',
     ah(async (req, res) => {
       const id = uuid.parse(req.params.id);
-      const u = await db.one<UserRow>('SELECT id, email, full_name, role, status, locked_reason, created_at, last_seen_at FROM users WHERE id = $1', [id]);
+      const u = await db.one<UserRow>(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = $1`, [id]);
       if (!u) throw notFound('Không tìm thấy người dùng');
       const acct = await db.one<{ cash_balance: number; cash_hold: number; initial_capital: number }>('SELECT * FROM accounts WHERE user_id = $1', [id]);
       const holdings = await db.many<HoldingRow>('SELECT * FROM holdings WHERE user_id = $1 ORDER BY symbol', [id]);
@@ -320,6 +309,7 @@ export function adminRoutes(deps: AdminDeps) {
         return { ...toHoldingDTO(h), marketPrice: price, marketValue: price * h.qty_total };
       });
       const stockValue = items.reduce((a, h) => a + h.marketValue, 0);
+      const navMap = await navs();
       const online = await onlineCount();
       res.json({
         user: {
@@ -331,6 +321,8 @@ export function adminRoutes(deps: AdminDeps) {
           lockedReason: u.locked_reason,
           createdAt: iso(u.created_at),
           lastSeenAt: iso(u.last_seen_at),
+          emailVerified: u.email_verified_at != null,
+          twoFactorEnabled: u.totp_enabled_at != null,
           online: online.userIds.has(u.id),
         },
         account: acct
@@ -340,7 +332,7 @@ export function adminRoutes(deps: AdminDeps) {
               cashAvailable: acct.cash_balance - acct.cash_hold,
               initialCapital: acct.initial_capital,
               stockValue,
-              nav: acct.cash_balance + stockValue,
+              nav: navMap.get(id)?.nav ?? acct.cash_balance + stockValue,
             }
           : null,
         stats,
@@ -363,6 +355,8 @@ export function adminRoutes(deps: AdminDeps) {
       const hash = await bcrypt.hash(input.password, 10);
       const user = await db.tx(async (tx) => {
         const u = await createUserAccount(tx, input.email, hash, input.fullName);
+        // Quản trị viên tạo hộ → coi như đã xác thực email
+        await tx.many('UPDATE users SET email_verified_at = now() WHERE id = $1', [u.id]);
         await audit(tx, admin, 'USER_CREATE', 'user', u.id, { email: u.email });
         return u;
       });
@@ -371,10 +365,49 @@ export function adminRoutes(deps: AdminDeps) {
   );
 
   const loadTarget = async (id: string) => {
-    const u = await db.one<UserRow>('SELECT id, email, full_name, role, status FROM users WHERE id = $1', [id]);
+    const u = await db.one<UserRow>(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = $1`, [id]);
     if (!u) throw notFound('Không tìm thấy người dùng');
     return u;
   };
+
+  r.post(
+    '/users/:id/verify-email',
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      const id = uuid.parse(req.params.id);
+      const u = await loadTarget(id);
+      if (u.email_verified_at) throw badRequest('ALREADY', 'Email đã được xác thực');
+      await db.tx(async (tx) => {
+        await tx.many('UPDATE users SET email_verified_at = now() WHERE id = $1', [id]);
+        await audit(tx, admin, 'USER_VERIFY_EMAIL', 'user', id, { email: u.email });
+      });
+      markEmailVerified(id);
+      res.json({ ok: true });
+    }),
+  );
+
+  /** Người dùng mất điện thoại và hết mã khôi phục: quản trị viên tắt 2FA sau khi xác minh danh tính */
+  r.post(
+    '/users/:id/reset-2fa',
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      const id = uuid.parse(req.params.id);
+      const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
+      const u = await loadTarget(id);
+      if (!u.totp_enabled_at) throw badRequest('MFA_NOT_ENABLED', 'Tài khoản chưa bật xác thực 2 lớp');
+      await db.tx(async (tx) => {
+        await tx.many(
+          `UPDATE users SET totp_secret = NULL, totp_pending_secret = NULL, totp_pending_at = NULL, totp_enabled_at = NULL, totp_last_step = NULL
+           WHERE id = $1`,
+          [id],
+        );
+        await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [id]);
+        await audit(tx, admin, 'USER_RESET_2FA', 'user', id, { email: u.email, reason });
+      });
+      sendLater(mailer, u.email, twoFactorChangedEmail(u.full_name, false, 'admin'), { userId: id });
+      res.json({ ok: true });
+    }),
+  );
 
   r.post(
     '/users/:id/lock',
@@ -390,6 +423,7 @@ export function adminRoutes(deps: AdminDeps) {
       const cancelled = await engine.cancelAllForUser(id, 'Tài khoản bị khoá bởi quản trị viên');
       io.in(`user:${id}`).disconnectSockets(true);
       await audit(db, admin, 'USER_LOCK', 'user', id, { email: u.email, reason, cancelledOrders: cancelled });
+      sendLater(mailer, u.email, accountLockedEmail(u.full_name, true, reason), { userId: id });
       res.json({ ok: true, cancelledOrders: cancelled });
     }),
   );
@@ -400,9 +434,11 @@ export function adminRoutes(deps: AdminDeps) {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
       const u = await loadTarget(id);
+      if (u.status !== 'LOCKED') throw badRequest('NOT_LOCKED', 'Tài khoản không bị khoá');
       await db.many(`UPDATE users SET status = 'ACTIVE', locked_reason = NULL WHERE id = $1`, [id]);
       store.locked.delete(id);
       await audit(db, admin, 'USER_UNLOCK', 'user', id, { email: u.email });
+      sendLater(mailer, u.email, accountLockedEmail(u.full_name, false), { userId: id });
       res.json({ ok: true });
     }),
   );
@@ -458,7 +494,7 @@ export function adminRoutes(deps: AdminDeps) {
         if (balance < a.cash_hold) {
           throw badRequest('INSUFFICIENT_CASH', `Không thể trừ: tiền mặt sau điều chỉnh (${balance.toLocaleString('en-US')}đ) nhỏ hơn tiền đang phong toả`);
         }
-        await tx.many('UPDATE accounts SET cash_balance = $2, updated_at = now() WHERE user_id = $1', [id, balance]);
+        await tx.many('UPDATE accounts SET cash_balance = $2, contributed = contributed + $3, updated_at = now() WHERE user_id = $1', [id, balance, amount]);
         await tx.many(`INSERT INTO transactions_ledger (user_id, type, amount, balance_after, note) VALUES ($1, 'ADJUST', $2, $3, $4)`, [
           id,
           amount,
@@ -685,22 +721,61 @@ export function adminRoutes(deps: AdminDeps) {
     '/data/export',
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
-      const data: Record<string, unknown[]> = {};
-      const counts: Record<string, number> = {};
-      for (const t of EXPORT_TABLES) {
-        data[t.name] = await db.many(t.sql);
-        counts[t.name] = data[t.name].length;
-      }
-      await audit(db, admin, 'DATA_EXPORT', 'system', null, { counts });
+      const backup = await exportBackup(db, { exportedBy: admin.email, tradeDate: market.tradeDate });
+      await audit(db, admin, 'DATA_EXPORT', 'system', null, { counts: backup.counts });
       const stamp = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 16).replace(/[-:T]/g, '');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="vnstock-backup-${stamp}.json"`);
-      res.send(
-        JSON.stringify(
-          { app: 'vnstock-sim', exportedAt: new Date().toISOString(), exportedBy: admin.email, tradeDate: market.tradeDate, counts, data },
-          (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
-        ),
-      );
+      res.send(serializeBackup(backup));
+    }),
+  );
+
+  /* ------------------------------ giám sát ------------------------------ */
+
+  r.get(
+    '/monitor',
+    ah(async (_req, res) => {
+      const w = metrics.window();
+      const mem = process.memoryUsage();
+      res.json({
+        now: {
+          requests5m: w.requests,
+          rps: Math.round(w.rps * 100) / 100,
+          p50: Math.round(w.p50),
+          p95: Math.round(w.p95),
+          p99: Math.round(w.p99),
+          errors5m: w.errors,
+          errorRate: w.errorRate,
+          eventLoopMs: metrics.eventLoopMs,
+          rssMb: Math.round(mem.rss / 1e6),
+          heapMb: Math.round(mem.heapUsed / 1e6),
+          sockets: metrics.socketCount(),
+          dbMs: metrics.dbPingMs,
+          dbOk: metrics.dbOk,
+          uptimeSec: Math.round(process.uptime()),
+          tickAgeSec: metrics.lastTickAt ? Math.round((Date.now() - metrics.lastTickAt) / 1000) : null,
+          http: metrics.http,
+          orders: metrics.orders,
+          openOrders: engine.openOrderCount(),
+        },
+        series: metrics.series,
+        alerts: deps.alerts ? [...deps.alerts.active.values()] : [],
+        history: deps.alerts ? await deps.alerts.history(50) : [],
+        channels: deps.alerts?.channels() ?? { emails: [], webhook: null },
+        thresholds: config.alertThresholds,
+        metricsEndpoint: config.metricsToken ? 'token' : config.isProd ? 'off' : 'open',
+      });
+    }),
+  );
+
+  r.post(
+    '/monitor/test',
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      if (!deps.alerts) throw badRequest('NO_MONITOR', 'Chưa bật giám sát');
+      const ok = await deps.alerts.notify('warning', 'Cảnh báo thử nghiệm', `Quản trị viên ${admin.email} gửi thử kênh cảnh báo lúc ${new Date().toISOString()}`, false);
+      await audit(db, admin, 'ALERT_TEST', 'system', null, { delivered: ok });
+      res.json({ ok, channels: deps.alerts.channels() });
     }),
   );
 

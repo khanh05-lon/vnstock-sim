@@ -13,7 +13,7 @@ class FakeMarket implements MarketAccess {
   tradeDate = '2026-10-15';
   phase: SessionPhase = 'CONTINUOUS';
   q = {
-    info: { symbol: 'FPT', exchange: 'HOSE', name: 'FPT', industry: 'Test', listedShares: 1e9, eps: 1, bvps: 1, isVn30: true } as StockInfo,
+    info: { symbol: 'FPT', exchange: 'HOSE', type: 'STOCK', name: 'FPT', industry: 'Test', listedShares: 1e9, eps: 1, bvps: 1, isVn30: true, marginRatio: 0.5 } as StockInfo,
     ref: 100_000,
     ...priceBand('HOSE', 100_000),
     bids: [{ p: 99_900, v: 10_000 }] as BookLevel[],

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
-import { ORDER_STATUS_LABEL, type OrderStatus } from '@vss/shared';
+import { LEDGER_LABEL, ORDER_STATUS_LABEL, type OrderStatus } from '@vss/shared';
 import { Empty, Spinner, UnderlineTabs } from '../components/common/ui';
 import { OrdersTable, SideChip } from '../components/trade/OrdersPanel';
 import { cn, downloadCsv, fmtDateTimeVN, fmtInt, fmtPrice, fmtVnd, signTone, toneText, vnDateISO } from '../lib/format';
@@ -8,16 +8,6 @@ import { useLedger, useOrders, useTrades, type HistoryFilter } from '../lib/quer
 
 type Tab = 'orders' | 'trades' | 'ledger';
 const PAGE = 50;
-
-const LEDGER_LABEL: Record<string, string> = {
-  DEPOSIT: 'Nạp vốn',
-  BUY: 'Mua CK',
-  SELL: 'Bán CK',
-  FEE: 'Phí GD',
-  TAX: 'Thuế',
-  RESET: 'Đặt lại TK',
-  ADJUST: 'Điều chỉnh',
-};
 
 function Pager({ page, total, onChange }: { page: number; total: number; onChange(p: number): void }) {
   const pages = Math.max(1, Math.ceil(total / PAGE));

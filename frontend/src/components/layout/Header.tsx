@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { PHASE_LABEL } from '@vss/shared';
 import { cn, fmtCompact, fmtPct, signTone, toneText } from '../../lib/format';
-import { usePortfolio } from '../../lib/queries';
+import { navOfAccount, usePortfolio } from '../../lib/queries';
 import { useAdminMe } from '../../lib/admin';
 import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
@@ -41,6 +41,7 @@ const NAV = [
   { to: '/', label: 'Bảng giá', end: true },
   { to: '/trade', label: 'Giao dịch' },
   { to: '/market', label: 'Thị trường' },
+  { to: '/xep-hang', label: 'Xếp hạng' },
   { to: '/portfolio', label: 'Tài sản' },
   { to: '/history', label: 'Lịch sử' },
 ];
@@ -103,8 +104,9 @@ function UserMenu() {
       const p = r ? (r.volume > 0 ? r.last : r.ref) : h.marketPrice;
       return a + p * h.qtyTotal;
     }, 0);
-    nav_ = data.account.cashBalance + stock;
-    pnlPct = ((nav_ - data.account.initialCapital) / data.account.initialCapital) * 100;
+    nav_ = navOfAccount(data.account, stock);
+    const base = data.account.contributed ?? data.account.initialCapital;
+    pnlPct = ((nav_ - base) / base) * 100;
   }
   const initials = (user?.fullName ?? '?')
     .split(' ')

@@ -1,61 +1,74 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Eye, EyeOff, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { BarChart3, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { loginSchema, registerSchema } from '@vss/shared';
-import { Logo } from '../components/layout/Header';
+import { loginSchema, registerSchema, type UserDTO } from '@vss/shared';
+import { AuthFrame, IndexMini } from '../components/auth/AuthFrame';
 import { api, errMsg } from '../lib/api';
-import { cn, fmtPrice, priceTone, toneText } from '../lib/format';
-import { useAuth, type User } from '../store/auth';
-import { useMarket } from '../store/market';
+import { useAuth, type LoginResult } from '../store/auth';
 
-function LiveTicker() {
-  const rows = useMarket((s) => s.rows);
-  const list = useMemo(() => Object.values(rows).filter((r) => r.isVn30), [rows]);
-  if (!list.length) return null;
-  const items = [...list, ...list];
+/** Bước 2 khi tài khoản bật 2FA: nhập mã 6 số hoặc mã khôi phục */
+export function MfaStep({ mfaToken, onDone, onCancel }: { mfaToken: string; onDone(res: { token: string; user: UserDTO }): void; onCancel(): void }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim()) return;
+    setBusy(true);
+    try {
+      onDone(await api<{ token: string; user: UserDTO }>('/auth/login/2fa', { method: 'POST', body: { mfaToken, code: code.trim() } }));
+    } catch (err) {
+      toast.error(errMsg(err));
+      setCode('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="overflow-hidden border-y border-line bg-bg-1/60 py-2">
-      <div className="ticker-track flex w-max gap-6">
-        {items.map((r, i) => {
-          const traded = r.volume > 0;
-          const tone = traded ? priceTone(r.last, r.ref, r.ceil, r.floor) : 'ref';
-          return (
-            <span key={`${r.symbol}-${i}`} className="num flex items-center gap-1.5 text-[12px]">
-              <b className="text-tx-1">{r.symbol}</b>
-              <span className={toneText[tone]}>{fmtPrice(traded ? r.last : r.ref)}</span>
-              <span className={cn('text-[11px]', toneText[tone])}>
-                {r.changePct > 0 ? '+' : ''}
-                {r.changePct.toFixed(2)}%
-              </span>
-            </span>
-          );
-        })}
+    <form className="space-y-4" onSubmit={(e) => void submit(e)}>
+      <div className="flex items-start gap-3 rounded-lg bg-bg-2 p-3 text-[13px] text-tx-2">
+        <KeyRound size={18} className="mt-0.5 shrink-0 text-brand" />
+        <span>
+          {useRecovery
+            ? 'Nhập một mã khôi phục (dạng xxxx-xxxx) bạn đã lưu khi bật xác thực 2 lớp. Mỗi mã chỉ dùng được 1 lần.'
+            : 'Tài khoản đã bật xác thực 2 lớp. Mở ứng dụng xác thực trên điện thoại và nhập mã 6 số.'}
+        </span>
       </div>
-    </div>
-  );
-}
-
-function IndexMini() {
-  const indices = useMarket((s) => s.indices);
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {indices.map((ix) => {
-        const tone = ix.change > 0 ? 'up' : ix.change < 0 ? 'down' : 'ref';
-        return (
-          <div key={ix.code} className="rounded-lg border border-line bg-bg-1/70 px-3 py-2">
-            <div className="text-[11px] text-tx-3">{ix.name}</div>
-            <div className={cn('num text-[16px] font-bold', toneText[tone])}>{ix.value.toFixed(2)}</div>
-            <div className={cn('num text-[11px]', toneText[tone])}>
-              {ix.change > 0 ? '+' : ''}
-              {ix.change.toFixed(2)} ({ix.changePct > 0 ? '+' : ''}
-              {ix.changePct.toFixed(2)}%)
-            </div>
-          </div>
-        );
-      })}
-    </div>
+      <label className="block">
+        <span className="label">{useRecovery ? 'Mã khôi phục' : 'Mã xác thực'}</span>
+        <input
+          className="input num mt-1 h-11 text-center text-[18px] tracking-[0.3em]"
+          value={code}
+          onChange={(e) => setCode(useRecovery ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 6))}
+          inputMode={useRecovery ? 'text' : 'numeric'}
+          autoComplete="one-time-code"
+          autoFocus
+          placeholder={useRecovery ? 'xxxx-xxxx' : '123456'}
+        />
+      </label>
+      <button className="btn btn-brand h-11 w-full text-[15px]" disabled={busy || (useRecovery ? code.trim().length < 8 : code.length !== 6)}>
+        {busy ? 'Đang kiểm tra…' : 'Xác nhận'}
+      </button>
+      <div className="flex items-center justify-between text-[13px]">
+        <button
+          type="button"
+          className="text-brand hover:underline"
+          onClick={() => {
+            setUseRecovery((v) => !v);
+            setCode('');
+          }}
+        >
+          {useRecovery ? 'Dùng mã từ ứng dụng' : 'Mất điện thoại? Dùng mã khôi phục'}
+        </button>
+        <button type="button" className="text-tx-3 hover:text-tx-1" onClick={onCancel}>
+          Quay lại
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -65,7 +78,8 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const nav = useNavigate();
   const loc = useLocation();
   const qc = useQueryClient();
-  const from = (loc.state as { from?: string } | null)?.from ?? '/';
+  const state = loc.state as { from?: string; mfaToken?: string } | null;
+  const from = state?.from ?? '/';
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,11 +88,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Vé chờ nhập mã 2FA (từ bước mật khẩu, hoặc chuyển từ trang đặt lại mật khẩu)
+  const [mfaToken, setMfaToken] = useState<string | null>(state?.mfaToken ?? null);
 
   if (token) return <Navigate to={from} replace />;
   const isLogin = mode === 'login';
 
-  const done = (res: { token: string; user: User }, msg: string) => {
+  const done = (res: { token: string; user: UserDTO }, msg: string) => {
     qc.clear();
     setAuth(res.token, res.user);
     toast.success(msg);
@@ -96,8 +112,16 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     if (Object.keys(errs).length || !parsed.success) return;
     setBusy(true);
     try {
-      const res = await api<{ token: string; user: User }>(isLogin ? '/auth/login' : '/auth/register', { method: 'POST', body: parsed.data });
-      done(res, isLogin ? `Chào mừng trở lại, ${res.user.fullName}!` : 'Tạo tài khoản thành công — bạn được cấp 1 tỷ đồng vốn ảo');
+      const res = await api<LoginResult>(isLogin ? '/auth/login' : '/auth/register', { method: 'POST', body: parsed.data });
+      if (res.mfaRequired) {
+        setMfaToken(res.mfaToken);
+        setPassword('');
+        return;
+      }
+      done(
+        res,
+        isLogin ? `Chào mừng trở lại, ${res.user.fullName}!` : 'Tạo tài khoản thành công — bạn được cấp 1 tỷ đồng vốn ảo. Hãy kiểm tra email để xác thực tài khoản.',
+      );
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -108,7 +132,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const demo = async () => {
     setBusy(true);
     try {
-      done(await api<{ token: string; user: User }>('/auth/demo', { method: 'POST' }), 'Đang dùng tài khoản demo');
+      done(await api<{ token: string; user: UserDTO }>('/auth/demo', { method: 'POST' }), 'Đang dùng tài khoản demo');
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -123,9 +147,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     set: (v: string) => void,
     type = 'text',
     autoComplete?: string,
+    extra?: React.ReactNode,
   ) => (
     <label className="block">
-      <span className="label">{label}</span>
+      <span className="flex items-center justify-between">
+        <span className="label">{label}</span>
+        {extra}
+      </span>
       <div className="relative mt-1">
         <input
           className="input h-11"
@@ -145,15 +173,14 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     </label>
   );
 
+  const forgotLink = (
+    <Link to="/forgot-password" state={{ email }} className="text-[12px] font-medium text-brand hover:underline">
+      Quên mật khẩu?
+    </Link>
+  );
+
   return (
-    <div className="flex min-h-full flex-col bg-bg-0">
-      <div className="flex h-14 items-center justify-between border-b border-line px-4">
-        <Logo />
-        <Link to="/" className="text-[13px] text-tx-2 hover:text-brand">
-          Xem bảng giá →
-        </Link>
-      </div>
-      <LiveTicker />
+    <AuthFrame>
       <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-4 py-10 lg:grid-cols-[1.1fr_1fr]">
         <div className="hidden lg:block">
           <div className="chip bg-brand/15 text-brand">
@@ -171,7 +198,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             {[
               [Zap, 'Giá cập nhật từng giây, sổ lệnh 3 bước giá như bảng điện'],
               [BarChart3, 'Biểu đồ nến TradingView với MA20/MA50, 1 phút đến 1 tháng'],
-              [ShieldCheck, 'Lệnh LO / MP / ATO / ATC, phong toả tiền, thanh toán T+2'],
+              [ShieldCheck, 'Lệnh LO / MP / ATO / ATC, lệnh điều kiện, ký quỹ, thanh toán T+2'],
             ].map(([Icon, text], i) => {
               const I = Icon as typeof Zap;
               return (
@@ -190,44 +217,65 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         </div>
 
         <div className="mx-auto w-full max-w-md rounded-2xl border border-line bg-bg-1 p-6 sm:p-8" style={{ boxShadow: 'var(--shadow)' }}>
-          <h2 className="text-[24px] font-bold">{isLogin ? 'Đăng nhập' : 'Mở tài khoản miễn phí'}</h2>
-          <p className="mt-1 text-tx-3">{isLogin ? 'Chào mừng bạn quay lại VNStock' : 'Nhận ngay 1.000.000.000đ vốn ảo để giao dịch'}</p>
-          <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)} noValidate>
-            {!isLogin && field('fullName', 'Họ và tên', fullName, setFullName, 'text', 'name')}
-            {field('email', 'Email', email, setEmail, 'email', 'email')}
-            {field('password', 'Mật khẩu', password, setPassword, 'password', isLogin ? 'current-password' : 'new-password')}
-            {!isLogin && field('confirm', 'Nhập lại mật khẩu', confirm, setConfirm, 'password', 'new-password')}
-            {!isLogin && (
-              <label className="flex items-start gap-2 text-[12px] text-tx-2">
-                <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-[var(--brand)]" />
-                <span>
-                  Tôi hiểu đây là sàn <b>giao dịch mô phỏng</b> dùng vốn ảo, dữ liệu giá là giả lập và không phải khuyến nghị đầu tư.
-                  {errors.agree && <span className="block text-down">{errors.agree}</span>}
-                </span>
-              </label>
-            )}
-            <button className="btn btn-brand h-11 w-full text-[15px]" disabled={busy}>
-              {busy ? 'Đang xử lý…' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}
-            </button>
-          </form>
-          {isLogin && (
+          {mfaToken ? (
             <>
-              <div className="my-5 flex items-center gap-3 text-[12px] text-tx-3">
-                <span className="h-px flex-1 bg-line" /> hoặc <span className="h-px flex-1 bg-line" />
-              </div>
-              <button onClick={() => void demo()} disabled={busy} className="btn btn-ghost h-11 w-full">
-                Trải nghiệm nhanh với tài khoản demo
-              </button>
+              <h2 className="text-[24px] font-bold">Xác thực 2 lớp</h2>
+              <p className="mb-6 mt-1 text-tx-3">Bước cuối để đăng nhập an toàn</p>
+              <MfaStep
+                mfaToken={mfaToken}
+                onDone={(res) => done(res, `Chào mừng trở lại, ${res.user.fullName}!`)}
+                onCancel={() => {
+                  setMfaToken(null);
+                  nav(loc.pathname, { replace: true, state: { from } });
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <h2 className="text-[24px] font-bold">{isLogin ? 'Đăng nhập' : 'Mở tài khoản miễn phí'}</h2>
+              <p className="mt-1 text-tx-3">{isLogin ? 'Chào mừng bạn quay lại VNStock' : 'Nhận ngay 1.000.000.000đ vốn ảo để giao dịch'}</p>
+              <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)} noValidate>
+                {!isLogin && field('fullName', 'Họ và tên', fullName, setFullName, 'text', 'name')}
+                {field('email', 'Email', email, setEmail, 'email', 'email')}
+                {field('password', 'Mật khẩu', password, setPassword, 'password', isLogin ? 'current-password' : 'new-password', isLogin ? forgotLink : undefined)}
+                {!isLogin && field('confirm', 'Nhập lại mật khẩu', confirm, setConfirm, 'password', 'new-password')}
+                {!isLogin && (
+                  <label className="flex items-start gap-2 text-[12px] text-tx-2">
+                    <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-[var(--brand)]" />
+                    <span>
+                      Tôi đã đọc{' '}
+                      <Link to="/dieu-khoan" target="_blank" className="text-brand hover:underline">
+                        Điều khoản sử dụng
+                      </Link>{' '}
+                      và hiểu đây là sàn <b>giao dịch mô phỏng</b> dùng vốn ảo, không phải khuyến nghị đầu tư.
+                      {errors.agree && <span className="block text-down">{errors.agree}</span>}
+                    </span>
+                  </label>
+                )}
+                <button className="btn btn-brand h-11 w-full text-[15px]" disabled={busy}>
+                  {busy ? 'Đang xử lý…' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}
+                </button>
+              </form>
+              {isLogin && (
+                <>
+                  <div className="my-5 flex items-center gap-3 text-[12px] text-tx-3">
+                    <span className="h-px flex-1 bg-line" /> hoặc <span className="h-px flex-1 bg-line" />
+                  </div>
+                  <button onClick={() => void demo()} disabled={busy} className="btn btn-ghost h-11 w-full">
+                    Trải nghiệm nhanh với tài khoản demo
+                  </button>
+                </>
+              )}
+              <p className="mt-6 text-center text-tx-3">
+                {isLogin ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
+                <Link to={isLogin ? '/register' : '/login'} state={loc.state} className="font-semibold text-brand hover:underline">
+                  {isLogin ? 'Đăng ký ngay' : 'Đăng nhập'}
+                </Link>
+              </p>
             </>
           )}
-          <p className="mt-6 text-center text-tx-3">
-            {isLogin ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
-            <Link to={isLogin ? '/register' : '/login'} state={loc.state} className="font-semibold text-brand hover:underline">
-              {isLogin ? 'Đăng ký ngay' : 'Đăng nhập'}
-            </Link>
-          </p>
         </div>
       </div>
-    </div>
+    </AuthFrame>
   );
 }

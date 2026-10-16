@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { Candle, IndexSnapshot, SessionInfo, StockSnapshot, TradeTick } from '@vss/shared';
+import type { Candle, IndexSnapshot, SessionInfo, StockSnapshot, TradeDTO, TradeTick } from '@vss/shared';
 import { isTokenCurrent, verifyToken } from './lib/auth';
 import type { MarketService } from './market/marketService';
 import type { Notifier } from './trading/engine';
@@ -46,6 +46,8 @@ export function attachSocket(io: Server, market: MarketService) {
   market.on('board', (rows: StockSnapshot[]) => io.emit('board', rows));
   market.on('indices', (rows: IndexSnapshot[]) => io.emit('indices', rows));
   market.on('session', (s: SessionInfo) => io.emit('session', s));
+  // Danh mục mã thay đổi (niêm yết mới, huỷ niêm yết, đổi rổ VN30...) → client tải lại bảng giá
+  market.on('symbols', () => io.emit('symbols'));
   market.on('trades', (ticks: TradeTick[]) => {
     const by = new Map<string, TradeTick[]>();
     for (const t of ticks) {
@@ -60,10 +62,13 @@ export function attachSocket(io: Server, market: MarketService) {
   });
 }
 
-export function socketNotifier(io: Server): Notifier {
+export function socketNotifier(io: Server, onFill?: (userId: string, trade: TradeDTO) => void): Notifier {
   return {
     order: (userId, order) => io.to(`user:${userId}`).emit('order', order),
-    trade: (userId, trade) => io.to(`user:${userId}`).emit('fill', trade),
+    trade: (userId, trade) => {
+      io.to(`user:${userId}`).emit('fill', trade);
+      onFill?.(userId, trade);
+    },
     account: (userId) => io.to(`user:${userId}`).emit('account'),
   };
 }

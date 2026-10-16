@@ -2,13 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { RULES, calcFee, calcSellTax, isValidTick, stepPrice, tickSize, type OrderDTO, type OrderType } from '@vss/shared';
+import { GTD_MAX_DAYS, RULES, calcFee, calcSellTax, isValidTick, stepPrice, tickSize, type OrderDTO, type OrderType } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
 import { cn, fmtInt, fmtPrice, fmtVnd, parseIntInput, parsePriceInput } from '../../lib/format';
-import { useInvalidateTrading, useLoggedIn, usePortfolio } from '../../lib/queries';
+import { useBuyingPower, useInvalidateTrading, useLoggedIn, usePortfolio } from '../../lib/queries';
 import { useMarket, useStock } from '../../store/market';
 import { useTicket } from '../../store/ui';
-import { Modal } from '../common/ui';
+import { Modal, Tabs } from '../common/ui';
+import { ConditionalForm } from './ConditionalForm';
+
+/** YYYY-MM-DD cộng n ngày */
+export const addDaysISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
 
 const TYPE_HINT: Record<OrderType, string> = {
   LO: 'Lệnh giới hạn — khớp tại giá đặt hoặc tốt hơn',
@@ -86,7 +90,27 @@ function Line({ label, value, strong, className }: { label: ReactNode; value: Re
   );
 }
 
+/** Khung đặt lệnh: lệnh thường hoặc lệnh điều kiện */
 export function OrderForm({ symbol }: { symbol: string }) {
+  const [mode, setMode] = useState<'normal' | 'conditional'>('normal');
+  return (
+    <div className="flex flex-col">
+      <Tabs
+        size="sm"
+        className="px-3 pt-3"
+        value={mode}
+        onChange={setMode}
+        items={[
+          { value: 'normal', label: 'Lệnh thường' },
+          { value: 'conditional', label: 'Lệnh điều kiện' },
+        ]}
+      />
+      {mode === 'normal' ? <NormalOrderForm symbol={symbol} /> : <ConditionalForm symbol={symbol} />}
+    </div>
+  );
+}
+
+function NormalOrderForm({ symbol }: { symbol: string }) {
   const r = useStock(symbol);
   const mode = useMarket((s) => s.session?.mode);
   const loggedIn = useLoggedIn();
@@ -96,6 +120,9 @@ export function OrderForm({ symbol }: { symbol: string }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState(false);
+  const tradeDate = useMarket((s) => s.session?.tradeDate) ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+  const [gtd, setGtd] = useState(false);
+  const [validUntil, setValidUntil] = useState('');
 
   // Đổi mã → điền sẵn giá hiện tại
   useEffect(() => {
@@ -109,6 +136,10 @@ export function OrderForm({ symbol }: { symbol: string }) {
     setTouched(false);
   }, [symbol, !!r]);
 
+  // Sức mua tính trên máy chủ: tiền mặt + ứng trước tiền bán + vay ký quỹ (theo tỷ lệ cho vay của mã)
+  const bpPrice = r ? (t.orderType === 'LO' ? parsePriceInput(t.priceText) : t.side === 'BUY' ? r.ceil : r.floor) : null;
+  const { data: bp } = useBuyingPower(symbol, bpPrice, t.side === 'BUY');
+
   if (!r) return null;
   const ex = r.exchange;
   const isBuy = t.side === 'BUY';
@@ -117,28 +148,38 @@ export function OrderForm({ symbol }: { symbol: string }) {
   const price = isLO ? parsePriceInput(t.priceText) : null;
   const qty = parseIntInput(t.qtyText);
   const marketRef = r.volume ? r.last : r.ref;
+  const lot = RULES.lotSize;
+  const odd = qty > 0 && qty < lot;
+  const gtdOn = gtd && isLO;
+  const maxValid = addDaysISO(tradeDate, GTD_MAX_DAYS);
+  const until = validUntil || addDaysISO(tradeDate, 7);
 
   let priceErr: string | null = null;
   if (isLO && touched) {
     if (!price) priceErr = 'Vui lòng nhập giá';
-    else if (!isValidTick(ex, price)) priceErr = `Sai bước giá — bước giá ${fmtInt(tickSize(ex, price))}đ`;
+    else if (!isValidTick(r, price)) priceErr = `Sai bước giá — bước giá ${fmtInt(tickSize(r, price))}đ`;
     else if (price > r.ceil) priceErr = `Vượt giá trần ${fmtPrice(r.ceil)}`;
     else if (price < r.floor) priceErr = `Thấp hơn giá sàn ${fmtPrice(r.floor)}`;
   }
   let qtyErr: string | null = null;
   if (touched) {
     if (!qty) qtyErr = 'Vui lòng nhập khối lượng';
-    else if (qty % RULES.lotSize) qtyErr = `Khối lượng phải là bội số của ${RULES.lotSize}`;
+    else if (odd && r.type === 'BOND') qtyErr = `Trái phiếu giao dịch theo lô ${lot}`;
+    else if (odd && !isLO) qtyErr = 'Lô lẻ (dưới 100 CP) chỉ đặt lệnh LO';
+    else if (!odd && qty % lot) qtyErr = `Lô chẵn là bội số của ${lot} — phần lẻ ${qty % lot} CP đặt thành lệnh riêng`;
     else if (qty > RULES.maxOrderQty[ex]) qtyErr = `Tối đa ${fmtInt(RULES.maxOrderQty[ex])} CP/lệnh`;
   }
+  const validErr = gtdOn && touched && (until <= tradeDate || until > maxValid) ? `Chọn ngày từ ${addDaysISO(tradeDate, 1)} tới ${maxValid}` : null;
 
   const holdPrice = price ?? (isBuy ? r.ceil : r.floor);
   const estPrice = price ?? marketRef;
   const cashAvail = pf?.account.cashAvailable ?? 0;
   const holding = pf?.holdings.find((h) => h.symbol === symbol);
-  const maxBuy = holdPrice > 0 ? Math.min(RULES.maxOrderQty[ex], Math.floor(cashAvail / (holdPrice * (1 + RULES.feeRate)) / RULES.lotSize) * RULES.lotSize) : 0;
+  const maxBuy =
+    bp?.maxQty ?? (holdPrice > 0 ? Math.min(RULES.maxOrderQty[ex], Math.floor(cashAvail / (holdPrice * (1 + RULES.feeRate)) / RULES.lotSize) * RULES.lotSize) : 0);
   const maxSell = holding?.qtyAvailable ?? 0;
   const maxQty = isBuy ? maxBuy : Math.min(maxSell - (maxSell % RULES.lotSize), RULES.maxOrderQty[ex]);
+  const oddAvail = isBuy ? 0 : maxSell % RULES.lotSize;
   const value = estPrice * qty;
   const fee = calcFee(value);
   const tax = isBuy ? 0 : calcSellTax(value);
@@ -147,7 +188,7 @@ export function OrderForm({ symbol }: { symbol: string }) {
 
   const stepPriceBy = (dir: 1 | -1) => {
     const base = price ?? marketRef;
-    let next = isValidTick(ex, base) ? stepPrice(ex, base, dir) : base - (base % tickSize(ex, base)) + (dir === 1 ? tickSize(ex, base) : 0);
+    let next = isValidTick(r, base) ? stepPrice(r, base, dir) : base - (base % tickSize(r, base)) + (dir === 1 ? tickSize(r, base) : 0);
     next = Math.min(r.ceil, Math.max(r.floor, next));
     t.setPriceText((next / 1000).toFixed(2));
   };
@@ -158,9 +199,10 @@ export function OrderForm({ symbol }: { symbol: string }) {
 
   const submit = () => {
     setTouched(true);
-    const pErr = isLO && (!price || !isValidTick(ex, price) || price > r.ceil || price < r.floor);
-    const qErr = !qty || qty % RULES.lotSize || qty > RULES.maxOrderQty[ex];
-    if (pErr || qErr) return;
+    const pErr = isLO && (!price || !isValidTick(r, price) || price > r.ceil || price < r.floor);
+    const qErr = !qty || (odd ? !isLO || r.type === 'BOND' : qty % lot !== 0) || qty > RULES.maxOrderQty[ex];
+    const vErr = gtdOn && (until <= tradeDate || until > maxValid);
+    if (pErr || qErr || vErr) return;
     if (overMax) {
       toast.error(isBuy ? 'Sức mua không đủ cho khối lượng này' : 'Không đủ cổ phiếu khả dụng để bán');
       return;
@@ -173,7 +215,7 @@ export function OrderForm({ symbol }: { symbol: string }) {
     try {
       const o = await api<OrderDTO>('/orders', {
         method: 'POST',
-        body: { symbol, side: t.side, orderType: t.orderType, price: isLO ? price : null, qty },
+        body: { symbol, side: t.side, orderType: t.orderType, price: isLO ? price : null, qty, ...(gtdOn ? { validUntil: until } : {}) },
       });
       const label = `${isBuy ? 'MUA' : 'BÁN'} ${fmtInt(qty)} ${symbol}`;
       if (o.status === 'FILLED') toast.success(`Lệnh #${o.id} ${label} đã khớp toàn bộ`, { description: `Giá khớp TB ${fmtPrice(o.avgFillPrice)}` });
@@ -286,10 +328,62 @@ export function OrderForm({ symbol }: { symbol: string }) {
         ))}
       </div>
 
+      {(odd || oddAvail > 0) && (
+        <div className="rounded-md border border-info/30 bg-info/10 px-2.5 py-1.5 text-[11px] text-info">
+          {odd ? (
+            <>Lô lẻ: chỉ lệnh LO, khớp trên bảng lô lẻ riêng (không theo sổ lệnh lô chẵn).</>
+          ) : (
+            <>
+              Bạn có {fmtInt(oddAvail)} CP lô lẻ —{' '}
+              <button
+                className="font-semibold underline-offset-2 hover:underline"
+                onClick={() => {
+                  t.setOrderType('LO');
+                  t.setQtyText(fmtInt(oddAvail));
+                }}
+              >
+                bán phần lẻ
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {isLO && (
+        <div className="flex items-center gap-2 text-[12px]">
+          <span className="label">Hiệu lực</span>
+          <select className="input h-8 w-32" value={gtd ? 'GTD' : 'DAY'} onChange={(e) => setGtd(e.target.value === 'GTD')} aria-label="Hiệu lực lệnh">
+            <option value="DAY">Trong ngày</option>
+            <option value="GTD">Nhiều ngày</option>
+          </select>
+          {gtd && (
+            <input
+              type="date"
+              className={cn('input h-8 min-w-0 flex-1', validErr && 'border-down')}
+              min={addDaysISO(tradeDate, 1)}
+              max={maxValid}
+              value={until}
+              onChange={(e) => setValidUntil(e.target.value)}
+              aria-label="Hiệu lực đến ngày"
+              title={validErr ?? 'Lệnh chưa khớp được chuyển sang phiên sau tới hết ngày này (giá phải nằm trong biên độ phiên mới)'}
+            />
+          )}
+        </div>
+      )}
+
       <div className="space-y-1.5 rounded-md bg-bg-2 p-2.5">
         {loggedIn &&
           (isBuy ? (
-            <Line label="Sức mua" value={`${fmtVnd(cashAvail)}đ`} />
+            <>
+              <Line label="Tiền mặt khả dụng" value={`${fmtVnd(cashAvail)}đ`} />
+              {!!pf?.account.advanceable && pf.account.autoAdvance && <Line label="Có thể ứng trước" value={`${fmtVnd(pf.account.advanceable)}đ`} />}
+              {pf?.account.marginEnabled && (
+                <Line
+                  label={`Vay ký quỹ (mã cho vay ${Math.round((r.marginRatio ?? 0) * 100)}%)`}
+                  value={bp?.usesMargin ? `tới ${fmtVnd(bp.loanPart)}đ` : r.marginRatio ? 'sẵn sàng' : 'không cho vay'}
+                />
+              )}
+            </>
           ) : (
             <Line label="KL khả dụng" value={`${fmtInt(maxSell)} CP${holding?.qtyPending ? ` (+${fmtInt(holding.qtyPending)} chờ về)` : ''}`} />
           ))}
@@ -342,7 +436,8 @@ export function OrderForm({ symbol }: { symbol: string }) {
           </div>
           <Line label="Loại lệnh" value={t.orderType} strong />
           <Line label="Giá đặt" value={isLO ? `${fmtVnd(price)}đ` : `${t.orderType} (giá thị trường)`} strong />
-          <Line label="Khối lượng" value={`${fmtInt(qty)} CP`} strong />
+          <Line label="Khối lượng" value={`${fmtInt(qty)} CP${odd ? ' (lô lẻ)' : ''}`} strong />
+          <Line label="Hiệu lực" value={gtdOn ? `Đến hết ${until.slice(8, 10)}/${until.slice(5, 7)}/${until.slice(0, 4)}` : 'Trong ngày'} />
           <Line label="Giá trị (ước tính)" value={`${fmtVnd(value)}đ`} />
           <Line label="Phí + thuế (ước tính)" value={`${fmtVnd(fee + tax)}đ`} />
           <Line label={isBuy ? 'Tổng thanh toán' : 'Thực nhận'} value={`${fmtVnd(total)}đ`} strong />

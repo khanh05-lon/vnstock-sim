@@ -1,10 +1,13 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { applyRules } from '@vss/shared';
 import { Spinner } from './components/common/ui';
 import { AppShell } from './components/layout/AppShell';
 import { useRealtime } from './hooks/useRealtime';
+import { useSessionSync } from './hooks/useSessionSync';
+import { useSystemStatus } from './lib/admin';
 import { BoardPage } from './pages/BoardPage';
 import { useAuth } from './store/auth';
 import { useUi } from './store/ui';
@@ -17,6 +20,10 @@ const AuthPage = lazy(() => import('./pages/AuthPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -31,6 +38,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 function Realtime() {
   useRealtime();
+  useSessionSync();
+  // Tham số giao dịch (phí, thuế, biên độ...) do quản trị viên chỉnh → dùng để tính trước trên giao diện
+  const { data: system } = useSystemStatus();
+  useEffect(() => {
+    if (system?.rules) applyRules(system.rules);
+  }, [system]);
   return null;
 }
 
@@ -50,11 +63,15 @@ export function App() {
           <Routes>
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/register" element={<AuthPage mode="register" />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route element={<AppShell />}>
               <Route index element={<BoardPage />} />
               <Route path="trade" element={<TradePage />} />
               <Route path="trade/:symbol" element={<TradePage />} />
               <Route path="market" element={<MarketPage />} />
+              <Route path="xep-hang" element={<LeaderboardPage />} />
               <Route
                 path="portfolio"
                 element={

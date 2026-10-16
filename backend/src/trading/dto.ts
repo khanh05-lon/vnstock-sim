@@ -17,6 +17,12 @@ export interface OrderRow {
   trade_date: string;
   created_at: Date;
   updated_at: Date;
+  fee_rate: number | null;
+  tax_rate: number | null;
+  valid_until: string | null;
+  source: OrderDTO['source'];
+  conditional_id: number | null;
+  loan_hold: number;
 }
 
 export interface TradeRow {
@@ -39,6 +45,16 @@ export interface AccountRow {
   cash_balance: number;
   cash_hold: number;
   initial_capital: number;
+  contributed?: number;
+  cash_pending?: number;
+  loan_balance?: number;
+  loan_interest?: number;
+  loan_hold?: number;
+  credit_limit?: number;
+  margin_enabled?: boolean;
+  auto_advance?: boolean;
+  margin_status?: 'NORMAL' | 'CALL' | 'FORCE';
+  deposit_interest_accrued?: number;
 }
 
 export interface HoldingRow {
@@ -63,6 +79,9 @@ export interface LedgerRow {
 
 const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
 
+/** Cột DATE → 'YYYY-MM-DD' (PGlite trong bộ nhớ trả về Date, các nơi khác trả chuỗi) */
+export const dateOnly = (d: Date | string): string => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+
 export const toOrderDTO = (r: OrderRow): OrderDTO => ({
   id: r.id,
   symbol: r.symbol,
@@ -75,7 +94,9 @@ export const toOrderDTO = (r: OrderRow): OrderDTO => ({
   status: r.status,
   holdAmount: r.hold_amount,
   rejectReason: r.reject_reason,
-  tradeDate: r.trade_date,
+  tradeDate: dateOnly(r.trade_date),
+  validUntil: r.valid_until ? dateOnly(r.valid_until) : null,
+  source: r.source ?? 'USER',
   createdAt: iso(r.created_at),
   updatedAt: iso(r.updated_at),
 });
@@ -99,6 +120,16 @@ export const toAccountDTO = (r: AccountRow): AccountDTO => ({
   cashHold: r.cash_hold,
   cashAvailable: r.cash_balance - r.cash_hold,
   initialCapital: r.initial_capital,
+  contributed: r.contributed ?? r.initial_capital,
+  cashPending: r.cash_pending ?? 0,
+  autoAdvance: r.auto_advance ?? true,
+  marginEnabled: r.margin_enabled ?? false,
+  creditLimit: r.credit_limit ?? 0,
+  loanBalance: r.loan_balance ?? 0,
+  loanInterest: r.loan_interest ?? 0,
+  loanHold: r.loan_hold ?? 0,
+  marginStatus: r.margin_status ?? 'NORMAL',
+  depositInterestAccrued: r.deposit_interest_accrued ?? 0,
 });
 
 export const toHoldingDTO = (r: HoldingRow): HoldingDTO => ({

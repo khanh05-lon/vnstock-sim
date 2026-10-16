@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { PHASE_LABEL, type SessionPhase } from '@vss/shared';
 import { useAdminAction, useAdminMarket } from '../../lib/admin';
-import { cn, fmtDateVN, fmtInt, fmtTimeVN } from '../../lib/format';
+import { cn, fmtDateVN, fmtTimeVN } from '../../lib/format';
 import { Empty, Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
+import { RulesEditor } from './RulesEditor';
 
 const LEVELS = [
   { value: 'info', label: 'Thông tin', cls: 'border-info/40 bg-info/10 text-info' },
@@ -194,21 +195,7 @@ export function MarketOps() {
         </p>
       </Section>
 
-      <Section title="Tham số giao dịch (chỉ xem)">
-        <KeyValue
-          items={[
-            ['Biên độ HOSE / HNX / UPCOM', `±${r.priceLimitPct.HOSE}% / ±${r.priceLimitPct.HNX}% / ±${r.priceLimitPct.UPCOM}%`],
-            ['Lô chẵn', `${fmtInt(r.lotSize)} CP`],
-            ['KL tối đa / lệnh HOSE', `${fmtInt(r.maxOrderQty.HOSE)} CP`],
-            ['KL tối đa / lệnh HNX, UPCOM', `${fmtInt(r.maxOrderQty.HNX)} CP`],
-            ['Phí giao dịch', `${(r.feeRate * 100).toFixed(2)}%`],
-            ['Thuế bán', `${(r.sellTaxRate * 100).toFixed(1)}%`],
-            ['Thanh toán', `T+${r.settlementDays}`],
-            ['Vốn ảo khi mở tài khoản', `${fmtInt(r.initialCapital)}đ`],
-          ]}
-        />
-        <p className="mt-3 text-[12px] text-tx-3">Quy tắc giao dịch nằm trong shared/src/index.ts, T+N trong biến SETTLEMENT_DAYS — sửa cần triển khai lại phiên bản.</p>
-      </Section>
+      <RulesEditor />
 
       <ReasonModal
         open={haltOpen}

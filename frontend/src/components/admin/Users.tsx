@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Search, UserPlus } from 'lucide-react';
-import { ORDER_STATUS_LABEL } from '@vss/shared';
+import { LEDGER_LABEL, ORDER_STATUS_LABEL } from '@vss/shared';
 import { AUDIT_LABEL, auditSummary, useAdminAction, useAdminUser, useAdminUsers, type AdminUserDetail } from '../../lib/admin';
 import { cn, fmtCompact, fmtDateTimeVN, fmtInt, fmtPct, fmtPrice, fmtVnd, parseIntInput, signTone, toneText } from '../../lib/format';
 import { useAuth } from '../../store/auth';
@@ -8,17 +8,7 @@ import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
 import { STATUS_STYLE, SideChip } from '../trade/OrdersPanel';
 import { KeyValue, Pill, ReasonModal, fmtAgo } from './adminUi';
 
-const LEDGER_LABEL: Record<string, string> = {
-  DEPOSIT: 'Nạp vốn',
-  BUY: 'Mua CK',
-  SELL: 'Bán CK',
-  FEE: 'Phí GD',
-  TAX: 'Thuế',
-  RESET: 'Đặt lại TK',
-  ADJUST: 'Điều chỉnh',
-};
-
-type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'grant' | 'revoke' | 'delete' | null;
+type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'grant' | 'revoke' | 'delete' | 'verify' | 'reset2fa' | null;
 
 function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }) {
   const me = useAuth((s) => s.user);
@@ -64,10 +54,44 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
             Thu quyền quản trị
           </button>
         )}
+        {!u.emailVerified && (
+          <button className="btn btn-ghost h-8" onClick={() => setKind('verify')}>
+            Xác thực email hộ
+          </button>
+        )}
+        {u.twoFactorEnabled && (
+          <button className="btn btn-ghost h-8" onClick={() => setKind('reset2fa')}>
+            Tắt 2FA hộ
+          </button>
+        )}
         <button className="btn btn-ghost h-8 text-down" disabled={self || u.role === 'ADMIN'} onClick={() => setKind('delete')}>
           Xoá tài khoản
         </button>
       </div>
+
+      <ReasonModal
+        open={kind === 'verify'}
+        title={`Xác thực email ${u.email}`}
+        description="Chỉ dùng khi đã xác minh người dùng sở hữu email này qua kênh khác (vd. người dùng không nhận được email)."
+        confirmLabel="Đánh dấu đã xác thực"
+        requireReason={false}
+        onClose={close}
+        onConfirm={async () => {
+          if (await act(`${base}/verify-email`, 'POST', {}, 'Đã xác thực email')) close();
+        }}
+      />
+      <ReasonModal
+        open={kind === 'reset2fa'}
+        title={`Tắt xác thực 2 lớp của ${u.email}`}
+        description="Dùng khi người dùng mất điện thoại và hết mã khôi phục. Hãy xác minh danh tính trước — người dùng sẽ nhận email thông báo."
+        confirmLabel="Tắt 2FA"
+        danger
+        placeholder="Ví dụ: Đã xác minh qua cuộc gọi, mất điện thoại…"
+        onClose={close}
+        onConfirm={async (reason) => {
+          if (await act(`${base}/reset-2fa`, 'POST', { reason }, 'Đã tắt 2FA')) close();
+        }}
+      />
 
       <ReasonModal
         open={kind === 'lock'}
@@ -195,6 +219,8 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                 {d.user.role === 'ADMIN' && <Pill tone="brand">Quản trị viên</Pill>}
                 {d.user.status === 'LOCKED' ? <Pill tone="bad">Đã khoá</Pill> : <Pill tone="good">Hoạt động</Pill>}
                 {d.user.online && <Pill tone="info">Đang trực tuyến</Pill>}
+                {d.user.emailVerified ? <Pill tone="good">Email đã xác thực</Pill> : <Pill tone="warn">Email chưa xác thực</Pill>}
+                {d.user.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
               </div>
               <div className="text-[12px] text-tx-3">
                 {d.user.email} · tạo {fmtDateTimeVN(d.user.createdAt)} · hoạt động {fmtAgo(d.user.lastSeenAt)}
@@ -489,6 +515,8 @@ export function Users({ onOpenUser }: { onOpenUser(id: string): void }) {
                       <span className={cn('h-1.5 w-1.5 rounded-full', u.online ? 'bg-up' : 'bg-bg-4')} title={u.online ? 'Đang trực tuyến' : 'Ngoại tuyến'} />
                       {u.fullName}
                       {u.role === 'ADMIN' && <Pill tone="brand">QTV</Pill>}
+                      {u.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
+                      {!u.emailVerified && <Pill tone="warn">Chưa xác thực</Pill>}
                     </div>
                     <div className="text-[11px] text-tx-3">{u.email}</div>
                   </td>

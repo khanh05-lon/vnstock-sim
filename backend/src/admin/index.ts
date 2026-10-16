@@ -1,13 +1,11 @@
 import './logBuffer';
 import bcrypt from 'bcryptjs';
 import type { Express, NextFunction, Request, Response } from 'express';
-import type { Server } from 'socket.io';
 import type { Database } from '../db';
 import { verifyToken } from '../lib/auth';
 import { AppError } from '../lib/errors';
-import type { MarketService } from '../market/marketService';
 import { createUserAccount } from '../seed/seed';
-import type { TradingEngine } from '../trading/engine';
+import type { AdminDeps } from './common';
 import { adminRoutes } from './routes';
 import { AdminStore } from './store';
 
@@ -27,13 +25,17 @@ async function seedAdminUser(db: Database) {
   }
   const existing = await db.one<{ id: string; role: string }>('SELECT id, role FROM users WHERE email = $1', [email]);
   if (existing) {
-    if (existing.role !== 'ADMIN') await db.many(`UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE id = $1`, [existing.id]);
+    if (existing.role !== 'ADMIN') {
+      await db.many(`UPDATE users SET role = 'ADMIN', status = 'ACTIVE', email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1`, [
+        existing.id,
+      ]);
+    }
     return;
   }
   const hash = await bcrypt.hash(password, 10);
   await db.tx(async (tx) => {
     const user = await createUserAccount(tx, email, hash, 'Quản trị viên');
-    await tx.many(`UPDATE users SET role = 'ADMIN' WHERE id = $1`, [user.id]);
+    await tx.many(`UPDATE users SET role = 'ADMIN', email_verified_at = now() WHERE id = $1`, [user.id]);
   });
   console.log(`[admin] đã tạo tài khoản quản trị ${email}`);
 }
@@ -47,19 +49,17 @@ function bearer(req: Request): string {
  * Gắn khu vực quản trị vào ứng dụng. Phải gọi TRƯỚC khi mount các route /api khác
  * để middleware chặn tài khoản bị khoá chạy trước.
  */
-export async function installAdmin(deps: {
-  app: Express;
-  io: Server;
-  db: Database;
-  market: MarketService;
-  engine: TradingEngine;
-  providerName: string;
-  settlementDays: number;
-}) {
-  const { app, io, db, market, engine } = deps;
+export async function installAdmin(deps: Omit<AdminDeps, 'store'> & { app: Express }) {
+  const { app, io, db, engine } = deps;
   const store = new AdminStore(db, engine);
   await store.load();
   await seedAdminUser(db);
+
+  // Bảo trì (vd. đang khôi phục dữ liệu): từ chối mọi API trừ quản trị, trạng thái hệ thống và health check
+  app.use('/api', (req: Request, _res: Response, next: NextFunction) => {
+    if (!store.maintenance || req.path.startsWith('/admin') || req.path === '/system' || req.path === '/health') return next();
+    next(new AppError(503, 'MAINTENANCE', store.maintenance));
+  });
 
   // Tài khoản bị khoá: chặn mọi API cần đăng nhập + ghi nhận lần hoạt động gần nhất (tối đa 1 lần / phút)
   const lastSeen = new Map<string, number>();
@@ -91,6 +91,7 @@ export async function installAdmin(deps: {
     res.json(store.status());
   });
 
-  app.use('/api/admin', adminRoutes({ db, io, market, engine, store, providerName: deps.providerName, settlementDays: deps.settlementDays }));
+  const { app: _app, ...rest } = deps;
+  app.use('/api/admin', adminRoutes({ ...rest, store }));
   return store;
 }

@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { AlertTriangle, Info, OctagonAlert } from 'lucide-react';
+import { AlertTriangle, Info, MailWarning, OctagonAlert } from 'lucide-react';
+import { toast } from 'sonner';
+import { api, errMsg } from '../../lib/api';
 import { useSystemStatus } from '../../lib/admin';
 import { cn } from '../../lib/format';
+import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
 import { Header } from './Header';
 
@@ -44,7 +48,13 @@ function SystemBanner() {
   const tone = { info: 'border-info/30 bg-info/10 text-info', warning: 'border-ref/30 bg-ref/10 text-ref', critical: 'border-down/30 bg-down/10 text-down' };
   return (
     <>
-      {data.tradingHalted && (
+      {data.maintenance && (
+        <div role="alert" className="flex items-center gap-2 border-b border-down/30 bg-down/12 px-4 py-2 text-[13px] text-down">
+          <OctagonAlert size={16} className="shrink-0" />
+          <b>{data.maintenance}</b>
+        </div>
+      )}
+      {data.tradingHalted && !data.maintenance && (
         <div role="alert" className="flex items-center gap-2 border-b border-down/30 bg-down/12 px-4 py-2 text-[13px] text-down">
           <OctagonAlert size={16} className="shrink-0" />
           <b>Hệ thống đang tạm ngừng nhận lệnh</b>
@@ -66,11 +76,46 @@ function SystemBanner() {
   );
 }
 
+/** Nhắc xác thực email (chỉ hiện khi máy chủ báo chưa xác thực) */
+function VerifyEmailBanner() {
+  const user = useAuth((s) => s.user);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  if (!user || user.emailVerified !== false) return null;
+  const resend = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ message?: string; alreadyVerified?: boolean }>('/auth/resend-verification', { method: 'POST', body: {} });
+      if (r.alreadyVerified) useAuth.getState().setUser({ ...user, emailVerified: true });
+      else {
+        setSent(true);
+        toast.success(r.message ?? 'Đã gửi lại email xác thực');
+      }
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ref/30 bg-ref/10 px-4 py-2 text-[13px] text-ref">
+      <MailWarning size={16} className="shrink-0" />
+      <span>
+        Email <b>{user.email}</b> chưa được xác thực — mở link trong email chúng tôi đã gửi để bảo vệ tài khoản.
+      </span>
+      <button className="font-semibold underline-offset-2 hover:underline disabled:opacity-50" disabled={busy || sent} onClick={() => void resend()}>
+        {sent ? 'Đã gửi — kiểm tra hộp thư' : 'Gửi lại email xác thực'}
+      </button>
+    </div>
+  );
+}
+
 export function AppShell() {
   return (
     <div className="flex h-full flex-col">
       <Header />
       <SystemBanner />
+      <VerifyEmailBanner />
       <main className="flex min-h-0 flex-1 flex-col">
         <Outlet />
       </main>

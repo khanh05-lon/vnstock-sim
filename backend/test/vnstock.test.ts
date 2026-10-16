@@ -23,7 +23,7 @@ const silent = () => {};
 
 function makeState(symbol: string, exchange: Exchange, ref: number): StockState {
   return {
-    info: { symbol, exchange, name: symbol, industry: 'Test', listedShares: 1e9, eps: 1000, bvps: 10000, isVn30: false },
+    info: { symbol, exchange, type: 'STOCK', name: symbol, industry: 'Test', listedShares: 1e9, eps: 1000, bvps: 10000, isVn30: false, marginRatio: 0 },
     liq: 0.5,
     volatility: 0.02,
     ref,

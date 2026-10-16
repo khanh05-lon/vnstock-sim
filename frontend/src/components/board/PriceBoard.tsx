@@ -7,7 +7,7 @@ import { useWatchlist } from '../../lib/queries';
 import { useMarket, useStock } from '../../store/market';
 import { Empty, Spinner, Tabs, useFlash } from '../common/ui';
 
-type BoardTab = 'VN30' | 'HOSE' | 'HNX' | 'UPCOM' | 'WATCH';
+type BoardTab = 'VN30' | 'HOSE' | 'HNX' | 'UPCOM' | 'ETF' | 'CW' | 'BOND' | 'WATCH';
 type SortKey = 'symbol' | 'last' | 'changePct' | 'volume' | 'value';
 
 function Cell({ v, text, tone = 'none', className, hl }: { v: number; text: string; tone?: Tone; className?: string; hl?: boolean }) {
@@ -117,7 +117,9 @@ export function PriceBoard() {
     let list: StockRow[] = Object.values(rows).filter((r) => {
       if (q) return r.symbol.startsWith(q) || r.name.toUpperCase().includes(q);
       if (tab === 'VN30' && !r.isVn30) return false;
-      if ((tab === 'HOSE' || tab === 'HNX' || tab === 'UPCOM') && r.exchange !== tab) return false;
+      // Tab sàn chỉ hiện cổ phiếu; ETF, chứng quyền, trái phiếu có tab riêng như bảng điện của CTCK
+      if ((tab === 'HOSE' || tab === 'HNX' || tab === 'UPCOM') && (r.exchange !== tab || (r.type ?? 'STOCK') !== 'STOCK')) return false;
+      if ((tab === 'ETF' || tab === 'CW' || tab === 'BOND') && r.type !== tab) return false;
       if (tab === 'WATCH' && !watchSet.has(r.symbol)) return false;
       if (industry && r.industry !== industry) return false;
       return true;
@@ -155,6 +157,9 @@ export function PriceBoard() {
             { value: 'HOSE', label: 'HOSE' },
             { value: 'HNX', label: 'HNX' },
             { value: 'UPCOM', label: 'UPCOM' },
+            { value: 'ETF', label: 'ETF' },
+            { value: 'CW', label: 'Chứng quyền' },
+            { value: 'BOND', label: 'Trái phiếu' },
             {
               value: 'WATCH',
               label: (

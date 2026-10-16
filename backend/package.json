@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
-    "start": "tsx src/index.ts",
+    "start": "node --import tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "loadtest": "tsx scripts/loadtest.ts"
+    "loadtest": "tsx scripts/loadtest.ts",
+    "backup": "tsx scripts/backup.ts export",
+    "restore": "tsx scripts/backup.ts restore"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
@@ -20,9 +22,11 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^10.1.1",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
+    "tsx": "^4.19.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -33,7 +37,7 @@
     "@types/node": "^22.10.0",
     "@types/nodemailer": "^7.0.12",
     "@types/pg": "^8.23.1",
-    "tsx": "^4.19.2",
+    "@types/qrcode": "^1.5.5",
     "typescript": "~5.7.2",
     "vitest": "^3.0.5"
   }

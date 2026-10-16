@@ -1,11 +1,129 @@
-import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { downloadBackup, fmtBytes, useAdminData } from '../../lib/admin';
-import { fmtInt } from '../../lib/format';
+import { downloadBackup, fmtBytes, uploadRestore, useAdminData, type RestoreReport } from '../../lib/admin';
+import { fmtDateTimeVN, fmtInt } from '../../lib/format';
 import { Spinner } from '../common/ui';
-import { KeyValue, Pill, Section } from './adminUi';
+import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
+
+/** Khôi phục từ file JSON: chọn file → chạy thử → xác nhận → khôi phục thật */
+function RestorePanel() {
+  const qc = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [dry, setDry] = useState<RestoreReport | null>(null);
+  const [done, setDone] = useState<RestoreReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [typed, setTyped] = useState('');
+
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setFile(f);
+    setDry(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      setDry(await uploadRestore(f, true));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'File không hợp lệ');
+      setFile(null);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+
+  const report = done ?? dry;
+  return (
+    <Section title="Khôi phục từ bản sao lưu JSON" className="xl:col-span-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <input ref={input} type="file" accept="application/json,.json" className="hidden" onChange={(e) => void pick(e.target.files?.[0])} />
+        <button className="btn btn-ghost h-9" disabled={busy} onClick={() => input.current?.click()}>
+          <Upload size={14} /> {busy && !confirm ? 'Đang kiểm tra…' : 'Chọn file sao lưu…'}
+        </button>
+        {file && (
+          <span className="text-[12px] text-tx-3">
+            {file.name} · {fmtBytes(file.size)}
+          </span>
+        )}
+        {dry && !done && (
+          <button className="btn btn-down ml-auto h-9" disabled={busy} onClick={() => setConfirm(true)}>
+            Khôi phục dữ liệu này
+          </button>
+        )}
+      </div>
+      {report && (
+        <div className="mt-4 space-y-3">
+          <div className={done ? 'rounded-md bg-up/10 p-3 text-[13px] text-up' : 'rounded-md bg-info/10 p-3 text-[13px] text-info'}>
+            {done
+              ? `Đã khôi phục xong. Dữ liệu hiện tại trước khi ghi đè được tự sao lưu tại: ${done.autoBackupFile ?? '—'}`
+              : 'Chạy thử thành công — CHƯA thay đổi gì. Kiểm tra số liệu dưới đây rồi bấm "Khôi phục dữ liệu này".'}
+          </div>
+          <KeyValue
+            items={[
+              ['Thời điểm sao lưu', fmtDateTimeVN(report.meta.exportedAt)],
+              ['Người tạo', report.meta.exportedBy],
+              ['Ngày giao dịch lúc sao lưu', report.meta.tradeDate || '—'],
+              ['Phiên bản định dạng', `v${report.meta.version}`],
+            ]}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {report.tables.map((t) => (
+              <span
+                key={t.name}
+                className="chip h-6 bg-bg-3 px-2 font-mono text-[11px] text-tx-2"
+                title={t.ignoredColumns.length ? `Bỏ qua cột: ${t.ignoredColumns.join(', ')}` : undefined}
+              >
+                {t.name}: {fmtInt(t.rows)}
+              </span>
+            ))}
+          </div>
+          {report.warnings.map((w) => (
+            <p key={w} className="text-[12px] text-ref">
+              ⚠ {w}
+            </p>
+          ))}
+        </div>
+      )}
+      <p className="mt-4 text-[12px] text-tx-3">
+        Khôi phục thay thế toàn bộ người dùng, tài khoản, lệnh, khớp, danh mục, sao kê… bằng dữ liệu trong file (dữ liệu giá giữ nguyên). Trong lúc khôi phục hệ thống tạm ngừng
+        vài giây; mọi người phải kết nối lại. Nếu tài khoản quản trị của bạn không có trong file, bạn sẽ bị đăng xuất.
+      </p>
+      <ReasonModal
+        open={confirm}
+        title="Xác nhận khôi phục dữ liệu"
+        danger
+        requireReason={false}
+        confirmLabel="Khôi phục"
+        description="Toàn bộ dữ liệu nghiệp vụ hiện tại sẽ bị thay bằng dữ liệu trong file (đã được tự sao lưu trước). Gõ KHOI PHUC để xác nhận."
+        canConfirm={typed.trim().toUpperCase() === 'KHOI PHUC'}
+        extra={<input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="KHOI PHUC" />}
+        onClose={() => {
+          setConfirm(false);
+          setTyped('');
+        }}
+        onConfirm={async () => {
+          if (!file) return;
+          setBusy(true);
+          try {
+            const r = await uploadRestore(file, false);
+            setDone(r);
+            setConfirm(false);
+            setTyped('');
+            toast.success('Đã khôi phục dữ liệu');
+            await qc.invalidateQueries();
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Khôi phục thất bại');
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </Section>
+  );
+}
 
 export function DataStorage() {
   const { data, isLoading } = useAdminData();
@@ -68,16 +186,23 @@ export function DataStorage() {
         >
           <ol className="list-decimal space-y-2 pl-5 text-[13px] text-tx-2">
             <li>
-              <b className="text-tx-1">Bản JSON (nút bên trên):</b> người dùng (không gồm mật khẩu), tài khoản tiền, lệnh, khớp, danh mục, lô T+2, sao kê, ngày lễ, cấu hình vận hành, nhật ký quản trị. Dùng để lưu trữ, đối soát, chuyển cho kế toán. Mỗi lần xuất đều được ghi vào nhật ký quản trị.
+              <b className="text-tx-1">Bản JSON (nút bên trên):</b> người dùng (gồm mật khẩu đã băm, khoá 2FA đã mã hoá), tài khoản tiền, lệnh, khớp, danh mục, lô T+2, sao kê, ngày lễ, tham số &amp; cấu hình vận hành, nhật ký quản trị. Khôi phục được ở mục bên dưới. File chứa dữ liệu nhạy cảm — bảo quản như dữ liệu mật. Mỗi lần xuất đều ghi nhật ký quản trị.
             </li>
             <li>
               <b className="text-tx-1">Bản đầy đủ — PGlite:</b> dừng máy chủ → sao chép nguyên thư mục <code>backend/data/pgdata</code> sang nơi khác → chạy lại. Khôi phục: dừng máy chủ, thay thư mục bằng bản sao.
             </li>
             <li>
-              <b className="text-tx-1">Bản đầy đủ — PostgreSQL:</b> chạy <code>pg_dump</code> theo lịch hằng ngày, giữ tối thiểu 7 bản gần nhất ở máy khác; khôi phục bằng <code>pg_restore</code>.
+              <b className="text-tx-1">Bản đầy đủ — PostgreSQL:</b> <code>docker compose --profile backup up -d</code> chạy <code>pg_dump</code> hằng ngày; chép bản sao ra máy khác; khôi phục bằng <code>pg_restore</code> (xem docs/DEPLOY.md).
+            </li>
+            <li>
+              <b className="text-tx-1">Dòng lệnh (khi app đang tắt):</b> <code>npm run backup -w backend</code> / <code>npm run restore -w backend -- file.json --yes</code>.
             </li>
           </ol>
         </Section>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <RestorePanel />
       </div>
 
       <Section title="Dữ liệu nằm ở đâu" pad={false}>

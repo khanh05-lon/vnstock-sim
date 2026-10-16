@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import {
   priceBand,
+  warrantBand,
   stepPrice,
   type Candle,
   type IndexSnapshot,
@@ -15,6 +16,7 @@ import {
 import type { Database } from '../db';
 import { currentTradeDate, phaseAt, vnTimeToMs } from '../lib/calendar';
 import { INDEX_DEFS } from '../seed/stocks';
+import { loadInstrumentInfo } from './instruments';
 import type { MarketDataProvider, ProviderTrade, StockState } from './types';
 
 interface IndexState {
@@ -36,9 +38,11 @@ export interface MarketHooks {
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D' | '1W' | '1M';
 export const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D', '1W', '1M'];
 
-interface StockDbRow {
+export interface StockDbRow {
   symbol: string;
   exchange: StockInfo['exchange'];
+  type: StockInfo['type'];
+  status: 'ACTIVE' | 'DELISTED';
   name: string;
   industry: string;
   listed_shares: number;
@@ -47,6 +51,33 @@ interface StockDbRow {
   is_vn30: boolean;
   liquidity: number;
   volatility: number;
+  margin_ratio: number;
+}
+
+export function stockInfoOf(r: StockDbRow): StockInfo {
+  return {
+    symbol: r.symbol,
+    exchange: r.exchange,
+    type: r.type ?? 'STOCK',
+    name: r.name,
+    industry: r.industry,
+    listedShares: Number(r.listed_shares),
+    eps: r.eps,
+    bvps: r.bvps,
+    isVn30: r.is_vn30,
+    marginRatio: Number(r.margin_ratio ?? 0),
+  };
+}
+
+/** Thành phần chỉ số: chỉ cổ phiếu (không gồm ETF, chứng quyền, trái phiếu) */
+function indexGroups(list: StockState[]): Record<string, StockState[]> {
+  const stocks = list.filter((s) => s.info.type === 'STOCK');
+  return {
+    VNINDEX: stocks.filter((s) => s.info.exchange === 'HOSE'),
+    VN30: stocks.filter((s) => s.info.isVn30),
+    HNXINDEX: stocks.filter((s) => s.info.exchange === 'HNX'),
+    UPCOMINDEX: stocks.filter((s) => s.info.exchange === 'UPCOM'),
+  };
 }
 
 interface SnapshotDbRow {
@@ -100,56 +131,69 @@ export class MarketService extends EventEmitter {
 
   /* ============================ khởi tạo ============================ */
 
+  private newState(r: StockDbRow, now: number): StockState {
+    return {
+      info: stockInfoOf(r),
+      liq: r.liquidity,
+      volatility: r.volatility,
+      ref: 0,
+      ceil: 0,
+      floor: 0,
+      open: 0,
+      high: 0,
+      low: 0,
+      last: 0,
+      lastVol: 0,
+      lastSide: 'B',
+      volume: 0,
+      value: 0,
+      bids: [],
+      asks: [],
+      foreignBuy: 0,
+      foreignSell: 0,
+      updatedAt: now,
+      sim: { fair: 0, target: 0, bp: 0 },
+    };
+  }
+
   async init(now = Date.now()): Promise<void> {
-    const rows = await this.db.many<StockDbRow>('SELECT * FROM stocks ORDER BY symbol');
+    const rows = await this.db.many<StockDbRow>(`SELECT * FROM stocks WHERE status = 'ACTIVE' ORDER BY symbol`);
+    const instruments = await loadInstrumentInfo(this.db);
     for (const r of rows) {
-      const s: StockState = {
-        info: {
-          symbol: r.symbol,
-          exchange: r.exchange,
-          name: r.name,
-          industry: r.industry,
-          listedShares: Number(r.listed_shares),
-          eps: r.eps,
-          bvps: r.bvps,
-          isVn30: r.is_vn30,
-        },
-        liq: r.liquidity,
-        volatility: r.volatility,
-        ref: 0,
-        ceil: 0,
-        floor: 0,
-        open: 0,
-        high: 0,
-        low: 0,
-        last: 0,
-        lastVol: 0,
-        lastSide: 'B',
-        volume: 0,
-        value: 0,
-        bids: [],
-        asks: [],
-        foreignBuy: 0,
-        foreignSell: 0,
-        updatedAt: now,
-        sim: { fair: 0, target: 0, bp: 0 },
-      };
+      const s = this.newState(r, now);
+      if (r.type === 'CW') s.info.warrant = instruments.warrants.get(r.symbol);
+      if (r.type === 'BOND') s.info.bond = instruments.bonds.get(r.symbol);
       this.states.set(r.symbol, s);
       this.list.push(s);
       this.recent.set(r.symbol, []);
     }
+    this.sortList();
     await this.provider.start?.(this.list);
 
     const td = currentTradeDate(now, this.opts.mode);
-    const snaps = await this.db.many<SnapshotDbRow>('SELECT * FROM price_snapshots');
+    const snaps = await this.db.many<SnapshotDbRow>(
+      `SELECT p.* FROM price_snapshots p JOIN stocks s ON s.symbol = p.symbol WHERE s.status = 'ACTIVE'`,
+    );
     const snapMap = new Map(snaps.map((x) => [x.symbol, x]));
-    const snapDate = snaps.length === this.list.length ? snaps[0].trade_date : null;
-    const consistent = snapDate != null && snaps.every((x) => x.trade_date === snapDate);
+    const snapDate = snaps.length ? snaps[0].trade_date : null;
+    const consistent = snapDate != null && snaps.every((x) => x.trade_date === snapDate) && snaps.length * 2 >= this.list.length;
+    const closes = await this.db.many<{ symbol: string; close: number }>(
+      `SELECT DISTINCT ON (symbol) symbol, close FROM ohlcv_daily WHERE trade_date < $1 ORDER BY symbol, trade_date DESC`,
+      [td],
+    );
+    const closeMap = new Map(closes.map((c) => [c.symbol, c.close]));
 
     if (consistent && snapDate) {
-      // Khôi phục trạng thái ngày đã lưu
+      // Khôi phục trạng thái ngày đã lưu (mã mới thêm chưa có ảnh chụp → lấy giá đóng cửa gần nhất)
       for (const s of this.list) {
-        const x = snapMap.get(s.info.symbol)!;
+        const x = snapMap.get(s.info.symbol);
+        if (!x) {
+          const ref = closeMap.get(s.info.symbol);
+          if (!ref) throw new Error(`Thiếu dữ liệu giá cho ${s.info.symbol}`);
+          this.setRef(s, ref);
+          s.last = ref;
+          continue;
+        }
         this.setRef(s, x.ref);
         Object.assign(s, {
           open: x.open,
@@ -178,13 +222,9 @@ export class MarketService extends EventEmitter {
       await this.rollover(td, now);
     } else {
       // Lần chạy đầu: giá tham chiếu = giá đóng cửa phiên gần nhất trong lịch sử
-      const closes = await this.db.many<{ symbol: string; close: number }>(
-        `SELECT DISTINCT ON (symbol) symbol, close FROM ohlcv_daily WHERE trade_date < $1 ORDER BY symbol, trade_date DESC`,
-        [td],
-      );
-      const closeMap = new Map(closes.map((c) => [c.symbol, c.close]));
       for (const s of this.list) {
-        const ref = closeMap.get(s.info.symbol);
+        // Mã mới niêm yết chưa có nến ngày: lấy giá tham chiếu đã lưu
+        const ref = closeMap.get(s.info.symbol) ?? snapMap.get(s.info.symbol)?.ref;
         if (!ref) throw new Error(`Thiếu dữ liệu lịch sử cho ${s.info.symbol}`);
         this.setRef(s, ref);
         s.last = ref;
@@ -297,7 +337,7 @@ export class MarketService extends EventEmitter {
     }
     if (fills.length) {
       // Dịch sổ lệnh: bước giá cuối bị ăn hết thì giá đi tiếp 1 bước, còn dư thì bước đó thành giá tốt nhất
-      const ex = s.info.exchange;
+      const ex = s.info;
       const lastFill = fills[fills.length - 1];
       const lastLevelEmpty = (book.find((l) => l.p === lastFill.price)?.v ?? 0) <= 0;
       if (takerSide === 'BUY') {
@@ -461,11 +501,104 @@ export class MarketService extends EventEmitter {
 
   /* ============================ nội bộ ============================ */
 
+  /** Chứng quyền xếp cuối: biên độ chứng quyền tính theo giá cổ phiếu cơ sở (phải cập nhật trước) */
+  private sortList() {
+    const rank = (s: StockState) => (s.info.type === 'CW' ? 1 : 0);
+    this.list.sort((a, b) => rank(a) - rank(b) || a.info.symbol.localeCompare(b.info.symbol));
+  }
+
   private setRef(s: StockState, ref: number) {
-    const band = priceBand(s.info.exchange, ref);
+    const w = s.info.warrant;
+    const u = w ? this.states.get(w.underlying) : undefined;
+    const band = w && u && u.ref > 0 ? warrantBand(ref, u, w.ratio) : priceBand(s.info, ref);
     s.ref = ref;
     s.ceil = band.ceil;
     s.floor = band.floor;
+  }
+
+  /* ===================== niêm yết / huỷ niêm yết lúc đang chạy ===================== */
+
+  /**
+   * Đổi thành phần rổ chỉ số mà giá trị chỉ số không nhảy: tính lại vốn hoá gốc (capRef)
+   * sao cho chỉ số ngay sau thay đổi bằng chỉ số ngay trước (cách các Sở GDCK điều chỉnh hệ số chia).
+   */
+  private rebaseIndices(mutate: () => void) {
+    const before = new Map(this.indices.map((ix) => [ix.code, this.indexValue(ix)]));
+    mutate();
+    const groups = indexGroups(this.list);
+    for (const ix of this.indices) {
+      ix.members = groups[ix.code] ?? [];
+      const v = before.get(ix.code) ?? ix.prevClose;
+      const cap = capOf(ix.members, false);
+      ix.capRef = cap > 0 && v > 0 ? (ix.prevClose * cap) / v : capOf(ix.members, true);
+    }
+  }
+
+  /** Thêm mã mới vào thị trường đang chạy (giá tham chiếu phiên đầu = ref) */
+  async addStock(row: StockDbRow, ref: number): Promise<StockState> {
+    if (this.states.has(row.symbol)) throw new Error(`Mã ${row.symbol} đã có trên bảng giá`);
+    const s = this.newState(row, Date.now());
+    this.rebaseIndices(() => {
+      this.setRef(s, ref);
+      s.last = ref;
+      this.states.set(row.symbol, s);
+      this.list.push(s);
+      this.sortList();
+      this.recent.set(row.symbol, []);
+    });
+    if (this.provider.addSymbol) this.provider.addSymbol(s);
+    else this.provider.onNewDay([s]);
+    this.dirty.add(row.symbol);
+    await this.persistSnapshots();
+    this.emit('symbols');
+    return s;
+  }
+
+  /** Gỡ mã khỏi bảng giá (huỷ niêm yết) — dữ liệu lịch sử vẫn giữ trong CSDL */
+  removeStock(symbol: string) {
+    const s = this.states.get(symbol);
+    if (!s) return;
+    this.rebaseIndices(() => {
+      this.states.delete(symbol);
+      this.list = this.list.filter((x) => x !== s);
+      this.recent.delete(symbol);
+      this.cur1m.delete(symbol);
+      this.dirty.delete(symbol);
+      this.candleDirty.delete(symbol);
+    });
+    this.provider.removeSymbol?.(symbol);
+    this.emit('symbols');
+  }
+
+  /**
+   * Sự kiện quyền ngày GDKHQ (trước phiên): đặt giá tham chiếu điều chỉnh, KL niêm yết mới (cổ tức CP / chia tách),
+   * khởi tạo lại mô phỏng quanh giá mới; biên độ chứng quyền trên mã này được tính lại.
+   */
+  applyCorporateAdjustment(symbol: string, newRef: number, listedShares?: number) {
+    const s = this.states.get(symbol);
+    if (!s) return;
+    if (listedShares) s.info.listedShares = listedShares;
+    this.setRef(s, newRef);
+    Object.assign(s, { last: newRef, open: 0, high: 0, low: 0, volume: 0, value: 0, lastVol: 0 });
+    this.provider.onNewDay([s]);
+    for (const cw of this.list) if (cw.info.warrant?.underlying === symbol) this.setRef(cw, cw.ref);
+    this.dirty.add(symbol);
+  }
+
+  /** Cập nhật thông tin mã (tên, ngành, rổ VN30, KL niêm yết, tỷ lệ ký quỹ, thanh khoản...) */
+  updateStock(symbol: string, patch: Partial<Pick<StockState['info'], 'name' | 'industry' | 'isVn30' | 'listedShares' | 'marginRatio' | 'eps' | 'bvps'>> & { liq?: number; volatility?: number }) {
+    const s = this.states.get(symbol);
+    if (!s) return;
+    const { liq, volatility, ...info } = patch;
+    const affectsIndex = (info.isVn30 !== undefined && info.isVn30 !== s.info.isVn30) || (info.listedShares !== undefined && info.listedShares !== s.info.listedShares);
+    const apply = () => {
+      Object.assign(s.info, info);
+      if (liq !== undefined) s.liq = liq;
+      if (volatility !== undefined) s.volatility = volatility;
+    };
+    if (affectsIndex) this.rebaseIndices(apply);
+    else apply();
+    this.emit('symbols');
   }
 
   private applyTrade(symbol: string, price: number, vol: number, side: 'B' | 'S', timeMs: number, foreign: boolean) {
@@ -673,12 +806,7 @@ export class MarketService extends EventEmitter {
   }
 
   private async buildIndices() {
-    const groups: Record<string, StockState[]> = {
-      VNINDEX: this.list.filter((s) => s.info.exchange === 'HOSE'),
-      VN30: this.list.filter((s) => s.info.isVn30),
-      HNXINDEX: this.list.filter((s) => s.info.exchange === 'HNX'),
-      UPCOMINDEX: this.list.filter((s) => s.info.exchange === 'UPCOM'),
-    };
+    const groups = indexGroups(this.list);
     const prev = await this.db.many<{ code: string; close: number }>(
       `SELECT DISTINCT ON (code) code, close FROM index_daily WHERE trade_date < $1 ORDER BY code, trade_date DESC`,
       [this.tradeDate],

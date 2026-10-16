@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
 import { toast } from 'sonner';
-import type { IndexSnapshot, OrderDTO, SessionInfo, StockRow, StockSnapshot, TradeDTO } from '@vss/shared';
+import { conditionalLabel, type ConditionalOrderDTO, type IndexSnapshot, type OrderDTO, type SessionInfo, type StockRow, type StockSnapshot, type TradeDTO } from '@vss/shared';
 import type { SystemStatus } from '../lib/admin';
 import { api } from '../lib/api';
 import { fmtInt, fmtPrice } from '../lib/format';
@@ -64,6 +64,13 @@ export function useRealtime() {
     s.on('session', (x: SessionInfo) => useMarket.getState().setSession(x));
     // Quản trị viên đổi trạng thái vận hành (tạm ngừng nhận lệnh, thông báo) → cập nhật banner ngay
     s.on('system', (x: SystemStatus) => qc.setQueryData(['system'], x));
+    // Danh mục mã thay đổi (niêm yết mới / huỷ niêm yết / đổi rổ VN30) → tải lại bảng giá
+    s.on('symbols', () => {
+      api<StockRow[]>('/market/stocks')
+        .then((rows) => useMarket.getState().setInitial(rows))
+        .catch(() => undefined);
+      void qc.invalidateQueries({ queryKey: ['portfolio'] });
+    });
     // Tài khoản bị khoá: máy chủ từ chối kết nối realtime → đăng xuất
     s.on('connect_error', (err: Error) => {
       if (token && /bị khoá/.test(err.message)) {
@@ -84,9 +91,27 @@ export function useRealtime() {
       });
       void qc.invalidateQueries({ queryKey: ['trades'] });
     });
+    // Lệnh điều kiện kích hoạt / lỗi / hết hạn
+    s.on('conditional', (c: ConditionalOrderDTO) => {
+      void qc.invalidateQueries({ queryKey: ['conditional'] });
+      const name = `${conditionalLabel(c.kind, c.side)} ${c.symbol}`;
+      if (c.status === 'TRIGGERED') toast.success(`${name} đã kích hoạt`, { description: c.message ?? undefined });
+      else if (c.status === 'FAILED') toast.error(`${name} kích hoạt nhưng không đặt được lệnh`, { description: c.message ?? undefined });
+      else if (c.status === 'EXPIRED') toast.message(`${name} hết hiệu lực`);
+      else if (c.status === 'CANCELLED' && c.message && c.message !== 'Người dùng huỷ') toast.message(`${name} đã huỷ`, { description: c.message });
+    });
+    // Ký quỹ: cảnh báo tỷ lệ / bán giải chấp
+    s.on('margin', (ev: { status: string; message: string }) => {
+      if (ev.status === 'FORCE') toast.error('Bán giải chấp ký quỹ', { description: ev.message, duration: 15_000 });
+      else if (ev.status === 'CALL') toast.warning('Cảnh báo ký quỹ (margin call)', { description: ev.message, duration: 15_000 });
+      else toast.success(ev.message);
+      void qc.invalidateQueries({ queryKey: ['portfolio'] });
+    });
     s.on('account', () => {
       void qc.invalidateQueries({ queryKey: ['portfolio'] });
       void qc.invalidateQueries({ queryKey: ['ledger'] });
+      void qc.invalidateQueries({ queryKey: ['entitlements'] });
+      void qc.invalidateQueries({ queryKey: ['buying-power'] });
     });
 
     for (const fn of listeners) fn(s);

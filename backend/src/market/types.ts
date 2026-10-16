@@ -65,4 +65,8 @@ export interface MarketDataProvider {
   rebuildBook(state: StockState): void;
   /** Giá trị chỉ số thật của ngày giao dịch tradeDate (null → MarketService tự tính theo vốn hoá rổ mã) */
   indexValue?(code: string, tradeDate: string): number | null;
+  /** Mã mới niêm yết khi đang chạy (mặc định: onNewDay([state])) */
+  addSymbol?(state: StockState): void;
+  /** Mã bị huỷ niêm yết */
+  removeSymbol?(symbol: string): void;
 }

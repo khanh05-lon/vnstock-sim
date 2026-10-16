@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { HoldingDTO, LedgerDTO, OrderDTO } from '@vss/shared';
+import type { HoldingDTO, InstrumentType, LedgerDTO, OrderDTO, RulesPatch, TradingRules } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
 
@@ -9,6 +9,10 @@ export interface SystemStatus {
   tradingHalted: boolean;
   haltReason: string;
   haltedSymbols: string[];
+  /** Đang bảo trì (vd. khôi phục dữ liệu) */
+  maintenance: string | null;
+  /** Quy tắc giao dịch đang áp dụng */
+  rules: TradingRules;
 }
 
 export interface AuditRow {
@@ -55,6 +59,8 @@ export interface AdminUser {
   lockedReason: string | null;
   createdAt: string;
   lastSeenAt: string | null;
+  emailVerified: boolean;
+  twoFactorEnabled: boolean;
   online: boolean;
   cashBalance: number;
   cashHold: number;
@@ -66,7 +72,10 @@ export interface AdminUser {
 }
 
 export interface AdminUserDetail {
-  user: Pick<AdminUser, 'id' | 'email' | 'fullName' | 'role' | 'status' | 'lockedReason' | 'createdAt' | 'lastSeenAt' | 'online'>;
+  user: Pick<
+    AdminUser,
+    'id' | 'email' | 'fullName' | 'role' | 'status' | 'lockedReason' | 'createdAt' | 'lastSeenAt' | 'online' | 'emailVerified' | 'twoFactorEnabled'
+  >;
   account: { cashBalance: number; cashHold: number; cashAvailable: number; initialCapital: number; stockValue: number; nav: number } | null;
   stats: { trades: number; realized: number; fees: number; watch: number };
   holdings: (HoldingDTO & { marketPrice: number; marketValue: number })[];
@@ -83,19 +92,106 @@ export interface AdminMarket {
   feed: string;
   status: SystemStatus;
   holidays: { date: string; name: string }[];
-  rules: {
-    priceLimitPct: Record<string, number>;
-    lotSize: number;
-    maxOrderQty: Record<string, number>;
-    feeRate: number;
-    sellTaxRate: number;
-    initialCapital: number;
-    orderTypes: Record<string, string[]>;
-    settlementDays: number;
-    tickIntervalMs: number;
-  };
+  rules: TradingRules & { settlementDays: number; tickIntervalMs: number };
   symbols: { symbol: string; exchange: string; name: string }[];
 }
+
+export interface AdminSymbol {
+  symbol: string;
+  exchange: 'HOSE' | 'HNX' | 'UPCOM';
+  type: InstrumentType;
+  status: 'ACTIVE' | 'DELISTED';
+  name: string;
+  industry: string;
+  listedShares: number;
+  eps: number;
+  bvps: number;
+  isVn30: boolean;
+  marginRatio: number;
+  liquidity: number;
+  volatility: number;
+  listedAt: string | null;
+  delistedAt: string | null;
+  delistReason: string | null;
+  holders: number;
+  openOrders: number;
+  halted: boolean;
+  ref: number | null;
+  last: number | null;
+  volume: number;
+}
+
+export interface RulesResponse {
+  rules: TradingRules;
+  defaults: TradingRules;
+  overrides: RulesPatch;
+  settlementDays: number;
+}
+
+export interface RestoreReport {
+  dryRun: boolean;
+  meta: { version: number; exportedAt: string; exportedBy: string; tradeDate: string };
+  tables: { name: string; rows: number; ignoredColumns: string[] }[];
+  stocksAdded: string[];
+  warnings: string[];
+  autoBackupFile?: string;
+}
+
+export interface MonitorSample {
+  t: number;
+  rps: number;
+  p95: number;
+  errors: number;
+  eventLoopMs: number;
+  rssMb: number;
+  sockets: number;
+  dbMs: number | null;
+  fills: number;
+}
+
+export interface AlertRow {
+  id: number;
+  key: string;
+  level: 'warning' | 'critical';
+  title: string;
+  detail: string;
+  started_at?: string;
+  resolved_at?: string | null;
+  since?: string;
+  notified?: boolean;
+}
+
+export interface AdminMonitor {
+  now: {
+    requests5m: number;
+    rps: number;
+    p50: number;
+    p95: number;
+    p99: number;
+    errors5m: number;
+    errorRate: number;
+    eventLoopMs: number;
+    rssMb: number;
+    heapMb: number;
+    sockets: number;
+    dbMs: number | null;
+    dbOk: boolean;
+    uptimeSec: number;
+    tickAgeSec: number | null;
+    http: { total: number; byClass: Record<string, number> };
+    orders: { placed: number; cancelled: number; fills: number; fillValue: number };
+    openOrders: number;
+  };
+  series: MonitorSample[];
+  alerts: AlertRow[];
+  history: AlertRow[];
+  channels: { emails: string[]; webhook: string | null };
+  thresholds: { eventLoopMs: number; p95Ms: number; rssMb: number; dbSlowMs: number; errorRate: number };
+  metricsEndpoint: 'token' | 'off' | 'open';
+}
+
+export const useAdminMonitor = () =>
+  useQuery({ queryKey: ['admin', 'monitor'], queryFn: () => api<AdminMonitor>('/admin/monitor'), refetchInterval: 10_000 });
 
 export interface AdminData {
   db: { kind: string; location: string | null; sizeBytes: number };
@@ -112,6 +208,8 @@ export interface LogLine {
 /** Người đang đăng nhập có phải quản trị viên? (403 → không) */
 export function useAdminMe() {
   const token = useAuth((s) => s.token);
+  // Máy chủ đã báo vai trò USER → không cần gọi /admin/me (tránh lỗi 403 vô ích); quyền vẫn do máy chủ kiểm tra
+  const knownUser = useAuth((s) => s.user?.role === 'USER');
   const q = useQuery({
     queryKey: ['admin', 'me', token],
     queryFn: async () => {
@@ -123,11 +221,11 @@ export function useAdminMe() {
         throw e;
       }
     },
-    enabled: !!token,
+    enabled: !!token && !knownUser,
     staleTime: 5 * 60_000,
     retry: false,
   });
-  return { isAdmin: !!token && q.data === true, loading: !!token && q.isLoading };
+  return { isAdmin: !!token && !knownUser && q.data === true, loading: !!token && !knownUser && q.isLoading };
 }
 
 export function useSystemStatus() {
@@ -162,6 +260,24 @@ export const useAdminMarket = () => useQuery({ queryKey: ['admin', 'market'], qu
 
 export const useAdminData = () => useQuery({ queryKey: ['admin', 'data'], queryFn: () => api<AdminData>('/admin/data') });
 
+export const useAdminSymbols = () =>
+  useQuery({ queryKey: ['admin', 'symbols'], queryFn: () => api<AdminSymbol[]>('/admin/symbols'), refetchInterval: 15_000 });
+
+export const useAdminRules = () => useQuery({ queryKey: ['admin', 'rules'], queryFn: () => api<RulesResponse>('/admin/rules') });
+
+/** Gửi file sao lưu lên để khôi phục (dryRun = chỉ chạy thử, không ghi) */
+export async function uploadRestore(file: File, dryRun: boolean): Promise<RestoreReport> {
+  const token = useAuth.getState().token;
+  const res = await fetch(`/api/admin/data/restore${dryRun ? '?dryRun=1' : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: file,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error?.message ?? `Lỗi ${res.status}`);
+  return data as RestoreReport;
+}
+
 export const useAdminAudit = (action?: string) =>
   useQuery({
     queryKey: ['admin', 'audit', action],
@@ -175,7 +291,7 @@ export const useAdminLogs = (live: boolean) =>
 /** Gọi 1 thao tác quản trị: báo kết quả + làm mới dữ liệu quản trị */
 export function useAdminAction() {
   const qc = useQueryClient();
-  return async <T = unknown>(path: string, method: 'POST' | 'PUT' | 'DELETE', body: unknown, success: string): Promise<T | null> => {
+  return async <T = unknown>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body: unknown, success: string): Promise<T | null> => {
     try {
       const res = await api<T>(path, { method, body });
       toast.success(success);
@@ -213,6 +329,8 @@ export const AUDIT_LABEL: Record<string, string> = {
   USER_UNLOCK: 'Mở khoá tài khoản',
   USER_DELETE: 'Xoá tài khoản',
   USER_CREATE: 'Tạo tài khoản',
+  USER_VERIFY_EMAIL: 'Xác thực email hộ',
+  USER_RESET_2FA: 'Tắt 2FA hộ',
   ROLE_GRANT_ADMIN: 'Cấp quyền quản trị',
   ROLE_REVOKE_ADMIN: 'Thu quyền quản trị',
   ACCOUNT_RESET: 'Đặt lại tài khoản ảo',
@@ -227,6 +345,18 @@ export const AUDIT_LABEL: Record<string, string> = {
   HOLIDAY_ADD: 'Thêm ngày nghỉ',
   HOLIDAY_REMOVE: 'Xoá ngày nghỉ',
   DATA_EXPORT: 'Xuất bản sao lưu',
+  DATA_RESTORE: 'Khôi phục dữ liệu',
+  ALERT_TEST: 'Gửi thử cảnh báo',
+  CA_CREATE: 'Công bố sự kiện quyền',
+  CA_CANCEL: 'Huỷ sự kiện quyền',
+  CREDIT_LIMIT: 'Đổi hạn mức vay ký quỹ',
+  RULES_UPDATE: 'Đổi tham số giao dịch',
+  RULES_RESET: 'Khôi phục tham số mặc định',
+  SYMBOL_LIST: 'Niêm yết mã',
+  SYMBOL_UPDATE: 'Sửa thông tin mã',
+  SYMBOL_DELIST: 'Huỷ niêm yết',
+  VN30_ADD: 'Thêm vào VN30',
+  VN30_REMOVE: 'Đưa khỏi VN30',
 };
 
 export function fmtBytes(n: number): string {
@@ -251,6 +381,8 @@ export function auditSummary(a: AuditRow): string {
   if (typeof d.amount === 'number') parts.push(`${d.amount > 0 ? '+' : ''}${d.amount.toLocaleString('en-US')}đ`);
   if (typeof d.symbol === 'string') parts.push(`${d.symbol}`);
   if (a.target_type === 'symbol' && a.target_id) parts.push(a.target_id);
+  if (a.action === 'RULES_UPDATE' && d.patch && typeof d.patch === 'object') parts.push(Object.keys(d.patch as object).join(', '));
+  if (typeof d.payoutPrice === 'number') parts.push(`thanh toán ${d.payoutPrice.toLocaleString('en-US')}đ/CP`);
   if (a.target_type === 'holiday' && a.target_id) parts.push(`${a.target_id}${typeof d.name === 'string' ? ` · ${d.name}` : ''}`);
   if (a.target_type === 'order' && a.target_id) parts.push(`lệnh #${a.target_id}`);
   if (typeof d.text === 'string') parts.push(`"${d.text}"`);

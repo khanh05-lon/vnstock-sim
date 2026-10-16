@@ -11,6 +11,7 @@ import {
   type MarketMode,
   type ModifyOrderInput,
   type OrderDTO,
+  type OrderSource,
   type OrderType,
   type PlaceOrderInput,
   type SessionPhase,
@@ -19,9 +20,11 @@ import {
   type TradeDTO,
 } from '@vss/shared';
 import type { Database, Queryable } from '../db';
-import { addTradingDays, skipWeekendsFor } from '../lib/calendar';
+import { GTD_MAX_DAYS } from '@vss/shared';
+import { addDays, addTradingDays, skipWeekendsFor } from '../lib/calendar';
 import { badRequest, notFound } from '../lib/errors';
-import { toOrderDTO, toTradeDTO, type AccountRow, type HoldingRow, type OrderRow, type TradeRow } from './dto';
+import { advanceCash, planBuy, previewAdvance, repayDebt, type MoneyRow } from './cash';
+import { dateOnly, toOrderDTO, toTradeDTO, type AccountRow, type HoldingRow, type OrderRow, type TradeRow } from './dto';
 
 /** Những gì bộ khớp lệnh cần từ thị trường */
 export interface MarketAccess {
@@ -32,6 +35,8 @@ export interface MarketAccess {
   quote(symbol: string): { ref: number; ceil: number; floor: number; bids: BookLevel[]; asks: BookLevel[] } | undefined;
   consumeBook(symbol: string, takerSide: Side, qty: number, limit: number | null): { price: number; qty: number }[];
   recordTrade(symbol: string, price: number, qty: number, side: 'B' | 'S'): void;
+  /** Giá định giá danh mục (khớp gần nhất, chưa khớp thì tham chiếu) — dùng kiểm tra tỷ lệ ký quỹ */
+  markPrice?(symbol: string): number;
 }
 
 export interface Notifier {
@@ -50,6 +55,8 @@ interface Resting {
   type: OrderType;
   price: number | null;
   remaining: number;
+  /** Lô lẻ (1–99 CP): khớp riêng, không ăn sổ lệnh lô chẵn và không làm thay đổi giá thị trường */
+  odd: boolean;
 }
 
 const OPEN = ['PENDING', 'PARTIAL'];
@@ -66,6 +73,9 @@ export class TradingEngine {
   /** Lệnh đang chờ khớp theo mã — cache để kiểm tra điều kiện khớp mà không phải truy vấn DB mỗi tick */
   private open = new Map<string, Map<number, Resting>>();
 
+  /** Dọn dữ liệu của tính năng khác khi tài khoản bị đặt lại / khoá / xoá (vd. huỷ lệnh điều kiện) */
+  readonly userCleanup: ((userId: string, reason: string) => Promise<unknown>)[] = [];
+
   /** Cờ vận hành do quản trị viên đặt: ngừng nhận lệnh + ngừng khớp lệnh (toàn hệ thống hoặc theo mã) */
   readonly control = { haltAll: false, haltReason: '', haltedSymbols: new Set<string>() };
 
@@ -79,14 +89,17 @@ export class TradingEngine {
   /* ============================ khởi động ============================ */
 
   async load(): Promise<void> {
-    const stale = await this.db.many<{ id: number }>(
-      `SELECT id FROM orders WHERE status IN ('PENDING','PARTIAL') AND trade_date < $1`,
-      [this.market.tradeDate],
-    );
-    for (const { id } of stale) await this.closeOrder(id, null, 'EXPIRED', 'Hết hiệu lực cuối phiên');
+    // Lệnh của phiên trước: lệnh nhiều ngày còn hiệu lực được chuyển sang phiên này, còn lại hết hiệu lực
+    await this.carryOver();
     const rows = await this.db.many<OrderRow>(`SELECT * FROM orders WHERE status IN ('PENDING','PARTIAL')`);
     for (const r of rows) this.track(r);
     await this.settle();
+  }
+
+  /** Nạp lại toàn bộ lệnh đang chờ từ CSDL (sau khi khôi phục dữ liệu) */
+  async reload(): Promise<void> {
+    this.open.clear();
+    await this.load();
   }
 
   openOrderCount(): number {
@@ -97,7 +110,7 @@ export class TradingEngine {
 
   /* ============================ đặt / huỷ / sửa ============================ */
 
-  async placeOrder(userId: string, input: PlaceOrderInput): Promise<OrderDTO> {
+  async placeOrder(userId: string, input: PlaceOrderInput, opts: { source?: OrderSource; conditionalId?: number } = {}): Promise<OrderDTO> {
     const info = this.market.info(input.symbol);
     const q = this.market.quote(input.symbol);
     if (!info || !q) throw badRequest('SYMBOL', `Mã ${input.symbol} không tồn tại`);
@@ -106,32 +119,44 @@ export class TradingEngine {
     const ex = info.exchange;
 
     if (!RULES.orderTypes[ex].includes(type)) throw badRequest('ORDER_TYPE', `Sàn ${ex} không hỗ trợ lệnh ${type}`);
+    if (info.warrant && this.market.tradeDate > info.warrant.lastTradingDate) {
+      throw badRequest('CW_EXPIRED', `Chứng quyền ${info.symbol} đã qua ngày giao dịch cuối cùng (${info.warrant.lastTradingDate}), chờ thanh toán khi đáo hạn`);
+    }
     this.assertCanPlace(type);
-    if (qty % RULES.lotSize !== 0) throw badRequest('LOT', `Khối lượng phải là bội số của ${RULES.lotSize} (lô chẵn)`);
+    const odd = qty < RULES.lotSize;
+    if (odd) this.assertOddLot(info, type);
+    else if (qty % RULES.lotSize !== 0) {
+      throw badRequest('LOT', `Lô chẵn phải là bội số của ${RULES.lotSize}; phần dưới ${RULES.lotSize} CP đặt riêng thành lệnh lô lẻ`);
+    }
     if (qty > RULES.maxOrderQty[ex]) throw badRequest('MAX_QTY', `Khối lượng tối đa mỗi lệnh trên ${ex} là ${fmt(RULES.maxOrderQty[ex])}`);
+    const validUntil = this.validUntilOf(input.validUntil);
+    const source = opts.source ?? 'USER';
 
     let price: number | null = null;
     if (type === 'LO') {
       price = input.price!;
-      this.assertPrice(ex, price, q);
+      this.assertPrice(info, price, q);
     }
     const holdPrice = price ?? (side === 'BUY' ? q.ceil : q.floor);
     const tradeDate = this.market.tradeDate;
+    // Chốt biểu phí / thuế tại thời điểm đặt lệnh: quản trị viên đổi biểu phí không ảnh hưởng lệnh đã đặt
+    const feeRate = RULES.feeRate;
+    const taxRate = RULES.sellTaxRate;
 
     const row = await this.db.tx(async (tx) => {
       if (side === 'BUY') {
-        const hold = buyHoldAmount(holdPrice, qty);
-        const acct = await tx.one<AccountRow>('SELECT * FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
-        if (!acct) throw notFound('Không tìm thấy tài khoản');
-        const avail = acct.cash_balance - acct.cash_hold;
-        if (avail < hold) {
-          throw badRequest('INSUFFICIENT_CASH', `Sức mua không đủ: cần ${fmt(hold)}đ, khả dụng ${fmt(avail)}đ`);
-        }
-        await tx.many('UPDATE accounts SET cash_hold = cash_hold + $2, updated_at = now() WHERE user_id = $1', [userId, hold]);
+        const hold = buyHoldAmount(holdPrice, qty, feeRate);
+        const plan = await this.planBuyTx(tx, userId, info, hold, qty * holdPrice);
+        await tx.many('UPDATE accounts SET cash_hold = cash_hold + $2, loan_hold = loan_hold + $3, updated_at = now() WHERE user_id = $1', [
+          userId,
+          plan.cashPart,
+          plan.loanPart,
+        ]);
         return tx.one<OrderRow>(
-          `INSERT INTO orders (user_id, symbol, side, order_type, price, hold_price, qty, status, hold_amount, trade_date)
-           VALUES ($1,$2,'BUY',$3,$4,$5,$6,'PENDING',$7,$8) RETURNING *`,
-          [userId, input.symbol, type, price, holdPrice, qty, hold, tradeDate],
+          `INSERT INTO orders (user_id, symbol, side, order_type, price, hold_price, qty, status, hold_amount, trade_date, fee_rate, tax_rate,
+                               valid_until, source, conditional_id, loan_hold)
+           VALUES ($1,$2,'BUY',$3,$4,$5,$6,'PENDING',$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          [userId, input.symbol, type, price, holdPrice, qty, hold, tradeDate, feeRate, taxRate, validUntil, source, opts.conditionalId ?? null, plan.loanPart],
         );
       }
       const h = await tx.one<HoldingRow>('SELECT * FROM holdings WHERE user_id = $1 AND symbol = $2 FOR UPDATE', [userId, input.symbol]);
@@ -151,9 +176,10 @@ export class TradingEngine {
         qty,
       ]);
       return tx.one<OrderRow>(
-        `INSERT INTO orders (user_id, symbol, side, order_type, price, hold_price, qty, status, trade_date)
-         VALUES ($1,$2,'SELL',$3,$4,$5,$6,'PENDING',$7) RETURNING *`,
-        [userId, input.symbol, type, price, holdPrice, qty, tradeDate],
+        `INSERT INTO orders (user_id, symbol, side, order_type, price, hold_price, qty, status, trade_date, fee_rate, tax_rate,
+                             valid_until, source, conditional_id)
+         VALUES ($1,$2,'SELL',$3,$4,$5,$6,'PENDING',$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [userId, input.symbol, type, price, holdPrice, qty, tradeDate, feeRate, taxRate, validUntil, source, opts.conditionalId ?? null],
       );
     });
 
@@ -184,22 +210,30 @@ export class TradingEngine {
       const newPrice = input.price ?? o.price!;
       const newQty = input.qty ?? o.qty;
       if (newPrice === o.price && newQty === o.qty) throw badRequest('NO_CHANGE', 'Không có thay đổi');
-      this.assertPrice(info.exchange, newPrice, q);
-      if (newQty % RULES.lotSize !== 0) throw badRequest('LOT', `Khối lượng phải là bội số của ${RULES.lotSize}`);
+      this.assertPrice(info, newPrice, q);
+      if (o.qty < RULES.lotSize) {
+        if (newQty >= RULES.lotSize) throw badRequest('ODD_LOT', `Lệnh lô lẻ chỉ sửa được khối lượng dưới ${RULES.lotSize} CP`);
+      } else if (newQty % RULES.lotSize !== 0) throw badRequest('LOT', `Khối lượng phải là bội số của ${RULES.lotSize}`);
       if (newQty <= o.filled_qty) throw badRequest('QTY', `Khối lượng mới phải lớn hơn khối lượng đã khớp (${fmt(o.filled_qty)})`);
       if (newQty > RULES.maxOrderQty[info.exchange]) throw badRequest('MAX_QTY', 'Vượt khối lượng tối đa mỗi lệnh');
       const rem = newQty - o.filled_qty;
 
       if (o.side === 'BUY') {
-        const newHold = buyHoldAmount(newPrice, rem);
-        const diff = newHold - o.hold_amount;
+        const newHold = buyHoldAmount(newPrice, rem, o.fee_rate ?? RULES.feeRate);
+        // Phần vay giữ nguyên tối đa như cũ; phần chênh lệch lấy từ tiền mặt khả dụng
+        const newLoan = Math.min(o.loan_hold, newHold);
+        const cashDiff = newHold - newLoan - (o.hold_amount - o.loan_hold);
         const acct = await tx.one<AccountRow>('SELECT * FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
         const avail = acct!.cash_balance - acct!.cash_hold;
-        if (diff > 0 && avail < diff) throw badRequest('INSUFFICIENT_CASH', `Sức mua không đủ để sửa lệnh: cần thêm ${fmt(diff)}đ`);
-        await tx.many('UPDATE accounts SET cash_hold = cash_hold + $2, updated_at = now() WHERE user_id = $1', [userId, diff]);
+        if (cashDiff > 0 && avail < cashDiff) throw badRequest('INSUFFICIENT_CASH', `Sức mua không đủ để sửa lệnh: cần thêm ${fmt(cashDiff)}đ`);
+        await tx.many('UPDATE accounts SET cash_hold = cash_hold + $2, loan_hold = loan_hold + $3, updated_at = now() WHERE user_id = $1', [
+          userId,
+          cashDiff,
+          newLoan - o.loan_hold,
+        ]);
         return tx.one<OrderRow>(
-          'UPDATE orders SET price = $2, hold_price = $2, qty = $3, hold_amount = $4, updated_at = now() WHERE id = $1 RETURNING *',
-          [id, newPrice, newQty, newHold],
+          'UPDATE orders SET price = $2, hold_price = $2, qty = $3, hold_amount = $4, loan_hold = $5, updated_at = now() WHERE id = $1 RETURNING *',
+          [id, newPrice, newQty, newHold, newLoan],
         );
       }
       const diffQty = newQty - o.qty;
@@ -230,8 +264,17 @@ export class TradingEngine {
     return toOrderDTO(row);
   }
 
+  /** Huỷ mọi lệnh đang chờ của 1 mã (huỷ niêm yết, sự kiện quyền) */
+  async cancelAllForSymbol(symbol: string, reason: string): Promise<number> {
+    const rows = await this.db.many<{ id: number }>(`SELECT id FROM orders WHERE symbol = $1 AND status IN ('PENDING','PARTIAL')`, [symbol]);
+    let n = 0;
+    for (const { id } of rows) if (await this.closeOrder(id, null, 'CANCELLED', reason)) n++;
+    return n;
+  }
+
   /** Huỷ mọi lệnh đang chờ của 1 người dùng (dùng khi khoá tài khoản) */
   async cancelAllForUser(userId: string, reason: string): Promise<number> {
+    for (const fn of this.userCleanup) await fn(userId, reason);
     const rows = await this.db.many<{ id: number }>(`SELECT id FROM orders WHERE user_id = $1 AND status IN ('PENDING','PARTIAL')`, [userId]);
     let n = 0;
     for (const { id } of rows) if (await this.closeOrder(id, null, 'CANCELLED', reason)) n++;
@@ -246,6 +289,7 @@ export class TradingEngine {
 
   /** Đặt lại tài khoản ảo về vốn ban đầu */
   async resetAccount(userId: string): Promise<void> {
+    for (const fn of this.userCleanup) await fn(userId, 'Đặt lại tài khoản');
     for (const m of this.open.values()) for (const [id, r] of m) if (r.userId === userId) m.delete(id);
     await this.db.tx(async (tx) => {
       await tx.many('DELETE FROM trades WHERE user_id = $1', [userId]);
@@ -253,8 +297,14 @@ export class TradingEngine {
       await tx.many('DELETE FROM orders WHERE user_id = $1', [userId]);
       await tx.many('DELETE FROM holdings WHERE user_id = $1', [userId]);
       await tx.many('DELETE FROM settlement_lots WHERE user_id = $1', [userId]);
+      await tx.many('DELETE FROM nav_daily WHERE user_id = $1', [userId]);
+      await tx.many('DELETE FROM conditional_orders WHERE user_id = $1', [userId]);
+      await tx.many('DELETE FROM cash_settlements WHERE user_id = $1', [userId]);
+      await tx.many('DELETE FROM ca_entitlements WHERE user_id = $1', [userId]);
       const acct = await tx.one<AccountRow>(
-        'UPDATE accounts SET cash_balance = initial_capital, cash_hold = 0, updated_at = now() WHERE user_id = $1 RETURNING *',
+        `UPDATE accounts SET cash_balance = initial_capital, cash_hold = 0, contributed = initial_capital, cash_pending = 0, loan_balance = 0,
+           loan_interest = 0, loan_hold = 0, margin_status = 'NORMAL', margin_call_at = NULL, deposit_interest_accrued = 0, updated_at = now()
+         WHERE user_id = $1 RETURNING *`,
         [userId],
       );
       await tx.many(`INSERT INTO transactions_ledger (user_id, type, amount, balance_after, note) VALUES ($1,'RESET',$2,$2,$3)`, [
@@ -279,6 +329,10 @@ export class TradingEngine {
       const t = trades.get(sym);
       for (const r of [...book.values()]) {
         if (r.price == null || (r.type !== 'LO' && r.type !== 'MP')) continue;
+        if (r.odd) {
+          await this.matchOdd(r, q, trades.get(sym));
+          continue;
+        }
         if (r.side === 'BUY') {
           const ask1 = q.asks[0]?.p;
           if (ask1 && ask1 <= r.price) {
@@ -306,6 +360,8 @@ export class TradingEngine {
       const price = prices.get(sym);
       if (!price) continue;
       for (const r of [...book.values()]) {
+        // lô lẻ không tham gia phiên định kỳ
+        if (r.odd) continue;
         const crosses =
           r.type === kind ||
           (r.type === 'LO' && r.price != null && (r.side === 'BUY' ? r.price >= price : r.price <= price));
@@ -314,10 +370,44 @@ export class TradingEngine {
     }
   }
 
-  /** Cuối phiên: huỷ toàn bộ lệnh chưa khớp, giải phóng tiền/cổ phiếu phong toả */
+  /** Cuối phiên: huỷ lệnh trong ngày chưa khớp (giải phóng tiền/cổ phiếu phong toả); lệnh nhiều ngày còn hạn được giữ lại */
   async expireAll(): Promise<void> {
-    const rows = await this.db.many<{ id: number }>(`SELECT id FROM orders WHERE status IN ('PENDING','PARTIAL')`);
+    const rows = await this.db.many<{ id: number }>(
+      `SELECT id FROM orders WHERE status IN ('PENDING','PARTIAL') AND (valid_until IS NULL OR valid_until <= $1)`,
+      [this.market.tradeDate],
+    );
     for (const { id } of rows) await this.closeOrder(id, null, 'EXPIRED', 'Hết hiệu lực cuối phiên');
+  }
+
+  /**
+   * Đầu phiên mới: lệnh nhiều ngày còn hiệu lực được chuyển sang phiên mới (giữ nguyên phong toả) nếu giá đặt
+   * vẫn nằm trong biên độ của phiên mới; lệnh trong ngày hoặc giá ngoài biên độ thì hết hiệu lực.
+   */
+  async carryOver(): Promise<number> {
+    const td = this.market.tradeDate;
+    const rows = await this.db.many<OrderRow>(`SELECT * FROM orders WHERE status IN ('PENDING','PARTIAL') AND trade_date < $1 ORDER BY id`, [td]);
+    let carried = 0;
+    for (const o of rows) {
+      const q = this.market.quote(o.symbol);
+      let reason: string | null = 'Hết hiệu lực cuối phiên';
+      if (o.valid_until && dateOnly(o.valid_until) >= td && o.order_type === 'LO' && o.price != null) {
+        if (!q) reason = `Mã ${o.symbol} không còn giao dịch`;
+        else if (o.price > q.ceil || o.price < q.floor) reason = `Giá đặt ${fmt(o.price)} ngoài biên độ phiên ${td} (${fmt(q.floor)} – ${fmt(q.ceil)})`;
+        else reason = null;
+      }
+      if (reason) {
+        this.untrack(o.symbol, o.id);
+        await this.closeOrder(o.id, null, 'EXPIRED', reason);
+        continue;
+      }
+      const row = await this.db.one<OrderRow>('UPDATE orders SET trade_date = $2, updated_at = now() WHERE id = $1 RETURNING *', [o.id, td]);
+      if (row) {
+        this.track(row);
+        this.notify.order(row.user_id, toOrderDTO(row));
+        carried++;
+      }
+    }
+    return carried;
   }
 
   /** Thanh toán bù trừ: chuyển cổ phiếu chờ về (T+N) sang khả dụng */
@@ -334,7 +424,30 @@ export class TradingEngine {
         );
         await tx.many('UPDATE settlement_lots SET settled = true WHERE id = $1', [lot.id]);
       }
-      return new Set(lots.map((l) => l.user_id));
+      // Tiền bán chứng khoán về tài khoản (phần chưa ứng trước), sau đó tự động trả nợ ký quỹ
+      const cash = await tx.many<{ id: number; user_id: string; symbol: string; amount: number; advanced: number; trade_date: string | Date }>(
+        'SELECT * FROM cash_settlements WHERE settled = false AND settle_date <= $1 ORDER BY id FOR UPDATE',
+        [this.market.tradeDate],
+      );
+      const paidUsers = new Set<string>();
+      for (const c of cash) {
+        const rest = Number(c.amount) - Number(c.advanced);
+        if (rest > 0) {
+          const a = (await tx.one<{ cash_balance: number }>('SELECT cash_balance FROM accounts WHERE user_id = $1 FOR UPDATE', [c.user_id]))!;
+          const bal = a.cash_balance + rest;
+          await tx.many('UPDATE accounts SET cash_balance = $2, cash_pending = cash_pending - $3, updated_at = now() WHERE user_id = $1', [c.user_id, bal, rest]);
+          await tx.many(`INSERT INTO transactions_ledger (user_id, type, amount, balance_after, note) VALUES ($1,'SELL',$2,$3,$4)`, [
+            c.user_id,
+            rest,
+            bal,
+            `Tiền bán ${c.symbol} ngày ${dateOnly(c.trade_date)} về tài khoản (đã trừ phí, thuế${Number(c.advanced) ? ', phần đã ứng trước' : ''})`,
+          ]);
+        }
+        await tx.many('UPDATE cash_settlements SET settled = true WHERE id = $1', [c.id]);
+        paidUsers.add(c.user_id);
+      }
+      for (const u of paidUsers) await repayDebt(tx, u);
+      return new Set([...lots.map((l) => l.user_id), ...paidUsers]);
     });
     for (const u of users) this.notify.account(u);
     return users.size;
@@ -353,6 +466,79 @@ export class TradingEngine {
     if (!PLACE_PHASES[type].includes(ph)) throw badRequest('SESSION', `Không thể đặt lệnh ${type} khi thị trường đang ở trạng thái: ${PHASE_LABEL[ph]}`);
   }
 
+  /**
+   * Nguồn tiền cho lệnh mua (trong transaction đã khoá tài khoản): tiền mặt → ứng trước tiền bán chờ về
+   * (thực hiện ngay, có phí) → vay ký quỹ. Kiểm tra tỷ lệ ký quỹ sau mua ≥ tỷ lệ ban đầu.
+   */
+  private async planBuyTx(tx: Queryable, userId: string, info: StockInfo, hold: number, value: number) {
+    const acct = await tx.one<MoneyRow>('SELECT * FROM accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+    if (!acct) throw notFound('Không tìm thấy tài khoản');
+    const td = this.market.tradeDate;
+    const avail = acct.cash_balance - acct.cash_hold;
+    const adv = acct.auto_advance && avail < hold ? await previewAdvance(tx, userId, td) : { maxNet: 0 };
+    let stock: number | null = null;
+    const plan = planBuy({
+      hold,
+      avail,
+      advanceableNet: adv.maxNet,
+      autoAdvance: acct.auto_advance,
+      marginEnabled: acct.margin_enabled,
+      symbolRatio: info.marginRatio ?? 0,
+      creditAvail: Number(acct.credit_limit) - Number(acct.loan_balance) - Number(acct.loan_hold),
+      ratioOk: () => true,
+    });
+    if ('error' in plan) throw badRequest(plan.error, plan.message);
+    if (plan.loanPart > 0) {
+      // Tỷ lệ ký quỹ dự kiến sau khi lệnh khớp hết (tiền đang giữ cho lệnh khác coi như đã chi)
+      const holds = await tx.many<{ symbol: string; qty_total: number }>('SELECT symbol, qty_total FROM holdings WHERE user_id = $1', [userId]);
+      stock = holds.reduce((s, h) => s + h.qty_total * (this.market.markPrice?.(h.symbol) ?? this.market.quote(h.symbol)?.ref ?? 0), 0) + value;
+      const cashLeft = acct.cash_balance - acct.cash_hold - plan.cashPart + plan.advanceNet;
+      const debt = Number(acct.loan_balance) + Number(acct.loan_interest) + Number(acct.loan_hold) + plan.loanPart;
+      const netDebt = Math.max(0, debt - cashLeft - Number(acct.cash_pending));
+      const ratio = stock > 0 ? (stock - netDebt) / stock : 0;
+      if (ratio < RULES.margin.initialRatio) {
+        throw badRequest('MARGIN_RATIO', `Lệnh làm tỷ lệ ký quỹ còn ${(ratio * 100).toFixed(1)}%, dưới mức ban đầu ${Math.round(RULES.margin.initialRatio * 100)}% — giảm khối lượng hoặc nộp thêm tiền`);
+      }
+    }
+    if (plan.advanceNet > 0) await advanceCash(tx, userId, plan.advanceNet, td);
+    return plan;
+  }
+
+  /** Lô lẻ: chỉ lệnh LO, không áp dụng trái phiếu; ở chế độ giờ thật chỉ nhận trong phiên liên tục */
+  private assertOddLot(info: StockInfo, type: OrderType) {
+    if (info.type === 'BOND') throw badRequest('LOT', `Trái phiếu giao dịch theo lô ${RULES.lotSize}`);
+    if (type !== 'LO') throw badRequest('ODD_LOT', `Lô lẻ (1–${RULES.lotSize - 1} CP) chỉ đặt được lệnh LO`);
+    if (this.market.opts.mode === 'REAL_HOURS' && !['CONTINUOUS', 'LUNCH'].includes(this.market.phase)) {
+      throw badRequest('SESSION', 'Lô lẻ chỉ giao dịch trong phiên khớp lệnh liên tục (9:15–11:30, 13:00–14:30)');
+    }
+  }
+
+  /** Ngày hiệu lực của lệnh nhiều ngày (null = lệnh trong ngày) */
+  private validUntilOf(v: string | null | undefined): string | null {
+    if (!v) return null;
+    const td = this.market.tradeDate;
+    if (v < td) throw badRequest('VALID_UNTIL', 'Ngày hiệu lực đã qua');
+    if (v > addDays(td, GTD_MAX_DAYS)) throw badRequest('VALID_UNTIL', `Lệnh nhiều ngày có hiệu lực tối đa ${GTD_MAX_DAYS} ngày`);
+    return v === td ? null : v;
+  }
+
+  /**
+   * Lô lẻ khớp trên bảng lô lẻ riêng (mô phỏng): lệnh có giá tốt hơn giá chào tốt nhất khớp ngay ở giá chào đó,
+   * hoặc khớp ở giá đặt khi thị trường giao dịch chạm giá. Không ăn sổ lệnh lô chẵn, không ghi vào bảng giá.
+   */
+  private async matchOdd(r: Resting, q: { bids: BookLevel[]; asks: BookLevel[] }, t?: { price: number; vol: number }) {
+    if (r.price == null) return;
+    if (r.side === 'BUY') {
+      const ask1 = q.asks[0]?.p;
+      if (ask1 && ask1 <= r.price) await this.execute(r.id, [{ price: ask1, qty: r.remaining }], false);
+      else if (t && t.price <= r.price) await this.execute(r.id, [{ price: r.price, qty: r.remaining }], false);
+    } else {
+      const bid1 = q.bids[0]?.p;
+      if (bid1 && bid1 >= r.price) await this.execute(r.id, [{ price: bid1, qty: r.remaining }], false);
+      else if (t && t.price >= r.price) await this.execute(r.id, [{ price: r.price, qty: r.remaining }], false);
+    }
+  }
+
   private assertNotHalted(symbol: string) {
     if (this.control.haltAll) {
       throw badRequest('HALTED', `Hệ thống đang tạm ngừng nhận lệnh${this.control.haltReason ? `: ${this.control.haltReason}` : ''}`);
@@ -366,8 +552,8 @@ export class TradingEngine {
     }
   }
 
-  private assertPrice(ex: StockInfo['exchange'], price: number, q: { ceil: number; floor: number }) {
-    if (!isValidTick(ex, price)) throw badRequest('TICK', `Giá ${fmt(price)} không đúng bước giá ${fmt(tickSize(ex, price))}đ`);
+  private assertPrice(info: StockInfo, price: number, q: { ceil: number; floor: number }) {
+    if (!isValidTick(info, price)) throw badRequest('TICK', `Giá ${fmt(price)} không đúng bước giá ${fmt(tickSize(info, price))}đ`);
     if (price > q.ceil || price < q.floor) {
       throw badRequest('BAND', `Giá phải nằm trong khoảng sàn ${fmt(q.floor)} – trần ${fmt(q.ceil)}`);
     }
@@ -388,6 +574,7 @@ export class TradingEngine {
       type: r.order_type,
       price: r.price,
       remaining: r.qty - r.filled_qty,
+      odd: r.qty < RULES.lotSize,
     });
   }
 
@@ -407,6 +594,11 @@ export class TradingEngine {
   private async matchBook(id: number) {
     const r = this.findResting(id);
     if (!r) return;
+    if (r.odd) {
+      const q = this.market.quote(r.symbol);
+      if (q) await this.matchOdd(r, q);
+      return;
+    }
     const isMarket = r.type === 'MP' && r.price == null;
     const fills = this.market.consumeBook(r.symbol, r.side, r.remaining, isMarket ? null : r.price);
     if (fills.length) await this.execute(r.id, fills, true);
@@ -419,7 +611,7 @@ export class TradingEngine {
     }
     // Phần còn lại của lệnh MP chuyển thành LO cao/thấp hơn 1 bước giá so với giá khớp cuối
     const q = this.market.quote(r.symbol)!;
-    const ex = this.market.info(r.symbol)!.exchange;
+    const ex = this.market.info(r.symbol)!;
     const lastPrice = fills[fills.length - 1].price;
     const conv = r.side === 'BUY' ? Math.min(q.ceil, stepPrice(ex, lastPrice, 1)) : Math.max(q.floor, stepPrice(ex, lastPrice, -1));
     const row = await this.db.one<OrderRow>('UPDATE orders SET price = $2, updated_at = now() WHERE id = $1 RETURNING *', [id, conv]);
@@ -449,12 +641,17 @@ export class TradingEngine {
 
     let remaining = o.qty - o.filled_qty;
     let holdLeft = o.hold_amount;
+    let loanHoldLeft = o.loan_hold ?? 0;
     let filled = o.filled_qty;
     let notional = o.avg_fill_price * o.filled_qty;
     let balance = acct.cash_balance;
     let cashHold = acct.cash_hold;
+    let loanHold = acct.loan_hold ?? 0;
+    let loanBalance = acct.loan_balance ?? 0;
+    let cashPending = acct.cash_pending ?? 0;
     const trades: TradeRow[] = [];
     const settleNow = this.opts.settlementDays <= 0;
+    const settleDate = addTradingDays(this.market.tradeDate, this.opts.settlementDays, skipWeekendsFor(this.market.opts.mode));
 
     const ledger = async (type: string, amount: number, note: string) => {
       balance += amount;
@@ -468,13 +665,25 @@ export class TradingEngine {
       const q = Math.min(f.qty, remaining);
       if (q <= 0) break;
       const value = f.price * q;
-      const fee = calcFee(value);
+      const fee = calcFee(value, o.fee_rate ?? RULES.feeRate);
       const desc = `${q.toLocaleString('en-US')} ${o.symbol} giá ${f.price.toLocaleString('en-US')}`;
 
       if (o.side === 'BUY') {
-        const release = q === remaining ? holdLeft : Math.min(holdLeft, buyHoldAmount(o.hold_price, q));
+        const release = q === remaining ? holdLeft : Math.min(holdLeft, buyHoldAmount(o.hold_price, q, o.fee_rate ?? RULES.feeRate));
+        // Phần giải phóng chia theo tỷ lệ tiền mặt / tiền vay đã giữ cho lệnh
+        const loanRel = q === remaining ? loanHoldLeft : holdLeft > 0 ? Math.min(loanHoldLeft, Math.round((release * loanHoldLeft) / holdLeft)) : 0;
+        const cashRel = release - loanRel;
         holdLeft -= release;
-        cashHold -= release;
+        loanHoldLeft -= loanRel;
+        cashHold -= cashRel;
+        loanHold -= loanRel;
+        // Trả bằng tiền mặt trước, phần còn lại giải ngân vay ký quỹ
+        const cost = value + fee;
+        const loanUse = Math.max(0, cost - cashRel);
+        if (loanUse > 0) {
+          loanBalance += loanUse;
+          await ledger('LOAN', loanUse, `Giải ngân vay ký quỹ mua ${desc}`);
+        }
         await ledger('BUY', -value, `Mua ${desc}`);
         await ledger('FEE', -fee, `Phí mua lệnh #${o.id}`);
         if (!h) {
@@ -485,7 +694,6 @@ export class TradingEngine {
         if (settleNow) h.qty_available += q;
         else {
           h.qty_pending += q;
-          const settleDate = addTradingDays(this.market.tradeDate, this.opts.settlementDays, skipWeekendsFor(this.market.opts.mode));
           await tx.many('INSERT INTO settlement_lots (user_id, symbol, qty, settle_date) VALUES ($1,$2,$3,$4)', [o.user_id, o.symbol, q, settleDate]);
         }
         const t = await tx.one<TradeRow>(
@@ -495,14 +703,25 @@ export class TradingEngine {
         trades.push(t!);
       } else {
         if (!h || h.qty_hold < q) throw new Error(`Dữ liệu danh mục không nhất quán cho lệnh #${o.id}`);
-        const tax = calcSellTax(value);
+        const taxRate = o.tax_rate ?? RULES.sellTaxRate;
+        const tax = calcSellTax(value, taxRate);
         const costPortion = Math.round((h.total_cost * q) / h.qty_total);
         h.qty_total -= q;
         h.qty_hold -= q;
         h.total_cost -= costPortion;
-        await ledger('SELL', value, `Bán ${desc}`);
-        await ledger('FEE', -fee, `Phí bán lệnh #${o.id}`);
-        await ledger('TAX', -tax, `Thuế TNCN 0,1% lệnh #${o.id}`);
+        if (settleNow) {
+          await ledger('SELL', value, `Bán ${desc}`);
+          await ledger('FEE', -fee, `Phí bán lệnh #${o.id}`);
+          await ledger('TAX', -tax, `Thuế TNCN ${(taxRate * 100).toLocaleString('vi-VN')}% lệnh #${o.id}`);
+        } else {
+          // Tiền bán (đã trừ phí, thuế) chờ về tài khoản sau T+N — có thể ứng trước
+          const net = value - fee - tax;
+          cashPending += net;
+          await tx.many(
+            'INSERT INTO cash_settlements (user_id, order_id, symbol, amount, trade_date, settle_date) VALUES ($1,$2,$3,$4,$5,$6)',
+            [o.user_id, o.id, o.symbol, net, this.market.tradeDate, settleDate],
+          );
+        }
         const pnl = value - fee - tax - costPortion;
         const t = await tx.one<TradeRow>(
           `INSERT INTO trades (order_id, user_id, symbol, side, price, qty, value, fee, tax, realized_pnl)
@@ -517,7 +736,12 @@ export class TradingEngine {
     }
     if (!trades.length) return null;
 
-    await tx.many('UPDATE accounts SET cash_balance = $2, cash_hold = $3, updated_at = now() WHERE user_id = $1', [o.user_id, balance, cashHold]);
+    await tx.many(
+      'UPDATE accounts SET cash_balance = $2, cash_hold = $3, loan_hold = $4, loan_balance = $5, cash_pending = $6, updated_at = now() WHERE user_id = $1',
+      [o.user_id, balance, cashHold, loanHold, loanBalance, cashPending],
+    );
+    // Bán khi SETTLEMENT_DAYS=0: tiền về ngay → tự trả nợ ký quỹ
+    if (o.side === 'SELL' && settleNow && (loanBalance > 0 || (acct.loan_interest ?? 0) > 0)) await repayDebt(tx, o.user_id);
     if (h) {
       if (h.qty_total === 0) {
         await tx.many('DELETE FROM holdings WHERE user_id = $1 AND symbol = $2', [o.user_id, o.symbol]);
@@ -530,8 +754,8 @@ export class TradingEngine {
       }
     }
     const order = await tx.one<OrderRow>(
-      `UPDATE orders SET filled_qty = $2, avg_fill_price = $3, status = $4, hold_amount = $5, updated_at = now() WHERE id = $1 RETURNING *`,
-      [o.id, filled, Math.round(notional / filled), remaining === 0 ? 'FILLED' : 'PARTIAL', holdLeft],
+      `UPDATE orders SET filled_qty = $2, avg_fill_price = $3, status = $4, hold_amount = $5, loan_hold = $6, updated_at = now() WHERE id = $1 RETURNING *`,
+      [o.id, filled, Math.round(notional / filled), remaining === 0 ? 'FILLED' : 'PARTIAL', holdLeft, loanHoldLeft],
     );
     return { order: order!, trades };
   }
@@ -548,7 +772,12 @@ export class TradingEngine {
       }
       if (!OPEN.includes(o.status)) return null;
       if (o.side === 'BUY') {
-        await tx.many('UPDATE accounts SET cash_hold = cash_hold - $2, updated_at = now() WHERE user_id = $1', [o.user_id, o.hold_amount]);
+        const loan = o.loan_hold ?? 0;
+        await tx.many('UPDATE accounts SET cash_hold = cash_hold - $2, loan_hold = loan_hold - $3, updated_at = now() WHERE user_id = $1', [
+          o.user_id,
+          o.hold_amount - loan,
+          loan,
+        ]);
       } else {
         const rem = o.qty - o.filled_qty;
         await tx.many('UPDATE holdings SET qty_hold = qty_hold - $3, qty_available = qty_available + $3 WHERE user_id = $1 AND symbol = $2', [
@@ -558,7 +787,7 @@ export class TradingEngine {
         ]);
       }
       return tx.one<OrderRow>(
-        'UPDATE orders SET status = $2, hold_amount = 0, reject_reason = COALESCE($3, reject_reason), updated_at = now() WHERE id = $1 RETURNING *',
+        'UPDATE orders SET status = $2, hold_amount = 0, loan_hold = 0, reject_reason = COALESCE($3, reject_reason), updated_at = now() WHERE id = $1 RETURNING *',
         [id, status, reason],
       );
     });

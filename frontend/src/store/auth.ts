@@ -1,11 +1,11 @@
 import { create } from 'zustand';
+import type { UserDTO } from '@vss/shared';
 
-export interface User {
-  id: string;
-  email: string;
-  fullName: string;
-  createdAt: string;
-}
+/** Bản lưu trong localStorage từ phiên bản cũ có thể thiếu các cờ → để tuỳ chọn, /auth/me sẽ bổ sung */
+export type User = Pick<UserDTO, 'id' | 'email' | 'fullName' | 'createdAt'> & Partial<Omit<UserDTO, 'id' | 'email' | 'fullName' | 'createdAt'>>;
+
+/** Kết quả đăng nhập: có phiên ngay, hoặc phải nhập mã 2FA */
+export type LoginResult = { token: string; user: UserDTO; mfaRequired?: undefined } | { mfaRequired: true; mfaToken: string; token?: undefined };
 
 const KEY = 'vss-auth';
 

@@ -4,9 +4,12 @@ import { ArrowDownRight, ArrowUpRight, RotateCcw } from 'lucide-react';
 import { Empty, Spinner } from '../components/common/ui';
 import { AccountSettingsModal } from '../components/layout/AccountSettingsModal';
 import { AllocationDonut, PALETTE, type Slice } from '../components/portfolio/AllocationDonut';
+import { EntitlementsPanel } from '../components/portfolio/Entitlements';
+import { NavChart } from '../components/portfolio/NavChart';
 import { SideChip } from '../components/trade/OrdersPanel';
 import { cn, fmtCompact, fmtDateTimeVN, fmtInt, fmtPct, fmtPrice, fmtVnd, priceTone, signTone, toneText } from '../lib/format';
-import { usePortfolio, useTrades } from '../lib/queries';
+import { navOfAccount, usePortfolio, useTrades } from '../lib/queries';
+import { CashMarginPanel } from '../components/portfolio/CashMargin';
 import { useMarket } from '../store/market';
 
 function Card({ label, value, sub, tone, big }: { label: string; value: string; sub?: string; tone?: string; big?: boolean }) {
@@ -39,8 +42,8 @@ export default function PortfolioPage() {
     const stockValue = items.reduce((a, x) => a + x.value, 0);
     const unrealized = items.reduce((a, x) => a + x.pnl, 0);
     const dayChange = items.reduce((a, x) => a + x.dayChange, 0);
-    const nav_ = data.account.cashBalance + stockValue;
-    const totalPnl = nav_ - data.account.initialCapital;
+    const nav_ = navOfAccount(data.account, stockValue);
+    const totalPnl = nav_ - (data.account.contributed ?? data.account.initialCapital);
     return { items: items.sort((a, b) => b.value - a.value), stockValue, unrealized, dayChange, nav: nav_, totalPnl };
   }, [data, rows]);
 
@@ -56,7 +59,7 @@ export default function PortfolioPage() {
   const slices: Slice[] = view.items.slice(0, 9).map((x, i) => ({ label: x.symbol, value: x.value, color: PALETTE[i] }));
   const others = view.items.slice(9).reduce((a, x) => a + x.value, 0);
   if (others > 0) slices.push({ label: 'Khác', value: others, color: PALETTE[9] });
-  slices.push({ label: 'Tiền mặt', value: account.cashBalance, color: PALETTE[10] });
+  slices.push({ label: 'Tiền mặt & chờ về', value: account.cashBalance + (account.cashPending ?? 0), color: PALETTE[10] });
   const totalTone = toneText[signTone(view.totalPnl)];
 
   return (
@@ -77,15 +80,27 @@ export default function PortfolioPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card label="Tài sản ròng (NAV)" value={`${fmtVnd(view.nav)}đ`} sub={`${view.totalPnl >= 0 ? '+' : ''}${fmtVnd(view.totalPnl)}đ (${fmtPct((view.totalPnl / account.initialCapital) * 100)}) so với vốn ban đầu`} tone={totalTone} big />
+        <Card
+          label="Tài sản ròng (NAV)"
+          value={`${fmtVnd(view.nav)}đ`}
+          sub={`${view.totalPnl >= 0 ? '+' : ''}${fmtVnd(view.totalPnl)}đ (${fmtPct((view.totalPnl / (account.contributed ?? account.initialCapital)) * 100)}) so với vốn đã góp`}
+          tone={totalTone}
+          big
+        />
         <Card label="Giá trị cổ phiếu" value={`${fmtVnd(view.stockValue)}đ`} sub={`Biến động hôm nay ${view.dayChange >= 0 ? '+' : ''}${fmtVnd(view.dayChange)}đ`} />
-        <Card label="Tiền mặt" value={`${fmtVnd(account.cashBalance)}đ`} sub={`Phong toả ${fmtVnd(account.cashHold)}đ`} />
-        <Card label="Sức mua" value={`${fmtVnd(account.cashAvailable)}đ`} sub="Tiền mặt khả dụng để đặt lệnh mua" />
+        <Card label="Tiền mặt" value={`${fmtVnd(account.cashBalance)}đ`} sub={`Phong toả ${fmtVnd(account.cashHold)}đ · chờ về ${fmtVnd(account.cashPending ?? 0)}đ`} />
+        <Card
+          label="Sức mua"
+          value={`${fmtVnd(account.cashAvailable + (account.autoAdvance ? (account.advanceable ?? 0) : 0))}đ`}
+          sub={account.marginEnabled ? 'Tiền khả dụng + ứng trước; cộng thêm vay ký quỹ theo từng mã' : 'Tiền mặt khả dụng + có thể ứng trước'}
+        />
         <Card label="Lãi/lỗ chưa thực hiện" value={`${view.unrealized >= 0 ? '+' : ''}${fmtVnd(view.unrealized)}đ`} tone={toneText[signTone(view.unrealized)]} />
         <Card label="Lãi/lỗ đã thực hiện" value={`${data.realizedPnl >= 0 ? '+' : ''}${fmtVnd(data.realizedPnl)}đ`} tone={toneText[signTone(data.realizedPnl)]} />
         <Card label="Tổng phí giao dịch" value={`${fmtVnd(data.totalFees)}đ`} />
         <Card label="Tổng thuế bán" value={`${fmtVnd(data.totalTaxes)}đ`} />
       </div>
+
+      <NavChart />
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="panel min-w-0 overflow-hidden">
@@ -162,6 +177,8 @@ export default function PortfolioPage() {
             <h2 className="mb-3 font-semibold">Phân bổ tài sản</h2>
             <AllocationDonut slices={slices} total={view.nav} />
           </section>
+          <CashMarginPanel a={account} />
+          <EntitlementsPanel />
           <section className="panel overflow-hidden">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <h2 className="font-semibold">Khớp lệnh gần đây</h2>

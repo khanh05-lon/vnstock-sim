@@ -57,6 +57,11 @@ if (provider === 'vnstock' && mode !== 'REAL_HOURS') {
 const smtpHost = process.env.SMTP_HOST ?? '';
 const smtpPort = int('SMTP_PORT', 587);
 
+/** Khoá mã hoá bí mật lưu trong CSDL (khoá 2FA). Đổi khoá → người dùng phải bật lại 2FA */
+const dataEncryptionKey = process.env.DATA_ENCRYPTION_KEY ?? '';
+if (dataEncryptionKey && dataEncryptionKey.length < 32) throw new Error('DATA_ENCRYPTION_KEY quá ngắn (cần ≥ 32 ký tự, vd. `openssl rand -hex 32`)');
+if (isProd && !dataEncryptionKey) log.warn('[config] chưa đặt DATA_ENCRYPTION_KEY — khoá 2FA sẽ được lưu không mã hoá trong CSDL');
+
 export const config = {
   isProd,
   port: int('PORT', 4000),
@@ -67,6 +72,8 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL ?? '',
   dbPoolMax: int('DB_POOL_MAX', 10),
   dataDir: path.resolve(process.cwd(), process.env.DATA_DIR ?? './data/pgdata'),
+  /** Thư mục bản sao lưu tự động (vd. trước khi khôi phục dữ liệu) */
+  backupDir: path.resolve(process.cwd(), process.env.BACKUP_DIR ?? './data/backups'),
   /** Tự chạy migration khi khởi động (đặt false nếu chạy `npm run migrate` riêng trước khi start) */
   migrateOnStart: bool('MIGRATE_ON_START', true),
   /** Thư mục frontend đã build để API phục vụ luôn (vd. ../frontend/dist); trống = không phục vụ */
@@ -91,6 +98,24 @@ export const config = {
       }
     : null,
   mailFrom: process.env.MAIL_FROM || 'VNStock Sim <no-reply@localhost>',
+  /** Token đọc /api/metrics (Prometheus). Trống: dev mở tự do, production tắt endpoint */
+  metricsToken: process.env.METRICS_TOKEN ?? '',
+  /** Cảnh báo vận hành: email nhận (phân tách dấu phẩy) và webhook (Slack / Discord / Telegram) */
+  alertEmails: (process.env.ALERT_EMAILS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  alertWebhookUrl: process.env.ALERT_WEBHOOK_URL ?? '',
+  alertThresholds: {
+    eventLoopMs: int('ALERT_EVENT_LOOP_MS', 500),
+    p95Ms: int('ALERT_P95_MS', 2000),
+    rssMb: int('ALERT_RSS_MB', 1500),
+    dbSlowMs: int('ALERT_DB_SLOW_MS', 1000),
+    errorRate: int('ALERT_ERROR_RATE_PCT', 5) / 100,
+  },
+  /** Bắt buộc xác thực email trước khi được đặt lệnh */
+  requireEmailVerification: bool('REQUIRE_EMAIL_VERIFICATION', false),
+  dataEncryptionKey,
   marketMode: mode,
   /** mock: giá giả lập; vnstock: giá thật qua data-service (tự về giả lập khi nguồn lỗi) */
   marketProvider: provider as 'mock' | 'vnstock',

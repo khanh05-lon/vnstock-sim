@@ -2,10 +2,21 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { ORDER_STATUS_LABEL, RULES, isValidTick, tickSize, type OrderDTO, type OrderStatus } from '@vss/shared';
+import {
+  CONDITIONAL_STATUS_LABEL,
+  ORDER_STATUS_LABEL,
+  RULES,
+  conditionalLabel,
+  isValidTick,
+  tickSize,
+  type ConditionalOrderDTO,
+  type ConditionalStatus,
+  type OrderDTO,
+  type OrderStatus,
+} from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
 import { cn, fmtBillion, fmtInt, fmtPrice, fmtTimeVN, fmtVnd, parseIntInput, parsePriceInput, priceTone, signTone, toneText } from '../../lib/format';
-import { useCandles, useInvalidateTrading, useLoggedIn, useOrders, usePortfolio } from '../../lib/queries';
+import { useCandles, useConditionalOrders, useInvalidateTrading, useLoggedIn, useOrders, usePortfolio } from '../../lib/queries';
 import { useMarket, useStock } from '../../store/market';
 import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
 
@@ -39,9 +50,12 @@ export function ModifyOrderModal({ order, onClose }: { order: OrderDTO | null; o
   const qty = parseIntInput(qtyText);
   let err: string | null = null;
   if (!price) err = 'Nhập giá';
-  else if (!isValidTick(r.exchange, price)) err = `Sai bước giá (${tickSize(r.exchange, price)}đ)`;
+  else if (!isValidTick(r, price)) err = `Sai bước giá (${tickSize(r, price)}đ)`;
   else if (price > r.ceil || price < r.floor) err = `Giá phải trong khoảng ${fmtPrice(r.floor)} – ${fmtPrice(r.ceil)}`;
-  else if (!qty || qty % RULES.lotSize) err = `Khối lượng là bội số của ${RULES.lotSize}`;
+  else if (!qty) err = 'Nhập khối lượng';
+  else if (order.qty < RULES.lotSize ? qty >= RULES.lotSize : qty % RULES.lotSize) {
+    err = order.qty < RULES.lotSize ? `Lệnh lô lẻ giữ khối lượng dưới ${RULES.lotSize}` : `Khối lượng là bội số của ${RULES.lotSize}`;
+  }
   else if (qty <= order.filledQty) err = `Khối lượng phải lớn hơn KL đã khớp (${fmtInt(order.filledQty)})`;
 
   const save = async () => {
@@ -98,6 +112,112 @@ export function ModifyOrderModal({ order, onClose }: { order: OrderDTO | null; o
   );
 }
 
+const fmtDM = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
+/** Loại lệnh + nhãn: lô lẻ, nhiều ngày, từ lệnh điều kiện, bán giải chấp */
+export function OrderTypeCell({ o }: { o: OrderDTO }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {o.orderType}
+      {o.qty < RULES.lotSize && <span className="chip h-4 bg-info/15 px-1 text-[9px] text-info">Lẻ</span>}
+      {o.validUntil && (
+        <span className="chip h-4 bg-brand/15 px-1 text-[9px] text-brand" title={`Lệnh nhiều ngày, hiệu lực tới hết ${fmtDM(o.validUntil)}`}>
+          →{fmtDM(o.validUntil)}
+        </span>
+      )}
+      {o.source === 'CONDITIONAL' && (
+        <span className="chip h-4 bg-ceil/15 px-1 text-[9px] text-ceil" title="Đặt tự động khi lệnh điều kiện kích hoạt">
+          ĐK
+        </span>
+      )}
+      {o.source === 'FORCE_SELL' && (
+        <span className="chip h-4 bg-down/15 px-1 text-[9px] text-down" title="Hệ thống bán giải chấp ký quỹ">
+          Giải chấp
+        </span>
+      )}
+    </span>
+  );
+}
+
+const COND_STYLE: Record<ConditionalStatus, string> = {
+  ACTIVE: 'bg-info/15 text-info',
+  TRIGGERED: 'bg-up/15 text-up',
+  CANCELLED: 'bg-bg-4 text-tx-3',
+  EXPIRED: 'bg-bg-4 text-tx-3',
+  FAILED: 'bg-down/15 text-down',
+};
+
+/** Danh sách lệnh điều kiện */
+export function ConditionalTable({ rows, actions = true }: { rows: ConditionalOrderDTO[]; actions?: boolean }) {
+  const invalidate = useInvalidateTrading();
+  const nav = useNavigate();
+  const cancel = async (c: ConditionalOrderDTO) => {
+    try {
+      await api(`/conditional-orders/${c.id}`, { method: 'DELETE' });
+      toast.success(c.ocoGroup ? 'Đã huỷ cặp lệnh OCO' : 'Đã huỷ lệnh điều kiện');
+      invalidate();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+  return (
+    <table className="tbl num w-full text-[12px]">
+      <thead className="sticky top-0 z-[1] bg-bg-1">
+        <tr className="h-8 text-left">
+          <th className="px-3">Mã</th>
+          <th className="px-2">Loại</th>
+          <th className="px-2 text-right">Điều kiện</th>
+          <th className="px-2 text-right">Lệnh khi kích hoạt</th>
+          <th className="px-2 text-right">KL</th>
+          <th className="px-2">Hiệu lực</th>
+          <th className="px-2">Trạng thái</th>
+          {actions && <th className="px-3 text-right" />}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((c) => {
+          const cond =
+            c.kind === 'TRAILING'
+              ? `Giảm ${c.trailPct}% từ ${c.peakPrice ? fmtPrice(c.peakPrice) : '—'}`.replace('Giảm', c.side === 'SELL' ? 'Giảm' : 'Tăng')
+              : `${(c.kind === 'STOP') === (c.side === 'SELL') ? '≤' : '≥'} ${fmtPrice(c.triggerPrice)}`;
+          return (
+            <tr key={c.id} className="h-9 border-t border-line hover:bg-bg-2">
+              <td className="px-3">
+                <button className="font-semibold hover:text-brand" onClick={() => nav(`/trade/${c.symbol}`)}>
+                  {c.symbol}
+                </button>
+              </td>
+              <td className="px-2">
+                <span className={cn('font-medium', c.side === 'BUY' ? 'text-up' : 'text-down')}>{conditionalLabel(c.kind, c.side)}</span>
+                {c.ocoGroup && <span className="chip ml-1 h-4 bg-bg-3 px-1 text-[9px] text-tx-2">OCO</span>}
+              </td>
+              <td className="px-2 text-right">{cond}</td>
+              <td className="px-2 text-right">{c.orderType === 'MARKET' ? 'Thị trường' : `LO ${fmtPrice(c.limitPrice)}`}</td>
+              <td className="px-2 text-right">{fmtInt(c.qty)}</td>
+              <td className="px-2 text-tx-2">{fmtDM(c.validUntil)}</td>
+              <td className="px-2">
+                <span className={cn('chip h-5 text-[10px]', COND_STYLE[c.status])} title={c.message ?? undefined}>
+                  {CONDITIONAL_STATUS_LABEL[c.status]}
+                  {c.orderId ? ` · #${c.orderId}` : ''}
+                </span>
+              </td>
+              {actions && (
+                <td className="px-3 text-right">
+                  {c.status === 'ACTIVE' && (
+                    <button onClick={() => void cancel(c)} className="rounded p-1 text-tx-3 hover:bg-bg-3 hover:text-down" aria-label={`Huỷ lệnh điều kiện ${c.id}`} title="Huỷ">
+                      <X size={15} />
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 export function OrdersTable({ orders, actions = true, showDate = false }: { orders: OrderDTO[]; actions?: boolean; showDate?: boolean }) {
   const [editing, setEditing] = useState<OrderDTO | null>(null);
   const invalidate = useInvalidateTrading();
@@ -144,7 +264,9 @@ export function OrdersTable({ orders, actions = true, showDate = false }: { orde
                 <td className="px-2">
                   <SideChip side={o.side} />
                 </td>
-                <td className="px-2 text-tx-2">{o.orderType}</td>
+                <td className="px-2 text-tx-2">
+                  <OrderTypeCell o={o} />
+                </td>
                 <td className="px-2 text-right">{o.price ? fmtPrice(o.price) : o.orderType}</td>
                 <td className="px-2 text-right">{fmtInt(o.qty)}</td>
                 <td className="px-2 text-right">{fmtInt(o.filledQty)}</td>
@@ -275,13 +397,15 @@ function CompanyInfo({ symbol }: { symbol: string }) {
   );
 }
 
-type PanelTab = 'open' | 'today' | 'positions' | 'company';
+type PanelTab = 'open' | 'conditional' | 'today' | 'positions' | 'company';
 
 export function OrdersPanel({ symbol }: { symbol: string }) {
   const loggedIn = useLoggedIn();
   const [tab, setTab] = useState<PanelTab>(loggedIn ? 'open' : 'company');
   const { data: open } = useOrders('open');
   const { data: today, isLoading } = useOrders('today');
+  const { data: conds } = useConditionalOrders('all');
+  const activeConds = (conds ?? []).filter((c) => c.status === 'ACTIVE').length;
   const invalidate = useInvalidateTrading();
 
   const cancelAll = async () => {
@@ -309,6 +433,7 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
           onChange={setTab}
           items={[
             { value: 'open', label: `Lệnh chờ khớp${open?.length ? ` (${open.length})` : ''}` },
+            { value: 'conditional', label: `Lệnh điều kiện${activeConds ? ` (${activeConds})` : ''}` },
             { value: 'today', label: 'Sổ lệnh trong ngày' },
             { value: 'positions', label: 'Danh mục' },
             { value: 'company', label: 'Hồ sơ doanh nghiệp' },
@@ -332,6 +457,8 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
           />
         ) : tab === 'company' ? (
           <CompanyInfo symbol={symbol} />
+        ) : tab === 'conditional' ? (
+          conds?.length ? <ConditionalTable rows={conds.slice(0, 100)} /> : <Empty title="Chưa có lệnh điều kiện" hint="Dùng tab Lệnh điều kiện ở khung đặt lệnh để cài cắt lỗ / chốt lời." />
         ) : tab === 'positions' ? (
           <PositionsMini />
         ) : tab === 'open' ? (

@@ -18,8 +18,16 @@ interface DayBar {
   value: number;
 }
 
+/** Tỷ lệ cho vay ký quỹ mặc định theo sàn (tham khảo danh mục ký quỹ của các công ty chứng khoán) */
+export function defaultMarginRatio(exchange: string, isVn30: boolean): number {
+  if (isVn30) return 0.5;
+  if (exchange === 'HOSE') return 0.3;
+  if (exchange === 'HNX') return 0.2;
+  return 0;
+}
+
 /** Danh sách ngày giao dịch (T2–T6) kết thúc tại endDate */
-function tradingDates(endDate: string, n: number): string[] {
+export function tradingDates(endDate: string, n: number): string[] {
   const out: string[] = [];
   let d = endDate;
   while (out.length < n) {
@@ -90,8 +98,21 @@ export async function seedMarket(db: Database, mode: MarketMode): Promise<void> 
     await insertBatched(
       tx,
       'stocks',
-      ['symbol', 'exchange', 'name', 'industry', 'listed_shares', 'eps', 'bvps', 'is_vn30', 'liquidity', 'volatility'],
-      SEED_STOCKS.map((s) => [s.symbol, s.exchange, s.name, s.industry, Math.round(s.sharesM * 1e6), s.eps, s.bvps, VN30.has(s.symbol), s.liq, volatilityOf(s)]),
+      ['symbol', 'exchange', 'name', 'industry', 'listed_shares', 'eps', 'bvps', 'is_vn30', 'liquidity', 'volatility', 'margin_ratio', 'listed_at'],
+      SEED_STOCKS.map((s) => [
+        s.symbol,
+        s.exchange,
+        s.name,
+        s.industry,
+        Math.round(s.sharesM * 1e6),
+        s.eps,
+        s.bvps,
+        VN30.has(s.symbol),
+        s.liq,
+        volatilityOf(s),
+        defaultMarginRatio(s.exchange, VN30.has(s.symbol)),
+        dates[0],
+      ]),
     );
 
     const history = new Map<string, DayBar[]>();
@@ -146,7 +167,7 @@ export async function createUserAccount(tx: Queryable, email: string, passwordHa
     [email, passwordHash, fullName],
   );
   const capital = RULES.initialCapital;
-  await tx.many('INSERT INTO accounts (user_id, cash_balance, initial_capital) VALUES ($1, $2, $2)', [user!.id, capital]);
+  await tx.many('INSERT INTO accounts (user_id, cash_balance, initial_capital, contributed) VALUES ($1, $2, $2, $2)', [user!.id, capital]);
   await tx.many(`INSERT INTO transactions_ledger (user_id, type, amount, balance_after, note) VALUES ($1, 'DEPOSIT', $2, $2, $3)`, [
     user!.id,
     capital,
@@ -159,7 +180,11 @@ export async function createUserAccount(tx: Queryable, email: string, passwordHa
 export async function seedDemoUser(db: Database, email: string, password: string, mode: MarketMode): Promise<void> {
   if (!email || !password) return;
   const exists = await db.one('SELECT 1 FROM users WHERE email = $1', [email]);
-  if (exists) return;
+  if (exists) {
+    // Tài khoản demo dùng chung, không có hộp thư thật → luôn coi là đã xác thực
+    await db.many('UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE email = $1', [email]);
+    return;
+  }
   const hash = await bcrypt.hash(password, 10);
   const td = currentTradeDate(Date.now(), mode);
   const buyDate = prevTradingDay(prevTradingDay(prevTradingDay(td, true), true), true);
@@ -181,6 +206,7 @@ export async function seedDemoUser(db: Database, email: string, password: string
   ];
   await db.tx(async (tx) => {
     const user = await createUserAccount(tx, email, hash, 'Nhà đầu tư Demo');
+    await tx.many('UPDATE users SET email_verified_at = now() WHERE id = $1', [user.id]);
     let balance = RULES.initialCapital;
     for (const [symbol, qty, factor] of positions) {
       const seed = SEED_STOCKS.find((s) => s.symbol === symbol)!;

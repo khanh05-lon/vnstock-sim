@@ -34,7 +34,7 @@ class FakeMarket implements MarketAccess {
   add(symbol: string, exchange: Exchange, ref: number, bids: BookLevel[], asks: BookLevel[]) {
     const band = priceBand(exchange, ref);
     this.stocks.set(symbol, {
-      info: { symbol, exchange, name: symbol, industry: 'Test', listedShares: 1e9, eps: 1000, bvps: 10000, isVn30: false },
+      info: { symbol, exchange, type: 'STOCK', name: symbol, industry: 'Test', listedShares: 1e9, eps: 1000, bvps: 10000, isVn30: false, marginRatio: 0 },
       ref,
       ...band,
       bids,
@@ -164,7 +164,7 @@ describe('TradingEngine', () => {
   it('kiểm tra bước giá, biên độ trần/sàn, lô chẵn và loại lệnh theo sàn', async () => {
     await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 99_950, qty: 100 })).rejects.toThrow(/bước giá/);
     await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 107_100, qty: 100 })).rejects.toThrow(/trần/);
-    await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 99_000, qty: 150 })).rejects.toThrow(/lô chẵn/);
+    await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 99_000, qty: 150 })).rejects.toThrow(/lô chẵn/i);
     await expect(engine.placeOrder(userId, { symbol: 'ABB', side: 'BUY', orderType: 'MP', qty: 100 })).rejects.toThrow(/không hỗ trợ lệnh MP/);
     await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'ATO', qty: 100 })).rejects.toThrow(/24\/7/);
   });
@@ -188,8 +188,14 @@ describe('TradingEngine', () => {
     const trade = await db.one<{ realized_pnl: number; tax: number }>(`SELECT realized_pnl, tax FROM trades WHERE side = 'SELL'`);
     expect(trade!.tax).toBe(calcSellTax(sellValue));
     expect(trade!.realized_pnl).toBe(sellValue - calcFee(sellValue) - calcSellTax(sellValue) - (buyValue + calcFee(buyValue)));
-    const acct = await account();
-    expect(acct.cash_balance).toBe(CAPITAL + trade!.realized_pnl);
+    // Tiền bán chờ về T+2 (chưa vào tiền mặt), tới ngày thanh toán mới về tài khoản
+    const net = sellValue - calcFee(sellValue) - calcSellTax(sellValue);
+    expect((await account()).cash_balance).toBe(CAPITAL - buyValue - calcFee(buyValue));
+    expect((await db.one<{ cash_pending: number }>('SELECT cash_pending FROM accounts WHERE user_id = $1', [userId]))!.cash_pending).toBe(net);
+    market.tradeDate = '2026-10-19';
+    await engine.settle();
+    expect((await account()).cash_balance).toBe(CAPITAL + trade!.realized_pnl);
+    expect((await db.one<{ cash_pending: number }>('SELECT cash_pending FROM accounts WHERE user_id = $1', [userId]))!.cash_pending).toBe(0);
   });
 
   it('hai lệnh đồng thời vượt sức mua: chỉ một lệnh được chấp nhận', async () => {

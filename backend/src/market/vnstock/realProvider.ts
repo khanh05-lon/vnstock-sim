@@ -84,7 +84,7 @@ export function applyBoardItem(s: StockState, item: BoardItem, prev: Track | und
   let changed = false;
 
   if (item.ref > 0) {
-    const band = item.ceil > 0 && item.floor > 0 ? { ceil: item.ceil, floor: item.floor } : priceBand(s.info.exchange, item.ref);
+    const band = item.ceil > 0 && item.floor > 0 ? { ceil: item.ceil, floor: item.floor } : priceBand(s.info, item.ref);
     if (s.ref !== item.ref || s.ceil !== band.ceil || s.floor !== band.floor) {
       s.ref = item.ref;
       s.ceil = band.ceil;
@@ -240,6 +240,21 @@ export class RealProvider implements MarketDataProvider {
 
   onNewDay(states: StockState[]): void {
     this.reset(states, 'day');
+  }
+
+  /** Mã mới niêm yết khi đang chạy: thêm vào danh sách lấy giá; trong lúc chạy giả lập thì khởi tạo mô phỏng */
+  addSymbol(s: StockState): void {
+    if (!this.symbols.includes(s.info.symbol)) this.symbols.push(s.info.symbol);
+    if (this.active === 'real') {
+      s.bids = [];
+      s.asks = [];
+    } else this.mock.onNewDay([s]);
+  }
+
+  removeSymbol(symbol: string): void {
+    this.symbols = this.symbols.filter((x) => x !== symbol);
+    this.tracks.delete(symbol);
+    this.items.delete(symbol);
   }
 
   resume(states: StockState[]): void {
