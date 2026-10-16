@@ -1,6 +1,6 @@
 # VNStock Sim — Sàn chứng khoán Việt Nam mô phỏng
 
-Web chứng khoán đầy đủ chức năng ở chế độ **giao dịch ảo (paper trading)**: bảng giá realtime HOSE/HNX/UPCOM, biểu đồ nến chuyên nghiệp, đặt lệnh LO/MP/ATO/ATC, khớp lệnh theo sổ lệnh, phí, thuế, thanh toán T+2, danh mục và sao kê.
+Web chứng khoán đầy đủ chức năng ở chế độ **giao dịch ảo (paper trading)**: bảng giá realtime HOSE/HNX/UPCOM (cổ phiếu, ETF, chứng quyền, trái phiếu), biểu đồ nến chuyên nghiệp, đặt lệnh LO/MP/ATO/ATC, lô lẻ, lệnh nhiều ngày, lệnh điều kiện, khớp lệnh theo sổ lệnh, phí, thuế, thanh toán T+2, ứng trước, ký quỹ, sự kiện quyền, danh mục, biểu đồ tài sản, bảng xếp hạng và trang quản trị.
 Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** (bố cục terminal giao dịch, nền tối, typography).
 
 > ⚠️ Mặc định toàn bộ giá, chỉ số và thông tin doanh nghiệp là **dữ liệu giả lập** phục vụ học tập. Có thể bật **giá thật** (bảng giá + nến ngày HOSE/HNX/UPCOM) bằng `MARKET_PROVIDER=vnstock` — xem [Dữ liệu thị trường thật](#dữ-liệu-thị-trường-thật-vnstock). Dù dùng nguồn nào, giao dịch đều bằng vốn ảo và không phải khuyến nghị đầu tư.
@@ -9,25 +9,28 @@ Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** 
 
 | Trang | Nội dung |
 |---|---|
-| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/Theo dõi, lọc ngành, tìm mã, sắp xếp cột |
-| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume + đường tham chiếu; sổ lệnh có thanh độ sâu (bấm giá để điền form); băng khớp lệnh realtime; form đặt lệnh (sức mua, tối đa, 25/50/75/100%, phí, thuế, xác nhận); lệnh chờ / sổ lệnh / danh mục / hồ sơ doanh nghiệp; sửa & huỷ lệnh |
+| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/**ETF/Chứng quyền/Trái phiếu**/Theo dõi, lọc ngành, tìm mã, sắp xếp cột |
+| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN) + thông tin chứng quyền (giá thực hiện, hoà vốn, ITM/OTM) hoặc trái phiếu (coupon, lợi suất); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume; sổ lệnh có thanh độ sâu; băng khớp lệnh realtime; form **lệnh thường** (lô chẵn / lô lẻ, lệnh nhiều ngày GTD, sức mua tính cả ứng trước và ký quỹ) và **lệnh điều kiện** (cắt lỗ, chốt lời, OCO, trailing stop, mua khi vượt đỉnh, bắt đáy); sửa & huỷ lệnh |
 | **Thị trường** (`/market`) | Biểu đồ chỉ số trong ngày/3T/1N/tất cả; độ rộng từng sàn; **heatmap treemap** theo ngành (diện tích = vốn hoá); top tăng/giảm/GTGD/khối ngoại; hiệu suất ngành |
-| **Tài sản** (`/portfolio`) | NAV, tiền mặt, sức mua, phong toả, lãi/lỗ chưa & đã thực hiện, phí, thuế; bảng danh mục (khả dụng / chờ về T+2 / chờ bán); donut phân bổ; khớp gần đây; đặt lại tài khoản |
-| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền; lọc ngày/mã/chiều/trạng thái; phân trang; xuất CSV |
-| **Đăng nhập / Đăng ký** | Mở tài khoản nhận 1 tỷ vốn ảo; nút "tài khoản demo" có sẵn danh mục; đổi mật khẩu |
+| **Tài sản** (`/portfolio`) | NAV (gồm tiền chờ về, quyền chờ nhận, trừ nợ vay), **biểu đồ lợi nhuận so với VN-Index**; tiền & ký quỹ (ứng trước tiền bán, bật ký quỹ, tỷ lệ ký quỹ, trả nợ); quyền cổ tức / đăng ký mua phát hành thêm; danh mục, donut phân bổ, khớp gần đây; đặt lại tài khoản |
+| **Xếp hạng** (`/xep-hang`) | Bảng xếp hạng lợi nhuận 1 tuần / 1 tháng / 3 tháng / toàn thời gian, tên hiển thị tự chọn hoặc che bớt, tuỳ chọn không tham gia |
+| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền (cổ tức, lãi tiền gửi, vay / trả nợ, phí ứng…); lọc; phân trang; xuất CSV |
+| **Tài khoản** | Đăng ký nhận 1 tỷ vốn ảo + **xác thực email**; **quên / đặt lại mật khẩu** qua email; **xác thực 2 lớp** (ứng dụng TOTP + 10 mã khôi phục); email tổng hợp lệnh khớp; tài khoản demo |
+| **Quản trị** (`/admin`) | Xem mục [Quản trị & vận hành](#quản-trị--vận-hành) |
 
-Thêm: giao diện **tối/sáng**, responsive mobile, thông báo khớp lệnh realtime, đồng hồ & trạng thái phiên.
+Thêm: giao diện **tối/sáng**, responsive mobile, thông báo khớp lệnh / gọi ký quỹ realtime, đồng hồ & trạng thái phiên.
 
 ## Công nghệ
 
 - **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS v4, React Router, TanStack Query, Zustand, Socket.io client, TradingView Lightweight Charts v5, lucide-react, sonner
 - **Backend**: Node.js + Express + TypeScript (tsx), Socket.io, Zod, JWT + bcrypt, helmet, rate limit
-- **CSDL**: PostgreSQL nhúng **PGlite** (chạy ngay, không cần cài đặt) — schema SQL chuẩn, chuyển sang Supabase/Postgres thật được
+- **CSDL**: PostgreSQL nhúng **PGlite** cho dev (chạy ngay, không cần cài đặt); **PostgreSQL 16** thật khi đặt `DATABASE_URL` (đã chạy toàn bộ test + khảo sát tải trên Postgres 16)
+- **Triển khai**: Docker Compose (app + Postgres + Caddy HTTPS), CI GitHub Actions — xem [docs/DEPLOY.md](docs/DEPLOY.md)
 - **Chung**: package `@vss/shared` chứa quy tắc nghiệp vụ, kiểu dữ liệu và schema validate dùng cho cả FE và BE
 
 ## Chạy nhanh
 
-Yêu cầu Node.js ≥ 20.
+Yêu cầu Node.js ≥ 22.
 
 ```bash
 npm install
@@ -42,7 +45,8 @@ npm run dev
 Các lệnh khác:
 
 ```bash
-npm test            # unit test bộ khớp lệnh, quy tắc giá, map dữ liệu thật (vitest)
+npm test            # test backend (khớp lệnh, ký quỹ, sự kiện quyền, bảo mật…) + frontend (vitest)
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/db npm run test -w backend   # chạy test backend trên PostgreSQL thật
 npm run test:data-service   # unit test chuẩn hoá dữ liệu của data-service (Python)
 npm run typecheck   # kiểm tra kiểu FE + BE
 npm run build       # build frontend production
@@ -64,6 +68,13 @@ npm run build       # build frontend production
 | `JWT_SECRET` | — | Khoá ký token, đặt chuỗi ngẫu nhiên dài |
 | `DATA_DIR` | `./data/pgdata` | Nơi lưu CSDL |
 | `DEMO_EMAIL` / `DEMO_PASSWORD` | demo | Tài khoản demo được seed (để trống để tắt) |
+| `DATABASE_URL` | — | Có giá trị → PostgreSQL thật thay PGlite |
+| `PUBLIC_URL`, `SMTP_*`, `MAIL_FROM` | — | Link và máy chủ gửi email (để trống: email chỉ ghi ra log) |
+| `DATA_ENCRYPTION_KEY` | — | Khoá mã hoá bí mật 2FA (≥ 32 ký tự, nên đặt khi chạy thật) |
+| `REQUIRE_EMAIL_VERIFICATION` | `false` | `true` = phải xác thực email mới được đặt lệnh |
+| `BACKUP_DIR`, `METRICS_TOKEN`, `ALERT_EMAILS`, `ALERT_WEBHOOK_URL` | — | Sao lưu tự động trước khi khôi phục, endpoint Prometheus, nơi nhận cảnh báo |
+
+Danh sách đầy đủ và giải thích: [`backend/.env.example`](backend/.env.example).
 
 ## Dữ liệu thị trường thật (vnstock)
 
@@ -106,25 +117,34 @@ data-service giới hạn ≤ 120 request/phút tới nguồn (`UPSTREAM_RPM`) v
 
 ## Quản trị & vận hành
 
-- Trang **Quản trị** (`/admin`, chỉ hiện với tài khoản quản trị viên) gồm 6 mục: Tổng quan · Người dùng · Lệnh giao dịch · Vận hành thị trường · Dữ liệu & sao lưu · Nhật ký.
+- Trang **Quản trị** (`/admin`, chỉ hiện với tài khoản quản trị viên) gồm 10 mục: Tổng quan · Người dùng · Lệnh giao dịch · Thị trường (tạm ngừng, ngày nghỉ, **tham số giao dịch**: phí, thuế, biên độ, tỷ lệ ký quỹ…) · Mã chứng khoán (niêm yết / huỷ niêm yết, tỷ lệ ký quỹ từng mã) · Sự kiện quyền · Ký quỹ (hạn mức vay, tài khoản bị gọi ký quỹ) · Dữ liệu & sao lưu (tải và **khôi phục** JSON, có chạy thử) · Giám sát (chỉ số theo phút, cảnh báo) · Nhật ký.
 - Tài khoản quản trị đầu tiên được tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` (giá trị mẫu cho dev nằm trong `backend/.env.example`; khi `NODE_ENV=production` bắt buộc tự đặt).
-- Quản trị viên có thể: tạo / khoá / mở khoá / xoá tài khoản, cấp hoặc thu quyền, điều chỉnh vốn ảo, đặt lại tài khoản, huỷ hộ lệnh, tạm ngừng nhận lệnh (toàn hệ thống hoặc theo mã), đăng thông báo hệ thống, khai báo ngày nghỉ lễ, tải bản sao lưu JSON, xem nhật ký quản trị và log máy chủ. Mọi thao tác đều được ghi vào bảng `admin_audit_log`.
+- Quản trị viên có thể: tạo / khoá / mở khoá / xoá tài khoản, cấp hoặc thu quyền, xác thực email hộ, tắt 2FA khi người dùng mất thiết bị, điều chỉnh vốn ảo, đặt lại tài khoản, huỷ hộ lệnh, tạm ngừng nhận lệnh (toàn hệ thống hoặc theo mã), đăng thông báo hệ thống, khai báo ngày nghỉ lễ, sửa tham số giao dịch (áp dụng ngay, lưu bền), thêm / huỷ niêm yết mã, nhập sự kiện quyền, cấp hạn mức ký quỹ, sao lưu / khôi phục dữ liệu, xem giám sát, nhật ký quản trị và log máy chủ. Mọi thao tác đều được ghi vào bảng `admin_audit_log`.
+- Giám sát: `GET /api/health`, `GET /api/metrics` (Prometheus, cần `METRICS_TOKEN`), cảnh báo tự động 30 giây/lần gửi email + webhook. Triển khai, sao lưu, danh sách kiểm tra bảo mật: [docs/DEPLOY.md](docs/DEPLOY.md).
 - Trang pháp lý mẫu: `/dieu-khoan`, `/chinh-sach-bao-mat` (bản demo, cần luật sư rà soát trước khi dùng thật).
-- Khảo sát chịu tải (máy chủ local đang chạy): `npm run loadtest -w backend -- --users 30 --orders 20`. Báo cáo JSON được ghi vào `backend/data/loadtest-*.json`. Với PGlite đo được khoảng 26–33 thao tác lệnh / giây; chạy nhiều người dùng thật thì nên dùng PostgreSQL.
+- Khảo sát chịu tải (máy chủ local đang chạy): `npm run loadtest -w backend -- --users 30 --orders 20`. Báo cáo JSON được ghi vào `backend/data/loadtest-*.json`. PGlite đạt khoảng 26–33 thao tác lệnh / giây; PostgreSQL 16 đạt ≈ 200 thao tác / giây, 0% lỗi với 100 người dùng đồng thời (chi tiết trong [docs/DEPLOY.md](docs/DEPLOY.md#sức-chịu-tải-đã-đo)).
 
 ## Quy tắc nghiệp vụ
 
 Định nghĩa trong [`shared/src/index.ts`](shared/src/index.ts) (cần đối chiếu quy định hiện hành nếu dùng cho mục đích khác):
 
 - Biên độ: HOSE ±7%, HNX ±10%, UPCOM ±15% — trần làm tròn xuống, sàn làm tròn lên theo bước giá
-- Bước giá HOSE: < 10.000 → 10đ; 10.000–49.950 → 50đ; ≥ 50.000 → 100đ. HNX/UPCOM: 100đ
-- Lô chẵn 100 CP; tối đa 500.000 CP/lệnh (HOSE), 1.000.000 (HNX/UPCOM)
+- Bước giá cổ phiếu HOSE: < 10.000 → 10đ; 10.000–49.950 → 50đ; ≥ 50.000 → 100đ. HNX/UPCOM: 100đ. ETF / chứng quyền HOSE: 10đ; trái phiếu: 1đ
+- Biên độ chứng quyền tính theo biên độ của chứng khoán cơ sở chia tỷ lệ chuyển đổi; trái phiếu ±10%
+- Lô chẵn 100 CP; **lô lẻ** 1–99 CP chỉ đặt LO, khớp trên bảng lô lẻ riêng (không ăn sổ lệnh lô chẵn, không tham gia ATO/ATC); tối đa 500.000 CP/lệnh (HOSE), 1.000.000 (HNX/UPCOM)
+- **Lệnh nhiều ngày (GTD)**: chỉ LO, tối đa 30 ngày; đầu mỗi ngày kiểm tra lại biên độ mới, ngoài biên độ thì huỷ
+- **Lệnh điều kiện**: dừng (STOP), chạm giá (LIT), trailing stop theo %, cặp OCO; kiểm tra theo giá khớp trong phiên liên tục, kích hoạt thì đặt lệnh thật (MP, hoặc LO trần/sàn với UPCOM và lô lẻ); hiệu lực tối đa 90 ngày
 - Loại lệnh: HOSE `LO/MP/ATO/ATC`, HNX `LO/MP/ATC`, UPCOM `LO`
-- Phí 0,15% mỗi chiều, thuế TNCN 0,1% khi bán; giá vốn bao gồm phí mua
+- Phí 0,15% mỗi chiều, thuế TNCN 0,1% khi bán; giá vốn bao gồm phí mua. Phí / thuế được chốt theo từng lệnh lúc đặt, đổi tham số không ảnh hưởng lệnh đang chờ
 - Lệnh mua phong toả `giá × KL + phí` (MP/ATO/ATC phong toả theo giá trần); lệnh bán phong toả cổ phiếu
 - Lệnh MP quét tối đa 3 bước giá, phần dư chuyển thành LO cao/thấp hơn 1 bước giá; không có đối ứng thì huỷ
 - Cuối phiên, lệnh chưa khớp hết hiệu lực và được giải phóng phong toả
-- Không bán khống, không margin. Tiền dùng số nguyên VNĐ (BIGINT), mọi thay đổi tiền/CP nằm trong 1 transaction có khoá dòng
+- **Tiền bán về T+2** (`cash_pending`); **ứng trước** tính phí 0,04%/ngày; lệnh mua dùng lần lượt: tiền mặt → tự ứng trước (bật mặc định) → vay ký quỹ
+- **Ký quỹ** (phải tự bật + xác nhận rủi ro): chỉ mã có tỷ lệ cho vay, trong hạn mức; lãi 13%/năm tính hằng ngày; tỷ lệ ký quỹ < 40% → gọi ký quỹ (email + thông báo), < 30% → huỷ lệnh mua và bán giải chấp về 50%; tiền về tự trả lãi trước, gốc sau
+- **Lãi tiền gửi** 0,5%/năm trên tiền nhàn rỗi, trả vào ngày giao dịch đầu tháng
+- **Sự kiện quyền**: cổ tức tiền (thuế 5%), cổ tức cổ phiếu, chia tách, quyền mua — điều chỉnh giá tham chiếu và lịch sử giá ở ngày GDKHQ, huỷ lệnh GTD / điều kiện của mã, trả vào ngày thanh toán. Chứng quyền đáo hạn thanh toán bằng tiền theo giá cơ sở bình quân 5 phiên; trái phiếu trả coupon định kỳ và gốc khi đáo hạn
+- Tất cả tham số trên chỉnh được ở trang Quản trị
+- Không bán khống. Tiền dùng số nguyên VNĐ (BIGINT), mọi thay đổi tiền/CP nằm trong 1 transaction có khoá dòng
 
 ## Kiến trúc
 
@@ -135,13 +155,17 @@ RealProvider ──────┘     │
  │ (giá thật, tự về Mock khi lỗi)
  └─HTTP─▶ data-service (FastAPI) ──▶ VCI
                          │ chỉ số, phiên, rollover ngày
-                         └─hooks──▶ TradingEngine ──▶ PGlite (PostgreSQL)
-                                    đặt/sửa/huỷ, khớp lệnh, T+2      ▲
+                         └─hooks──▶ TradingEngine ──▶ PGlite / PostgreSQL
+                                    │ đặt/sửa/huỷ, khớp lệnh, T+2      ▲
+                                    ├ ConditionalEngine (lệnh điều kiện)│
+                                    ├ MarginService (ký quỹ, lãi, giải chấp)
+                                    ├ CorporateService (sự kiện quyền, CW, TP)
+                                    └ NavService (NAV cuối ngày, xếp hạng)
 Express REST /api/* ─────────────────────────────────────────────────┘
 ```
 
 - **Nguồn dữ liệu**: chọn bằng `MARKET_PROVIDER` (`createProvider` trong `backend/src/index.ts`). Muốn thêm nguồn khác (SSI FastConnect, DNSE…) chỉ cần cài đặt `MarketDataProvider` hoặc thay phần gọi nguồn trong data-service.
-- **Đổi sang Supabase**: chạy `backend/migrations/*.sql` trên Supabase và thay lớp `Database` trong `backend/src/db.ts` bằng client `pg` (giao diện `many/one/exec/tx` giữ nguyên).
+- **PostgreSQL thật / Supabase**: đặt `DATABASE_URL` — `Database` trong `backend/src/db.ts` tự dùng client `pg` (giao diện `many/one/exec/tx` giữ nguyên), migration `backend/migrations/*.sql` tự chạy khi khởi động.
 
 ### Sơ đồ dữ liệu
 
@@ -154,11 +178,18 @@ erDiagram
   users ||--o{ settlement_lots : awaits
   users ||--o{ transactions_ledger : records
   users ||--o{ watchlists : watches
+  users ||--o{ conditional_orders : sets
+  users ||--o{ cash_settlements : awaits
+  users ||--o{ nav_daily : snapshots
+  users ||--o{ ca_entitlements : entitled
+  corporate_actions ||--o{ ca_entitlements : creates
+  stocks ||--o| warrants : "CW"
+  stocks ||--o| bonds : "BOND"
   orders ||--o{ trades : fills
   stocks ||--o{ ohlcv_daily : has
   stocks ||--o{ ohlcv_intraday : has
   stocks ||--|| price_snapshots : state
-  accounts { bigint cash_balance bigint cash_hold bigint initial_capital }
+  accounts { bigint cash_balance bigint cash_hold bigint cash_pending bigint loan_balance bigint loan_interest bigint initial_capital }
   orders { text side text order_type bigint price int qty int filled_qty text status bigint hold_amount }
   holdings { int qty_total int qty_available int qty_hold int qty_pending bigint total_cost }
 ```
@@ -167,18 +198,27 @@ erDiagram
 
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
-| POST | `/api/auth/register` · `/login` · `/demo` | Đăng ký / đăng nhập / tài khoản demo → `{ token, user }` |
-| GET | `/api/auth/me` · POST `/api/auth/change-password` | Thông tin / đổi mật khẩu |
+| POST | `/api/auth/register` · `/login` · `/login/2fa` · `/demo` | Đăng ký / đăng nhập (có 2FA → `{ mfaRequired, mfaToken }`, gửi tiếp mã ở `/login/2fa`) / tài khoản demo → `{ token, user }` |
+| GET | `/api/auth/me` · PUT `/api/auth/preferences` · POST `/api/auth/change-password` | Thông tin / tuỳ chọn (email khớp lệnh, tên hiển thị, xếp hạng) / đổi mật khẩu |
+| POST | `/api/auth/forgot-password` · `/reset-password` · `/verify-email` · `/resend-verification` | Quên mật khẩu, xác thực email |
+| GET/POST | `/api/auth/2fa` · `/2fa/setup` · `/2fa/enable` · `/2fa/disable` · `/2fa/recovery-codes` | Xác thực 2 lớp |
 | GET | `/api/market/session` · `/stocks` · `/stocks/:symbol` · `/indices` | Phiên, bảng giá, chi tiết mã (kèm khớp gần nhất), chỉ số |
 | GET | `/api/market/stocks/:symbol/candles?tf=1m\|5m\|15m\|1h\|1D\|1W\|1M` | Nến |
 | GET | `/api/market/indices/:code/history?tf=1m\|1D` | Lịch sử chỉ số |
-| GET | `/api/account` · `/api/portfolio` · POST `/api/account/reset` | Tài khoản, danh mục, đặt lại |
-| GET/POST | `/api/orders?scope=open\|today\|all` | Danh sách / đặt lệnh |
+| GET | `/api/account` · `/api/portfolio` · `/api/portfolio/nav?range=` · POST `/api/account/reset` | Tài khoản, danh mục, lịch sử NAV + VN-Index, đặt lại |
+| GET/POST | `/api/account/advance` · PUT `/api/account/settings` | Xem / ứng trước tiền bán, bật tắt tự ứng |
+| POST | `/api/account/margin` · `/api/account/margin/repay` · GET `/api/account/buying-power?symbol&price` | Bật ký quỹ, trả nợ, sức mua theo mã |
+| GET/POST | `/api/orders?scope=open\|today\|all` | Danh sách / đặt lệnh (`validUntil` cho lệnh nhiều ngày) |
 | PATCH/DELETE | `/api/orders/:id` | Sửa / huỷ lệnh |
+| GET/POST/DELETE | `/api/conditional-orders` | Lệnh điều kiện |
+| GET | `/api/corporate-actions` · `/api/entitlements` · POST `/api/corporate-actions/:id/subscribe` | Sự kiện quyền, quyền được nhận, đăng ký mua |
+| GET | `/api/leaderboard?period=1W\|1M\|3M\|ALL` | Bảng xếp hạng (công khai) |
+| GET | `/api/health` · `/api/metrics` · `/api/system` | Sức khoẻ, Prometheus, trạng thái hệ thống + tham số giao dịch |
+| * | `/api/admin/*` | Quản trị (chỉ ADMIN) |
 | GET | `/api/trades` · `/api/ledger` | Lịch sử khớp, sao kê (lọc `from`, `to`, `symbol`, `side`) |
 | GET/POST/DELETE | `/api/watchlist` | Danh sách theo dõi |
 
-Socket.io: `board`, `indices`, `session` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account` (riêng người dùng, xác thực bằng `auth.token`).
+Socket.io: `board`, `indices`, `session`, `symbols`, `system` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account`, `conditional`, `margin` (riêng người dùng, xác thực bằng `auth.token`).
 
 ## Cấu trúc thư mục
 
@@ -187,15 +227,24 @@ vnstock-sim/
 ├─ data-service/              FastAPI lấy bảng giá + nến ngày thật (app/vci.py, app/normalize.py, tests/)
 ├─ shared/src/index.ts        quy tắc giá, kiểu, schema zod dùng chung
 ├─ backend/
-│  ├─ migrations/001_init.sql
-│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên); vnstock/ = RealProvider
-│  ├─ src/trading/            TradingEngine (khớp lệnh, phong toả, T+2), DTO
-│  ├─ src/routes/             auth, market, trading
+│  ├─ migrations/             001_init … 080_margin_cash (tự chạy khi khởi động)
+│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên); instruments.ts (ETF/CW/TP); vnstock/ = RealProvider
+│  ├─ src/trading/            TradingEngine (khớp lệnh, lô lẻ, GTD, T+2), conditional.ts, margin.ts, cash.ts, DTO
+│  ├─ src/corporate/          sự kiện quyền, đáo hạn chứng quyền / trái phiếu
+│  ├─ src/portfolio/          NAV hằng ngày, bảng xếp hạng
+│  ├─ src/ops/                metrics, cảnh báo, email tổng hợp khớp lệnh
+│  ├─ src/admin/              API quản trị, sao lưu / khôi phục
+│  ├─ src/lib/                auth, totp (2FA), mã hoá, email, lịch nghỉ
+│  ├─ src/routes/             auth, market, trading, corporate, community
 │  ├─ src/seed/               danh sách mã, sinh lịch sử, tài khoản demo
-│  └─ test/                   vitest
-└─ frontend/src/
-   ├─ pages/                  Board, Trade, Market, Portfolio, History, Auth
-   ├─ components/             board, trade, chart, market, portfolio, layout, common
-   ├─ store/                  zustand (market, auth, ui/ticket)
-   └─ hooks/ lib/             realtime socket, api, queries, format
+│  ├─ scripts/                loadtest.ts, backup.ts (sao lưu / khôi phục bằng dòng lệnh)
+│  └─ test/                   vitest (PGlite hoặc TEST_DATABASE_URL)
+├─ frontend/src/
+│  ├─ pages/                  Board, Trade, Market, Portfolio, History, Leaderboard, Admin, Auth, quên / đặt lại mật khẩu, xác thực email, pháp lý
+│  ├─ components/             board, trade, chart, market, portfolio, admin, auth, layout, common
+│  ├─ store/                  zustand (market, auth, ui/ticket)
+│  ├─ hooks/ lib/             realtime socket, api, queries, format, instruments
+│  └─ **/*.test.ts(x)         vitest + Testing Library (jsdom)
+├─ deploy/ Dockerfile docker-compose.yml   triển khai (xem docs/DEPLOY.md)
+└─ .github/workflows/ci.yml   test PGlite + PostgreSQL 16, data-service, build Docker
 ```

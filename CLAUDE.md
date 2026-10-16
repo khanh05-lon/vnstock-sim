@@ -5,7 +5,8 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 ## Lệnh
 
 - `npm run dev` (root) — chạy API :4000 và web :5173 (Vite proxy `/api`, `/socket.io` sang :4000)
-- `npm test` — vitest backend (`backend/test`), dùng PGlite in-memory, ~15s
+- `npm test` — vitest backend (`backend/test`, PGlite in-memory, ~50s) rồi frontend (`frontend/src/**/*.test.ts(x)`, jsdom)
+- Test backend trên PostgreSQL thật: `TEST_DATABASE_URL=postgres://... npm run test -w backend` (mỗi test 1 schema riêng; 3 test chỉ chạy khi có Postgres). Không có Postgres cài sẵn thì dùng gói npm `embedded-postgres` ngoài repo.
 - `npm run typecheck` — tsc FE + BE
 - `npm run dev:vnstock` — như `dev` + data-service :8001 (cần `MARKET_PROVIDER=vnstock` trong `backend/.env`); `npm run test:data-service` — unittest Python
 - Xoá `backend/data/` để seed lại toàn bộ dữ liệu
@@ -26,3 +27,11 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 - Quản trị: `backend/src/admin/` — `installAdmin()` phải gọi TRƯỚC các route `/api` khác (middleware chặn tài khoản bị khoá + cập nhật `last_seen_at`). `AdminStore` giữ trong RAM danh sách TK bị khoá, cờ tạm ngừng (`engine.control`), thông báo; lưu bền trong `market_meta` (key `admin.*`). Mọi thao tác quản trị phải gọi `audit()`.
 - Ngày nghỉ lễ là trạng thái module trong `lib/calendar.ts` (`setHolidays`) — test dùng lịch phải tự `setHolidays([])`.
 - JWT có claim `ms` (thời điểm cấp, mili-giây) để thu hồi đúng token cấp cùng giây với lần đổi mật khẩu.
+- Vé tạm đăng nhập 2FA là JWT có claim `purpose: 'mfa'`; `verifyToken` từ chối mọi token có `purpose` — token mục đích khác không bao giờ dùng làm phiên đăng nhập.
+- `RULES` sửa được lúc chạy: `applyRules(patch)` ghi đè tại chỗ (giữ tham chiếu), mặc định trong `DEFAULT_RULES`, bản quản trị lưu ở `market_meta` key `admin.rules`, FE nhận qua `/api/system`. Phí / thuế được chốt vào từng lệnh (`orders.fee_rate`, `tax_rate`) — tính tiền của lệnh cũ phải dùng giá trị chốt, không dùng `RULES` hiện tại.
+- Hàm bước giá / biên độ (`tickSize`, `priceBand`, `roundToTick`…) nhận `Exchange | {exchange, type}` — với ETF / CW / BOND phải truyền cả `type`. Chỉ số chỉ tính mã `type = 'STOCK'`.
+- Tiền bán về T+2 nằm ở `accounts.cash_pending` + bảng `cash_settlements`, không cộng thẳng vào `cash_balance`. Nợ ký quỹ: `loan_balance` + `loan_interest`; NAV = tiền + chờ về + CK + quyền − nợ (`navOf` ở BE, `navOfAccount` ở FE).
+- Hook ngày mới của `MarketService`: settle → `engine.carryOver()` (lệnh GTD) → `corp.processDay()` → `margin.accrueInterest()`; cuối ngày: `expireAll` → `cond.expire` → `nav.snapshotAll`. Thêm nghiệp vụ theo ngày thì gắn vào đây trong `index.ts`.
+- Với Postgres thật (pool nhiều kết nối) các UPDATE bắn không chờ (`void db.many(...)`) có thể về đích lệch thứ tự — luôn `await`, và cập nhật một chiều dùng `GREATEST`/`LEAST` (PGlite tuần tự hoá nên không lộ lỗi này).
+- Tham số SQL số thực (tỷ lệ chia tách…) phải ép `$n::float8`, nếu không Postgres suy ra BIGINT từ cột và báo lỗi.
+- Sao lưu JSON (`admin/backup.ts`, `BACKUP_TABLES`): thêm bảng dữ liệu người dùng mới thì phải thêm vào danh sách này (theo thứ tự khoá ngoại).
