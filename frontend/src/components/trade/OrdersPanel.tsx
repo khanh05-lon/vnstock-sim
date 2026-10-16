@@ -16,9 +16,10 @@ import {
 } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
 import { cn, fmtBillion, fmtInt, fmtPrice, fmtTimeVN, fmtVnd, parseIntInput, parsePriceInput, priceTone, signTone, toneText } from '../../lib/format';
-import { useCandles, useConditionalOrders, useInvalidateTrading, useLoggedIn, useOrders, usePortfolio } from '../../lib/queries';
+import { useAlerts, useCandles, useConditionalOrders, useInvalidateTrading, useLoggedIn, useOrders, usePortfolio } from '../../lib/queries';
 import { useMarket, useStock } from '../../store/market';
 import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
+import { AlertsTable } from './PriceAlerts';
 
 export const STATUS_STYLE: Record<OrderStatus, string> = {
   PENDING: 'bg-info/15 text-info',
@@ -280,7 +281,8 @@ export function OrdersTable({ orders, actions = true, showDate = false }: { orde
                   <td className="px-3 text-right">
                     {open && (
                       <span className="inline-flex gap-1">
-                        {o.orderType === 'LO' && (
+                        {/* LO, hoặc phần còn lại của MP / MTL đã chuyển thành LO (có giá) */}
+                        {(o.orderType === 'LO' || ((o.orderType === 'MP' || o.orderType === 'MTL') && o.price != null)) && (
                           <button onClick={() => setEditing(o)} className="rounded p-1 text-tx-3 hover:bg-bg-3 hover:text-brand" aria-label={`Sửa lệnh ${o.id}`} title="Sửa lệnh">
                             <Pencil size={14} />
                           </button>
@@ -397,7 +399,7 @@ function CompanyInfo({ symbol }: { symbol: string }) {
   );
 }
 
-type PanelTab = 'open' | 'conditional' | 'today' | 'positions' | 'company';
+type PanelTab = 'open' | 'conditional' | 'alerts' | 'today' | 'positions' | 'company';
 
 export function OrdersPanel({ symbol }: { symbol: string }) {
   const loggedIn = useLoggedIn();
@@ -406,6 +408,8 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
   const { data: today, isLoading } = useOrders('today');
   const { data: conds } = useConditionalOrders('all');
   const activeConds = (conds ?? []).filter((c) => c.status === 'ACTIVE').length;
+  const { data: alerts } = useAlerts();
+  const activeAlerts = (alerts ?? []).filter((a) => a.status === 'ACTIVE').length;
   const invalidate = useInvalidateTrading();
 
   const cancelAll = async () => {
@@ -434,6 +438,7 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
           items={[
             { value: 'open', label: `Lệnh chờ khớp${open?.length ? ` (${open.length})` : ''}` },
             { value: 'conditional', label: `Lệnh điều kiện${activeConds ? ` (${activeConds})` : ''}` },
+            { value: 'alerts', label: `Cảnh báo giá${activeAlerts ? ` (${activeAlerts})` : ''}` },
             { value: 'today', label: 'Sổ lệnh trong ngày' },
             { value: 'positions', label: 'Danh mục' },
             { value: 'company', label: 'Hồ sơ doanh nghiệp' },
@@ -459,6 +464,8 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
           <CompanyInfo symbol={symbol} />
         ) : tab === 'conditional' ? (
           conds?.length ? <ConditionalTable rows={conds.slice(0, 100)} /> : <Empty title="Chưa có lệnh điều kiện" hint="Dùng tab Lệnh điều kiện ở khung đặt lệnh để cài cắt lỗ / chốt lời." />
+        ) : tab === 'alerts' ? (
+          <AlertsTable />
         ) : tab === 'positions' ? (
           <PositionsMini />
         ) : tab === 'open' ? (

@@ -5,6 +5,7 @@ import type { StockRow } from '@vss/shared';
 import { cn, fmtBillion, fmtChange, fmtDateVN, fmtPrice, fmtVnd, fmtVol, priceTone, toneText } from '../../lib/format';
 import { TYPE_LABEL, bondYield, warrantStats } from '../../lib/instruments';
 import { useWatchlist } from '../../lib/queries';
+import { AlertButton } from './PriceAlerts';
 import { useMarket, useStock } from '../../store/market';
 import { useFlash } from '../common/ui';
 
@@ -150,6 +151,7 @@ export function SymbolHeader({ symbol }: { symbol: string }) {
           >
             <Star size={18} fill={starred ? 'currentColor' : 'none'} />
           </button>
+          <AlertButton symbol={symbol} />
           <div>
             <div className="flex items-center gap-2">
               <SymbolPicker symbol={symbol} />

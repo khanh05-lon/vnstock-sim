@@ -1,4 +1,4 @@
-import { RULES, buyHoldAmount, type StockInfo } from '@vss/shared';
+import { RULES, buyHoldAmount, marketOrderTypeFor, type StockInfo } from '@vss/shared';
 import type { Database } from '../db';
 import { forceSellEmail, marginCallEmail } from '../lib/emails';
 import { badRequest, notFound } from '../lib/errors';
@@ -172,6 +172,8 @@ export class MarginService {
            WHERE user_id = $1`,
           [a.user_id, bal, accrued, loanInt, tradeDate],
         );
+        // Lãi tiền gửi vừa trả cũng là tiền về: tự trả nợ ký quỹ (lãi trước, gốc sau)
+        if (bal > a.cash_balance && Number(a.loan_balance) + Number(a.loan_interest) + loanInt > 0) await repayDebt(tx, a.user_id);
         n++;
       });
     }
@@ -258,14 +260,14 @@ export class MarginService {
       if (qty <= 0) qty = Math.min(h.qty_available, lot - 1);
       const odd = qty < lot;
       const q = this.market.quote(h.symbol)!;
-      const mp = !odd && RULES.orderTypes[info.exchange].includes('MP');
+      const mkt = odd ? null : marketOrderTypeFor(info.exchange);
       try {
         const o = await this.engine.placeOrder(
           a.user_id,
-          { symbol: h.symbol, side: 'SELL', orderType: mp ? 'MP' : 'LO', price: mp ? null : q.floor, qty },
+          { symbol: h.symbol, side: 'SELL', orderType: mkt ?? 'LO', price: mkt ? null : q.floor, qty },
           { source: 'FORCE_SELL' },
         );
-        lines.push(`Bán ${fmt(qty)} ${h.symbol} (${mp ? 'MP' : `LO ${fmt(q.floor)}`}) — lệnh #${o.id}`);
+        lines.push(`Bán ${fmt(qty)} ${h.symbol} (${mkt ?? `LO ${fmt(q.floor)}`}) — lệnh #${o.id}`);
         need -= qty * h.price;
       } catch (err) {
         log.error('[margin] không đặt được lệnh bán giải chấp', { err, userId: a.user_id, symbol: h.symbol });

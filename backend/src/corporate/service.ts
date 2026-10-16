@@ -6,6 +6,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { couponDates } from '../market/instruments';
 import type { MarketService } from '../market/marketService';
+import { repayDebt } from '../trading/cash';
 import type { ConditionalEngine } from '../trading/conditional';
 import { dateOnly } from '../trading/dto';
 import type { TradingEngine } from '../trading/engine';
@@ -372,6 +373,8 @@ export class CorporateService {
               ]);
             }
             await tx.many('UPDATE accounts SET cash_balance = $2, updated_at = now() WHERE user_id = $1', [e.user_id, bal]);
+            // Tiền về tài khoản tự trả nợ ký quỹ (lãi trước, gốc sau) như tiền bán về
+            await repayDebt(tx, e.user_id);
           } else {
             const add = a.type === 'RIGHTS' ? e.subscribed : e.shares;
             if (add > 0) {
@@ -418,6 +421,7 @@ export class CorporateService {
             await tx.many(`INSERT INTO transactions_ledger (user_id, type, amount, balance_after, note) VALUES ($1,'TAX',$2,$3,$4)`, [h.user_id, -tax, bal, `Thuế TNCN ${symbol}`]);
           }
           await tx.many('UPDATE accounts SET cash_balance = $2, updated_at = now() WHERE user_id = $1', [h.user_id, bal]);
+          await repayDebt(tx, h.user_id);
         }
         await tx.many('DELETE FROM settlement_lots WHERE user_id = $1 AND symbol = $2 AND settled = false', [h.user_id, symbol]);
         await tx.many('DELETE FROM holdings WHERE user_id = $1 AND symbol = $2', [h.user_id, symbol]);
@@ -496,6 +500,7 @@ export class CorporateService {
               `Thuế TNCN ${RULES.dividendTaxRate * 100}% lãi trái phiếu ${b.symbol}`,
             ]);
             await tx.many('UPDATE accounts SET cash_balance = $2, updated_at = now() WHERE user_id = $1', [h.user_id, afterGross - tax]);
+            await repayDebt(tx, h.user_id);
           }
           await tx.many('UPDATE bonds SET last_coupon_date = $2 WHERE symbol = $1', [b.symbol, d]);
           return hs.map((h) => h.user_id);

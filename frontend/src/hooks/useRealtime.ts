@@ -107,6 +107,11 @@ export function useRealtime() {
       else toast.success(ev.message);
       void qc.invalidateQueries({ queryKey: ['portfolio'] });
     });
+    // Cảnh báo giá kích hoạt (báo 1 lần)
+    s.on('alert', (ev: { alert: { symbol: string }; message: string }) => {
+      toast.info(`Cảnh báo giá ${ev.alert.symbol}`, { description: ev.message, duration: 20_000 });
+      void qc.invalidateQueries({ queryKey: ['alerts'] });
+    });
     s.on('account', () => {
       void qc.invalidateQueries({ queryKey: ['portfolio'] });
       void qc.invalidateQueries({ queryKey: ['ledger'] });

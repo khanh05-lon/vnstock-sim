@@ -8,6 +8,7 @@ import {
   type ConditionalKind,
   type ConditionalOrderDTO,
   type ConditionalOrderInput,
+  marketOrderTypeFor,
   type OrderType,
   type Side,
   type StockInfo,
@@ -326,9 +327,10 @@ export class ConditionalEngine {
       let orderType: OrderType = 'LO';
       let price: number | null = r.limit_price;
       if (r.order_type === 'MARKET') {
-        // Lệnh thị trường: dùng MP nếu sàn hỗ trợ; UPCOM / lô lẻ dùng LO giá trần (mua) / sàn (bán) — khớp ngay ở giá tốt nhất
-        if (!odd && RULES.orderTypes[info.exchange].includes('MP')) {
-          orderType = 'MP';
+        // Lệnh thị trường: MP (HOSE) / MTL (HNX); UPCOM / lô lẻ dùng LO giá trần (mua) / sàn (bán) — khớp ngay ở giá tốt nhất
+        const mkt = odd ? null : marketOrderTypeFor(info.exchange);
+        if (mkt) {
+          orderType = mkt;
           price = null;
         } else price = r.side === 'BUY' ? q.ceil : q.floor;
       } else if (price != null) {

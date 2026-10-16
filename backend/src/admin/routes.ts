@@ -10,6 +10,7 @@ import { accountLockedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { sendLater } from '../routes/auth';
 import { createUserAccount } from '../seed/seed';
+import { repayDebt } from '../trading/cash';
 import { toHoldingDTO, toLedgerDTO, toOrderDTO, type HoldingRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { exportBackup, serializeBackup } from './backup';
 import { audit, dateStr, forbidden, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
@@ -23,7 +24,9 @@ export type { AdminDeps } from './common';
 export const TABLES: { name: string; group: string; desc: string }[] = [
   { name: 'users', group: 'Người dùng', desc: 'Tài khoản đăng nhập, vai trò, trạng thái khoá, 2FA, tuỳ chọn' },
   { name: 'accounts', group: 'Người dùng', desc: 'Tiền mặt, phong toả, vốn ban đầu' },
-  { name: 'watchlists', group: 'Người dùng', desc: 'Danh sách theo dõi' },
+  { name: 'watchlist_lists', group: 'Người dùng', desc: 'Các danh sách theo dõi (tên, thứ tự)' },
+  { name: 'watchlists', group: 'Người dùng', desc: 'Mã trong từng danh sách theo dõi' },
+  { name: 'price_alerts', group: 'Người dùng', desc: 'Cảnh báo giá, khối lượng' },
   { name: 'recovery_codes', group: 'Người dùng', desc: 'Mã khôi phục 2FA (đã băm)' },
   { name: 'password_reset_tokens', group: 'Người dùng', desc: 'Link đặt lại mật khẩu (đã băm, 30 phút)' },
   { name: 'email_verification_tokens', group: 'Người dùng', desc: 'Link xác thực email (đã băm, 24 giờ)' },
@@ -501,6 +504,8 @@ export function adminRoutes(deps: AdminDeps) {
           balance,
           `Quản trị viên điều chỉnh: ${reason}`,
         ]);
+        // Cộng vốn cho tài khoản đang nợ ký quỹ: tiền về tự trả nợ như mọi khoản tiền về khác
+        if (amount > 0) await repayDebt(tx, id);
         await audit(tx, admin, 'CASH_ADJUST', 'user', id, { email: u.email, amount, reason, balanceAfter: balance });
         return balance;
       });

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Search, Star } from 'lucide-react';
 import type { BookLevel, StockRow } from '@vss/shared';
 import { cn, fmtChange, fmtPrice, fmtVol, priceTone, toneBg, toneText, type Tone } from '../../lib/format';
 import { useWatchlist } from '../../lib/queries';
+import { WatchlistBar } from './WatchlistBar';
 import { useMarket, useStock } from '../../store/market';
 import { Empty, Spinner, Tabs, useFlash } from '../common/ui';
 
@@ -89,7 +90,7 @@ function SortTh({ k, sort, setSort, children, className }: { k: SortKey; sort: {
 
 export function PriceBoard() {
   const loaded = useMarket((s) => s.loaded);
-  const { list: watch, loggedIn, toggle } = useWatchlist();
+  const { list: watch, listName, loggedIn, toggle } = useWatchlist();
   const nav = useNavigate();
   const [tab, setTab] = useState<BoardTab>('VN30');
   const [industry, setIndustry] = useState('');
@@ -164,7 +165,7 @@ export function PriceBoard() {
               value: 'WATCH',
               label: (
                 <span className="flex items-center gap-1">
-                  <Star size={12} className="text-brand" fill="currentColor" /> Theo dõi
+                  <Star size={12} className="text-brand" fill="currentColor" /> {loggedIn ? listName : 'Theo dõi'}
                 </span>
               ),
             },
@@ -213,6 +214,7 @@ export function PriceBoard() {
           ))}
         </div>
       </div>
+      {tab === 'WATCH' && <WatchlistBar />}
 
       <div className="min-h-0 flex-1 overflow-auto">
         {!loaded ? (

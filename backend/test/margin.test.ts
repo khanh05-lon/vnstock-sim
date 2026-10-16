@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RULES, buyHoldAmount, calcFee, calcSellTax } from '@vss/shared';
+import { CorporateService } from '../src/corporate/service';
 import type { Database } from '../src/db';
+import type { MarketService } from '../src/market/marketService';
 import { createUserAccount } from '../src/seed/seed';
 import { advanceCash, marginMetrics, previewAdvance } from '../src/trading/cash';
 import { noopNotifier, TradingEngine } from '../src/trading/engine';
@@ -140,6 +142,33 @@ describe('Giao dịch ký quỹ', () => {
     expect(a.loan_balance).toBe(0);
     expect(await ledgerTypes()).toContain('LOAN_REPAY');
     await margin.setEnabled(userId, false);
+  });
+
+  it('cổ tức tiền và lãi tiền gửi về tài khoản cũng tự trả nợ ký quỹ', async () => {
+    await engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'LO', price: 100_000, qty: 1_500 });
+    const loan = (await acct()).loan_balance;
+    expect(loan).toBeGreaterThan(0);
+    // sự kiện cổ tức 2.000đ/CP đã qua GDKHQ, tới ngày thanh toán
+    const [ca] = await db.many<{ id: number }>(
+      `INSERT INTO corporate_actions (symbol, type, ex_date, record_date, pay_date, cash_per_share, status)
+       VALUES ('FPT','CASH_DIVIDEND','2026-10-16','2026-10-17','2026-10-20',2000,'EX_DONE') RETURNING id`,
+    );
+    await db.many('INSERT INTO ca_entitlements (action_id, user_id, qty_held, cash_amount, tax_amount) VALUES ($1,$2,1500,3000000,150000)', [ca.id, userId]);
+    const corp = new CorporateService(db, market as unknown as MarketService, engine, null);
+    await corp.processPayDates('2026-10-20');
+    const a = await acct();
+    expect(a.cash_balance).toBe(0);
+    expect(a.loan_balance).toBe(loan - 2_850_000);
+    expect((await ledgerTypes()).slice(-3)).toEqual(['DIVIDEND', 'TAX', 'LOAN_REPAY']);
+
+    // lãi tiền gửi trả đầu tháng cũng trả nợ: hết lãi vay (gồm lãi 2 ngày vừa cộng) rồi tới gốc
+    await db.many(`UPDATE accounts SET deposit_interest_accrued = 50000, loan_interest = 3000, last_interest_date = '2026-10-31' WHERE user_id = $1`, [userId]);
+    await margin.accrueInterest('2026-11-02');
+    const accrued = Math.round((a.loan_balance * RULES.margin.interestRateYear * 2) / 365);
+    const b = await acct();
+    expect(b.cash_balance).toBe(0);
+    expect(b.loan_interest).toBe(0);
+    expect(b.loan_balance).toBe(a.loan_balance - (50_000 - 3_000 - accrued));
   });
 });
 

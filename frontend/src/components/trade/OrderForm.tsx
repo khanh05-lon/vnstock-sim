@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { GTD_MAX_DAYS, RULES, calcFee, calcSellTax, isValidTick, stepPrice, tickSize, type OrderDTO, type OrderType } from '@vss/shared';
+import { GTD_MAX_DAYS, ORDER_TYPE_HINT, RULES, calcFee, calcSellTax, isValidTick, stepPrice, tickSize, type OrderDTO, type OrderType } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
 import { cn, fmtInt, fmtPrice, fmtVnd, parseIntInput, parsePriceInput } from '../../lib/format';
 import { useBuyingPower, useInvalidateTrading, useLoggedIn, usePortfolio } from '../../lib/queries';
@@ -14,12 +14,7 @@ import { ConditionalForm } from './ConditionalForm';
 /** YYYY-MM-DD cộng n ngày */
 export const addDaysISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
 
-const TYPE_HINT: Record<OrderType, string> = {
-  LO: 'Lệnh giới hạn — khớp tại giá đặt hoặc tốt hơn',
-  MP: 'Lệnh thị trường — khớp ngay với giá tốt nhất, phần dư chuyển thành LO',
-  ATO: 'Lệnh khớp tại giá mở cửa (phiên ATO)',
-  ATC: 'Lệnh khớp tại giá đóng cửa (phiên ATC)',
-};
+const TYPE_HINT = ORDER_TYPE_HINT;
 
 function Stepper({
   label,
@@ -254,15 +249,15 @@ function NormalOrderForm({ symbol }: { symbol: string }) {
       <div>
         <div className="mb-1 label">Loại lệnh</div>
         <div className="flex gap-1">
-          {(['LO', 'MP', 'ATO', 'ATC'] as OrderType[]).map((ot) => {
-            const supported = types.includes(ot);
-            const disabled = !supported || typeDisabled(ot);
+          {/* Mỗi sàn một bộ lệnh: HOSE LO/MP/ATO/ATC, HNX LO/MTL/MOK/MAK/ATC, UPCOM chỉ LO */}
+          {types.map((ot) => {
+            const disabled = typeDisabled(ot);
             return (
               <button
                 key={ot}
                 disabled={disabled}
                 onClick={() => t.setOrderType(ot)}
-                title={!supported ? `Sàn ${ex} không hỗ trợ lệnh ${ot}` : typeDisabled(ot) ? 'Chế độ 24/7 không có phiên ATO/ATC' : TYPE_HINT[ot]}
+                title={typeDisabled(ot) ? 'Chế độ 24/7 không có phiên ATO/ATC' : TYPE_HINT[ot]}
                 className={cn(
                   'h-8 flex-1 rounded-md border text-[12px] font-semibold transition-colors',
                   t.orderType === ot ? 'border-brand bg-brand/10 text-brand' : 'border-line text-tx-2 hover:border-line-2',

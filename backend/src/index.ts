@@ -21,8 +21,11 @@ import { RealProvider } from './market/vnstock/realProvider';
 import { migrate } from './migrate';
 import { authRoutes } from './routes/auth';
 import { marketRoutes } from './routes/market';
+import { alertRoutes } from './routes/alerts';
 import { communityRoutes } from './routes/community';
 import { tradingRoutes } from './routes/trading';
+import { watchlistRoutes } from './routes/watchlists';
+import { PriceAlertService } from './trading/priceAlerts';
 import { NavService } from './portfolio/nav';
 import { AlertMonitor } from './ops/alerts';
 import { FillDigest } from './ops/fillDigest';
@@ -121,10 +124,16 @@ async function main() {
     io.to(`user:${userId}`).emit('margin', ev);
     io.to(`user:${userId}`).emit('account');
   };
+  const priceAlerts = new PriceAlertService(db, market, mailer);
+  priceAlerts.notify = (userId, alert, message) => io.to(`user:${userId}`).emit('alert', { alert, message });
+  await priceAlerts.load();
+  // Mã bị rút khỏi giao dịch (huỷ niêm yết, chứng quyền / trái phiếu đáo hạn) → huỷ cảnh báo của mã đó
+  market.on('symbols', () => void priceAlerts.cancelMissingSymbols().catch((err) => log.error('[alert] lỗi huỷ cảnh báo mã ngừng giao dịch', { err })));
   market.hooks = {
     onTick: async (symbols, trades) => {
       await engine.onTick(symbols, trades);
       await cond.onTick(symbols);
+      await priceAlerts.onTick(symbols);
     },
     onAuction: (kind, prices) => engine.onAuction(kind, prices),
     onDayEnd: async (tradeDate) => {
@@ -157,7 +166,10 @@ async function main() {
     providerName: provider.name,
     settlementDays: config.settlementDays,
     onDelist: async (symbol, reason) => void (await cond.cancelForSymbol(symbol, `Mã ${symbol} huỷ niêm yết: ${reason}`)),
-    onRestored: () => cond.load(),
+    onRestored: async () => {
+      await cond.load();
+      await priceAlerts.load();
+    },
   });
 
   // Chỉ số Prometheus: cần METRICS_TOKEN (production không có token → tắt)
@@ -189,6 +201,8 @@ async function main() {
   app.use('/api/market', marketRoutes(market));
   app.use('/api', communityRoutes(db, nav, market));
   app.use('/api', corporateRoutes(corp));
+  app.use('/api', watchlistRoutes(db));
+  app.use('/api', alertRoutes(priceAlerts));
   app.use('/api', tradingRoutes(db, market, engine, nav, cond, margin));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);

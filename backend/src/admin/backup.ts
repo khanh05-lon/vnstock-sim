@@ -30,7 +30,9 @@ export const BACKUP_TABLES: TableSpec[] = [
   { name: 'users', sql: 'SELECT * FROM users ORDER BY created_at', replace: true },
   { name: 'accounts', sql: 'SELECT * FROM accounts', replace: true },
   { name: 'recovery_codes', sql: 'SELECT * FROM recovery_codes ORDER BY id', replace: true },
+  { name: 'watchlist_lists', sql: 'SELECT * FROM watchlist_lists ORDER BY id', replace: true },
   { name: 'watchlists', sql: 'SELECT * FROM watchlists', replace: true },
+  { name: 'price_alerts', sql: 'SELECT * FROM price_alerts ORDER BY id', replace: true },
   { name: 'orders', sql: 'SELECT * FROM orders ORDER BY id', replace: true },
   { name: 'trades', sql: 'SELECT * FROM trades ORDER BY id', replace: true },
   { name: 'conditional_orders', sql: 'SELECT * FROM conditional_orders ORDER BY id', replace: true },
@@ -178,6 +180,21 @@ export async function restoreBackup(db: Database, b: BackupFile, opts: { dryRun:
   const unknownTables = Object.keys(b.data).filter((t) => !BACKUP_TABLES.some((s) => s.name === t));
   if (unknownTables.length) report.warnings.push(`Bỏ qua bảng không nhận diện được: ${unknownTables.join(', ')}`);
 
+  // Bản sao lưu trước khi có nhiều danh sách theo dõi: mỗi người 1 danh sách mặc định
+  if (!b.data.watchlist_lists && b.data.watchlists?.length) {
+    const ids = new Map<string, number>();
+    const lists: Record<string, unknown>[] = [];
+    for (const w of b.data.watchlists) {
+      const u = String(w.user_id);
+      if (!ids.has(u)) {
+        ids.set(u, ids.size + 1);
+        lists.push({ id: ids.size, user_id: u, name: 'Theo dõi' });
+      }
+    }
+    b.data.watchlist_lists = lists;
+    b.data.watchlists = b.data.watchlists.map((w) => ({ ...w, list_id: w.list_id ?? ids.get(String(w.user_id)) }));
+  }
+
   // Bản v1 không có mật khẩu đã băm → đặt mật khẩu ngẫu nhiên, người dùng phải dùng "Quên mật khẩu"
   const users = b.data.users ?? [];
   const missingHash = users.filter((u) => typeof u.password_hash !== 'string' || !u.password_hash);
@@ -193,7 +210,7 @@ export async function restoreBackup(db: Database, b: BackupFile, opts: { dryRun:
       const existing = new Set((await tx.many<{ symbol: string }>('SELECT symbol FROM stocks')).map((r) => r.symbol));
       const backupStocks = (b.data.stocks ?? []).filter((s) => typeof s.symbol === 'string');
       const referenced = new Set<string>();
-      for (const t of ['watchlists', 'orders', 'trades', 'holdings', 'settlement_lots']) for (const r of b.data[t] ?? []) if (typeof r.symbol === 'string') referenced.add(r.symbol);
+      for (const t of ['watchlists', 'price_alerts', 'orders', 'trades', 'holdings', 'settlement_lots']) for (const r of b.data[t] ?? []) if (typeof r.symbol === 'string') referenced.add(r.symbol);
       const missing = [...referenced].filter((s) => !existing.has(s) && !backupStocks.some((x) => x.symbol === s));
       if (missing.length) throw new RestoreError(`Bản sao lưu tham chiếu mã chứng khoán không có trên hệ thống: ${missing.slice(0, 20).join(', ')}`);
       const toAdd = backupStocks.filter((s) => !existing.has(String(s.symbol)));

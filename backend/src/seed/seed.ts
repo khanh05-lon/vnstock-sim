@@ -240,8 +240,15 @@ export async function seedDemoUser(db: Database, email: string, password: string
       if (buyHoldAmount(price, qty) !== value + fee) throw new Error('Sai lệch tính phí');
     }
     await tx.many('UPDATE accounts SET cash_balance = $2 WHERE user_id = $1', [user.id, balance]);
-    for (const symbol of ['FPT', 'HPG', 'MBB', 'VNM', 'SSI', 'VCB', 'TCB', 'MWG', 'VHM', 'DGC']) {
-      await tx.many('INSERT INTO watchlists (user_id, symbol) VALUES ($1, $2)', [user.id, symbol]);
+    const lists: [string, string[]][] = [
+      ['Theo dõi', ['FPT', 'HPG', 'MBB', 'VNM', 'SSI', 'VCB', 'TCB', 'MWG', 'VHM', 'DGC']],
+      ['Ngân hàng', ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'ACB', 'VPB']],
+    ];
+    for (const [i, [name, symbols]] of lists.entries()) {
+      const list = await tx.one<{ id: number }>('INSERT INTO watchlist_lists (user_id, name, sort) VALUES ($1,$2,$3) RETURNING id', [user.id, name, i]);
+      for (const symbol of symbols) {
+        await tx.many('INSERT INTO watchlists (user_id, list_id, symbol) SELECT $1, $2, symbol FROM stocks WHERE symbol = $3', [user.id, list!.id, symbol]);
+      }
     }
   });
   console.log(`[seed] đã tạo tài khoản demo ${email}`);

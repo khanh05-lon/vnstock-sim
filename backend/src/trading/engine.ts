@@ -20,7 +20,7 @@ import {
   type TradeDTO,
 } from '@vss/shared';
 import type { Database, Queryable } from '../db';
-import { GTD_MAX_DAYS } from '@vss/shared';
+import { GTD_MAX_DAYS, isMarketOrder } from '@vss/shared';
 import { addDays, addTradingDays, skipWeekendsFor } from '../lib/calendar';
 import { badRequest, notFound } from '../lib/errors';
 import { advanceCash, planBuy, previewAdvance, repayDebt, type MoneyRow } from './cash';
@@ -65,6 +65,9 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 const PLACE_PHASES: Record<OrderType, SessionPhase[]> = {
   LO: ['PRE_OPEN', 'ATO', 'CONTINUOUS', 'LUNCH', 'ATC'],
   MP: ['CONTINUOUS'],
+  MTL: ['CONTINUOUS'],
+  MOK: ['CONTINUOUS'],
+  MAK: ['CONTINUOUS'],
   ATO: ['PRE_OPEN', 'ATO'],
   ATC: ['ATC'],
 };
@@ -186,7 +189,7 @@ export class TradingEngine {
     this.track(row!);
     this.notify.order(userId, toOrderDTO(row!));
     this.notify.account(userId);
-    if (this.market.phase === 'CONTINUOUS' && (type === 'LO' || type === 'MP')) await this.matchBook(row!.id);
+    if (this.market.phase === 'CONTINUOUS' && (type === 'LO' || isMarketOrder(type))) await this.matchBook(row!.id);
     return this.getOrder(userId, row!.id);
   }
 
@@ -203,7 +206,9 @@ export class TradingEngine {
       const o = await tx.one<OrderRow>('SELECT * FROM orders WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
       if (!o) throw notFound('Không tìm thấy lệnh');
       if (!OPEN.includes(o.status)) throw badRequest('NOT_MODIFIABLE', 'Lệnh đã khớp hết hoặc đã bị huỷ');
-      if (o.order_type !== 'LO') throw badRequest('NOT_MODIFIABLE', 'Chỉ sửa được lệnh LO');
+      // Phần còn lại của lệnh MP / MTL đã chuyển thành LO (có giá) sửa / huỷ như lệnh LO
+      const asLimit = o.order_type === 'LO' || ((o.order_type === 'MP' || o.order_type === 'MTL') && o.price != null);
+      if (!asLimit) throw badRequest('NOT_MODIFIABLE', 'Chỉ sửa được lệnh LO');
       this.assertNotHalted(o.symbol);
       const info = this.market.info(o.symbol)!;
       const q = this.market.quote(o.symbol)!;
@@ -328,7 +333,7 @@ export class TradingEngine {
       if (!q) continue;
       const t = trades.get(sym);
       for (const r of [...book.values()]) {
-        if (r.price == null || (r.type !== 'LO' && r.type !== 'MP')) continue;
+        if (r.price == null || (r.type !== 'LO' && !isMarketOrder(r.type))) continue;
         if (r.odd) {
           await this.matchOdd(r, q, trades.get(sym));
           continue;
@@ -458,7 +463,7 @@ export class TradingEngine {
   private assertCanPlace(type: OrderType) {
     if (this.market.opts.mode === 'SIMULATED_24_7') {
       if (type === 'ATO' || type === 'ATC') {
-        throw badRequest('SESSION', 'Chế độ mô phỏng 24/7 chỉ có phiên khớp lệnh liên tục — hãy dùng lệnh LO hoặc MP');
+        throw badRequest('SESSION', 'Chế độ mô phỏng 24/7 chỉ có phiên khớp lệnh liên tục — hãy dùng lệnh LO hoặc lệnh thị trường (MP, MTL, MOK, MAK)');
       }
       return;
     }
@@ -599,17 +604,30 @@ export class TradingEngine {
       if (q) await this.matchOdd(r, q);
       return;
     }
-    const isMarket = r.type === 'MP' && r.price == null;
+    const isMarket = isMarketOrder(r.type) && r.price == null;
+    if (r.type === 'MOK') {
+      // Khớp toàn bộ hoặc huỷ: đối ứng trên sổ lệnh không đủ cả khối lượng thì huỷ, không khớp phần nào
+      const q = this.market.quote(r.symbol);
+      const depth = (r.side === 'BUY' ? q?.asks : q?.bids)?.reduce((s, l) => s + l.v, 0) ?? 0;
+      if (depth < r.remaining) {
+        await this.closeOrder(id, null, 'CANCELLED', `Lệnh MOK huỷ: đối ứng chỉ có ${fmt(depth)} CP, không khớp được toàn bộ ${fmt(r.remaining)} CP`);
+        return;
+      }
+    }
     const fills = this.market.consumeBook(r.symbol, r.side, r.remaining, isMarket ? null : r.price);
     if (fills.length) await this.execute(r.id, fills, true);
     if (!isMarket) return;
     const still = this.findResting(id);
     if (!still) return;
     if (!fills.length) {
-      await this.closeOrder(id, null, 'CANCELLED', 'Lệnh MP không có khối lượng đối ứng');
+      await this.closeOrder(id, null, 'CANCELLED', `Lệnh ${r.type} không có khối lượng đối ứng`);
       return;
     }
-    // Phần còn lại của lệnh MP chuyển thành LO cao/thấp hơn 1 bước giá so với giá khớp cuối
+    if (r.type === 'MAK' || r.type === 'MOK') {
+      await this.closeOrder(id, null, 'CANCELLED', `Lệnh ${r.type}: phần chưa khớp bị huỷ`);
+      return;
+    }
+    // Phần còn lại của lệnh MP / MTL chuyển thành LO cao/thấp hơn 1 bước giá so với giá khớp cuối
     const q = this.market.quote(r.symbol)!;
     const ex = this.market.info(r.symbol)!;
     const lastPrice = fills[fills.length - 1].price;

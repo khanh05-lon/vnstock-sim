@@ -41,6 +41,7 @@ const NAV = [
   { to: '/', label: 'Bảng giá', end: true },
   { to: '/trade', label: 'Giao dịch' },
   { to: '/market', label: 'Thị trường' },
+  { to: '/bo-loc', label: 'Bộ lọc' },
   { to: '/xep-hang', label: 'Xếp hạng' },
   { to: '/portfolio', label: 'Tài sản' },
   { to: '/history', label: 'Lịch sử' },

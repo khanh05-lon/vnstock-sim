@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { conditionalOrderSchema, modifyOrderSchema, placeOrderSchema } from '@vss/shared';
 import type { Database } from '../db';
 import { isEmailVerified, requireAuth, type AuthedRequest } from '../lib/auth';
-import { AppError, ah, badRequest, notFound } from '../lib/errors';
+import { AppError, ah, badRequest } from '../lib/errors';
 import { limiter } from '../lib/rateLimit';
 import { config } from '../config';
 import { addDays } from '../lib/calendar';
 import type { MarketService } from '../market/marketService';
 import { metrics } from '../ops/metrics';
 import type { NavService } from '../portfolio/nav';
+import { monthlyReport } from '../portfolio/report';
 import { advanceCash, previewAdvance } from '../trading/cash';
 import type { ConditionalEngine } from '../trading/conditional';
 import type { MarginService } from '../trading/margin';
@@ -377,38 +378,19 @@ export function tradingRoutes(db: Database, market: MarketService, engine: Tradi
     }),
   );
 
-  /* ------------------------------ watchlist ------------------------------ */
+  /* ------------------------------ báo cáo ------------------------------ */
 
   r.get(
-    '/watchlist',
+    '/reports/monthly',
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
-      const rows = await db.many<{ symbol: string }>('SELECT symbol FROM watchlists WHERE user_id = $1 ORDER BY created_at', [user.id]);
-      res.json(rows.map((x) => x.symbol));
+      const thisYear = Number(market.tradeDate.slice(0, 4));
+      const { year } = z.object({ year: z.coerce.number().int().min(2000).max(2100).default(thisYear) }).parse(req.query);
+      res.json(await monthlyReport(db, user.id, year));
     }),
   );
 
-  r.post(
-    '/watchlist',
-    ah(async (req, res) => {
-      const { user } = req as AuthedRequest;
-      const { symbol } = z.object({ symbol: z.string().trim().toUpperCase() }).strict().parse(req.body);
-      if (!market.quote(symbol)) throw notFound('Mã chứng khoán không tồn tại');
-      const count = await db.one<{ n: number }>('SELECT count(*)::int AS n FROM watchlists WHERE user_id = $1', [user.id]);
-      if ((count?.n ?? 0) >= 100) throw badRequest('WATCHLIST_FULL', 'Danh sách theo dõi tối đa 100 mã');
-      await db.many('INSERT INTO watchlists (user_id, symbol) VALUES ($1, $2) ON CONFLICT DO NOTHING', [user.id, symbol]);
-      res.status(201).json({ ok: true });
-    }),
-  );
-
-  r.delete(
-    '/watchlist/:symbol',
-    ah(async (req, res) => {
-      const { user } = req as AuthedRequest;
-      await db.many('DELETE FROM watchlists WHERE user_id = $1 AND symbol = $2', [user.id, req.params.symbol.toUpperCase()]);
-      res.json({ ok: true });
-    }),
-  );
+  // Danh sách theo dõi: routes/watchlists.ts
 
   return r;
 }

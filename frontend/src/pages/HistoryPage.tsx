@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import { LEDGER_LABEL, ORDER_STATUS_LABEL, type OrderStatus } from '@vss/shared';
 import { Empty, Spinner, UnderlineTabs } from '../components/common/ui';
+import { MonthlyReport } from '../components/portfolio/MonthlyReport';
 import { OrdersTable, SideChip } from '../components/trade/OrdersPanel';
 import { cn, downloadCsv, fmtDateTimeVN, fmtInt, fmtPrice, fmtVnd, signTone, toneText, vnDateISO } from '../lib/format';
 import { useLedger, useOrders, useTrades, type HistoryFilter } from '../lib/queries';
 
-type Tab = 'orders' | 'trades' | 'ledger';
+type Tab = 'orders' | 'trades' | 'ledger' | 'report';
 const PAGE = 50;
 
 function Pager({ page, total, onChange }: { page: number; total: number; onChange(p: number): void }) {
@@ -81,7 +82,7 @@ export default function HistoryPage() {
     }
   };
 
-  const active = tab === 'orders' ? orders : tab === 'trades' ? trades : ledger;
+  const active = tab === 'orders' ? orders : tab === 'trades' ? trades : ledger; // tab báo cáo dùng dữ liệu riêng
   const total = active.data?.length ?? 0;
 
   return (
@@ -101,8 +102,13 @@ export default function HistoryPage() {
             { value: 'orders', label: 'Lịch sử lệnh' },
             { value: 'trades', label: 'Lịch sử khớp' },
             { value: 'ledger', label: 'Sao kê tiền' },
+            { value: 'report', label: 'Báo cáo lãi lỗ' },
           ]}
         />
+        {tab === 'report' ? (
+          <MonthlyReport defaultYear={Number(vnDateISO(0).slice(0, 4))} />
+        ) : (
+          <>
         <div className="flex flex-wrap items-end gap-3 border-b border-line px-4 py-3">
           <label>
             <span className="label">Từ ngày</span>
@@ -242,6 +248,8 @@ export default function HistoryPage() {
           )}
         </div>
         <Pager page={page} total={total} onChange={setPage} />
+          </>
+        )}
       </section>
     </div>
   );

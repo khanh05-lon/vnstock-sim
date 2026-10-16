@@ -163,3 +163,12 @@ export function alertEmail(level: string, title: string, detail: string, resolve
     { label: 'Mở trang Giám sát', url: `${config.publicUrl}/admin?tab=monitor` },
   );
 }
+
+export function priceAlertEmail(name: string, symbol: string, condition: string, detail: string): EmailContent {
+  return layout(
+    `Cảnh báo ${symbol}: ${condition} — VNStock Sim`,
+    hello(name),
+    [`Cảnh báo bạn đặt cho mã ${symbol} đã thoả điều kiện "${condition}".`, detail, 'Cảnh báo chỉ báo 1 lần; muốn theo dõi tiếp hãy tạo cảnh báo mới.'],
+    { label: `Mở ${symbol}`, url: `${config.publicUrl}/trade/${symbol}` },
+  );
+}

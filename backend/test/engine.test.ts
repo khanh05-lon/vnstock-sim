@@ -224,10 +224,39 @@ describe('TradingEngine', () => {
 
     market.stocks.get('SHS')!.asks = [];
     const holdBefore = (await account()).cash_hold;
-    const none = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MP', qty: 100 });
+    const none = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MTL', qty: 100 });
     expect(none.status).toBe('CANCELLED');
     expect(none.rejectReason).toMatch(/không có khối lượng đối ứng/);
     expect((await account()).cash_hold).toBe(holdBefore);
+  });
+
+  it('HNX: không nhận MP; MOK khớp đủ hoặc huỷ cả lệnh; MAK huỷ phần dư; MTL phần dư thành LO sửa được', async () => {
+    await expect(engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MP', qty: 100 })).rejects.toThrow(/không hỗ trợ lệnh MP/);
+    await expect(engine.placeOrder(userId, { symbol: 'FPT', side: 'BUY', orderType: 'MOK', qty: 100 })).rejects.toThrow(/không hỗ trợ lệnh MOK/);
+
+    // sổ bán SHS chỉ có 10.000 CP
+    const kill = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MOK', qty: 12_000 });
+    expect(kill).toMatchObject({ status: 'CANCELLED', filledQty: 0 });
+    expect(kill.rejectReason).toMatch(/không khớp được toàn bộ/);
+    expect((await account()).cash_hold).toBe(0);
+    const all = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MOK', qty: 4_000 });
+    expect(all).toMatchObject({ status: 'FILLED', filledQty: 4_000 });
+
+    // còn 6.000 CP đối ứng: MAK 8.000 → khớp 6.000, huỷ 2.000
+    const mak = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MAK', qty: 8_000 });
+    expect(mak).toMatchObject({ status: 'CANCELLED', filledQty: 6_000 });
+    expect(mak.rejectReason).toMatch(/phần chưa khớp bị huỷ/);
+    expect((await account()).cash_hold).toBe(0);
+
+    // MTL: khớp 2 bước giá, phần dư thành LO giá khớp cuối + 1 bước (13.500 + 100)
+    market.stocks.get('SHS')!.asks = [
+      { p: 13_400, v: 1_000 },
+      { p: 13_500, v: 1_000 },
+    ];
+    const mtl = await engine.placeOrder(userId, { symbol: 'SHS', side: 'BUY', orderType: 'MTL', qty: 3_000 });
+    expect(mtl).toMatchObject({ status: 'PARTIAL', filledQty: 2_000, price: 13_600 });
+    const edited = await engine.modifyOrder(userId, mtl.id, { price: 13_700 });
+    expect(edited.price).toBe(13_700);
   });
 
   it('sửa lệnh mua điều chỉnh tiền phong toả; cuối phiên lệnh hết hiệu lực', async () => {

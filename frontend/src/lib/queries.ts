@@ -1,7 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { AccountDTO, Candle, ConditionalOrderDTO, HoldingDTO, LedgerDTO, OrderDTO, StockRow, TradeDTO, TradeTick } from '@vss/shared';
+import type {
+  AccountDTO,
+  Candle,
+  ConditionalOrderDTO,
+  HoldingDTO,
+  LedgerDTO,
+  OrderDTO,
+  PriceAlertDTO,
+  PriceAlertInput,
+  StockRow,
+  TradeDTO,
+  TradeTick,
+  WatchlistDTO,
+} from '@vss/shared';
 import { useAuth } from '../store/auth';
+import { useWatchSel } from '../store/ui';
 import { api, errMsg } from './api';
 
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D' | '1W' | '1M';
@@ -106,34 +120,115 @@ export function useLedger(filter: HistoryFilter = {}) {
   });
 }
 
-export function useWatchlist() {
+/** Các danh sách theo dõi + danh sách đang chọn (nút ☆ thao tác trên danh sách này) */
+export function useWatchlists() {
   const loggedIn = useLoggedIn();
   const qc = useQueryClient();
+  const activeId = useWatchSel((s) => s.activeId);
+  const setActive = useWatchSel((s) => s.setActive);
   const query = useQuery({
-    queryKey: ['watchlist'],
-    queryFn: () => api<string[]>('/watchlist'),
+    queryKey: ['watchlists'],
+    queryFn: () => api<WatchlistDTO[]>('/watchlists'),
     enabled: loggedIn,
   });
+  const lists = query.data ?? [];
+  const active = lists.find((l) => l.id === activeId) ?? lists[0] ?? null;
+  const refresh = () => qc.invalidateQueries({ queryKey: ['watchlists'] });
+
   const toggle = useMutation({
     mutationFn: async (symbol: string) => {
-      const has = (qc.getQueryData<string[]>(['watchlist']) ?? []).includes(symbol);
-      if (has) await api(`/watchlist/${symbol}`, { method: 'DELETE' });
-      else await api('/watchlist', { method: 'POST', body: { symbol } });
-      return { symbol, added: !has };
+      if (!active) throw new Error('Chưa tải xong danh sách theo dõi');
+      const has = active.symbols.includes(symbol);
+      if (has) await api(`/watchlists/${active.id}/symbols/${symbol}`, { method: 'DELETE' });
+      else await api(`/watchlists/${active.id}/symbols`, { method: 'POST', body: { symbol } });
+      return { symbol, added: !has, list: active.name };
     },
     onMutate: async (symbol) => {
-      await qc.cancelQueries({ queryKey: ['watchlist'] });
-      const prev = qc.getQueryData<string[]>(['watchlist']) ?? [];
-      qc.setQueryData(['watchlist'], prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]);
+      await qc.cancelQueries({ queryKey: ['watchlists'] });
+      const prev = qc.getQueryData<WatchlistDTO[]>(['watchlists']) ?? [];
+      if (active) {
+        qc.setQueryData<WatchlistDTO[]>(
+          ['watchlists'],
+          prev.map((l) => (l.id !== active.id ? l : { ...l, symbols: l.symbols.includes(symbol) ? l.symbols.filter((s) => s !== symbol) : [...l.symbols, symbol] })),
+        );
+      }
       return { prev };
     },
     onError: (e, _s, ctx) => {
-      if (ctx) qc.setQueryData(['watchlist'], ctx.prev);
+      if (ctx) qc.setQueryData(['watchlists'], ctx.prev);
       toast.error(errMsg(e));
     },
-    onSuccess: (r) => toast.success(r.added ? `Đã thêm ${r.symbol} vào danh sách theo dõi` : `Đã bỏ ${r.symbol} khỏi danh sách theo dõi`),
+    onSuccess: (r) => toast.success(r.added ? `Đã thêm ${r.symbol} vào "${r.list}"` : `Đã bỏ ${r.symbol} khỏi "${r.list}"`),
+    onSettled: refresh,
   });
-  return { list: query.data ?? [], loggedIn, toggle: (s: string) => toggle.mutate(s) };
+
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    try {
+      const out = await fn();
+      toast.success(ok);
+      await refresh();
+      return out;
+    } catch (e) {
+      toast.error(errMsg(e));
+      return null;
+    }
+  };
+
+  return {
+    loggedIn,
+    lists,
+    active,
+    setActive: (id: number) => setActive(id),
+    toggle: (s: string) => toggle.mutate(s),
+    create: async (name: string) => {
+      const l = (await run(() => api<WatchlistDTO>('/watchlists', { method: 'POST', body: { name } }), `Đã tạo danh sách "${name}"`)) as WatchlistDTO | null;
+      if (l) setActive(l.id);
+      return l;
+    },
+    rename: (id: number, name: string) => run(() => api(`/watchlists/${id}`, { method: 'PATCH', body: { name } }), `Đã đổi tên thành "${name}"`),
+    remove: async (id: number) => {
+      const r = await run(() => api(`/watchlists/${id}`, { method: 'DELETE' }), 'Đã xoá danh sách');
+      if (r && id === active?.id) setActive(lists.find((l) => l.id !== id)?.id ?? null);
+    },
+  };
+}
+
+/** Rút gọn cho nút ☆: mã trong danh sách đang chọn */
+export function useWatchlist() {
+  const w = useWatchlists();
+  return { list: w.active?.symbols ?? [], listName: w.active?.name ?? 'Theo dõi', loggedIn: w.loggedIn, toggle: w.toggle };
+}
+
+/* ------------------------------ cảnh báo giá ------------------------------ */
+
+export function useAlerts(symbol?: string) {
+  const loggedIn = useLoggedIn();
+  return useQuery({
+    queryKey: ['alerts', symbol ?? null],
+    queryFn: () => api<PriceAlertDTO[]>(`/alerts${qs({ scope: 'all', symbol })}`),
+    enabled: loggedIn,
+  });
+}
+
+export function useAlertActions() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['alerts'] });
+  return {
+    create: async (input: PriceAlertInput) => {
+      const a = await api<PriceAlertDTO>('/alerts', { method: 'POST', body: input });
+      await refresh();
+      return a;
+    },
+    cancel: async (id: number) => {
+      try {
+        await api(`/alerts/${id}`, { method: 'DELETE' });
+        toast.success('Đã huỷ cảnh báo');
+      } catch (e) {
+        toast.error(errMsg(e));
+      }
+      await refresh();
+    },
+  };
 }
 
 export function useInvalidateTrading() {

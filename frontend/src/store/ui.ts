@@ -56,3 +56,31 @@ export const useTicket = create<TicketState>((set) => ({
   setQtyText: (qtyText) => set({ qtyText }),
   pickPrice: (price, side) => set((s) => ({ priceText: (price / 1000).toFixed(2), orderType: 'LO', side: side ?? s.side })),
 }));
+
+/** Danh sách theo dõi đang chọn (nút ☆ thêm / bỏ mã vào danh sách này) — nhớ theo trình duyệt */
+interface WatchSelState {
+  activeId: number | null;
+  setActive(id: number | null): void;
+}
+
+function readActiveWatch(): number | null {
+  try {
+    const v = Number(localStorage.getItem('vss-watchlist'));
+    return Number.isInteger(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export const useWatchSel = create<WatchSelState>((set) => ({
+  activeId: readActiveWatch(),
+  setActive(activeId) {
+    try {
+      if (activeId) localStorage.setItem('vss-watchlist', String(activeId));
+      else localStorage.removeItem('vss-watchlist');
+    } catch {
+      /* bỏ qua */
+    }
+    set({ activeId });
+  },
+}));

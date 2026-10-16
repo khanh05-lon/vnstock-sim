@@ -6,7 +6,12 @@ export type Exchange = 'HOSE' | 'HNX' | 'UPCOM';
 /** Loại chứng khoán: cổ phiếu, chứng chỉ quỹ ETF, chứng quyền có bảo đảm, trái phiếu niêm yết */
 export type InstrumentType = 'STOCK' | 'ETF' | 'CW' | 'BOND';
 export type Side = 'BUY' | 'SELL';
-export type OrderType = 'LO' | 'MP' | 'ATO' | 'ATC';
+/**
+ * Loại lệnh: LO giới hạn; MP thị trường (HOSE); MTL / MOK / MAK thị trường của HNX; ATO / ATC lệnh phiên định kỳ.
+ * MP, MTL: phần chưa khớp chuyển thành LO (giá khớp cuối ± 1 bước giá); MAK: phần chưa khớp bị huỷ;
+ * MOK: không khớp được toàn bộ thì huỷ cả lệnh.
+ */
+export type OrderType = 'LO' | 'MP' | 'MTL' | 'MOK' | 'MAK' | 'ATO' | 'ATC';
 export type OrderStatus = 'PENDING' | 'PARTIAL' | 'FILLED' | 'CANCELLED' | 'EXPIRED' | 'REJECTED';
 export type SessionPhase = 'PRE_OPEN' | 'ATO' | 'CONTINUOUS' | 'LUNCH' | 'ATC' | 'PUT_THROUGH' | 'CLOSED';
 export type MarketMode = 'SIMULATED_24_7' | 'REAL_HOURS';
@@ -341,9 +346,36 @@ export const RULES = {
   /** Loại lệnh cho phép theo sàn */
   orderTypes: {
     HOSE: ['LO', 'MP', 'ATO', 'ATC'],
-    HNX: ['LO', 'MP', 'ATC'],
+    HNX: ['LO', 'MTL', 'MOK', 'MAK', 'ATC'],
     UPCOM: ['LO'],
   } as Record<Exchange, OrderType[]>,
+};
+
+/** Lệnh thị trường (không ghi giá, chỉ đặt trong phiên liên tục) */
+export const MARKET_ORDER_TYPES: readonly OrderType[] = ['MP', 'MTL', 'MOK', 'MAK'];
+
+export function isMarketOrder(type: OrderType): boolean {
+  return MARKET_ORDER_TYPES.includes(type);
+}
+
+/**
+ * Lệnh thị trường "thông thường" của sàn — phần chưa khớp chuyển thành LO (MP ở HOSE, MTL ở HNX).
+ * Dùng cho lệnh điều kiện kiểu "thị trường" và bán giải chấp. UPCOM không có → null.
+ */
+export function marketOrderTypeFor(exchange: Exchange): 'MP' | 'MTL' | null {
+  const types = RULES.orderTypes[exchange];
+  return types.includes('MP') ? 'MP' : types.includes('MTL') ? 'MTL' : null;
+}
+
+/** Giải thích ngắn từng loại lệnh (hiện trên form đặt lệnh) */
+export const ORDER_TYPE_HINT: Record<OrderType, string> = {
+  LO: 'Lệnh giới hạn: khớp ở giá đặt hoặc tốt hơn',
+  MP: 'Lệnh thị trường HOSE: khớp ngay ở giá tốt nhất, phần còn lại thành LO (giá khớp cuối ± 1 bước giá)',
+  MTL: 'Lệnh thị trường giới hạn: khớp ngay ở giá tốt nhất, phần còn lại thành LO (giá khớp cuối ± 1 bước giá)',
+  MOK: 'Khớp toàn bộ hoặc huỷ: không khớp được hết khối lượng ngay thì huỷ cả lệnh',
+  MAK: 'Khớp và huỷ: khớp ngay phần có thể, phần còn lại bị huỷ',
+  ATO: 'Lệnh phiên mở cửa: khớp ở giá mở cửa',
+  ATC: 'Lệnh phiên đóng cửa: khớp ở giá đóng cửa',
 };
 
 export type TradingRules = typeof RULES;
@@ -618,7 +650,7 @@ export const placeOrderSchema = z
   .object({
     symbol: symbolField,
     side: z.enum(['BUY', 'SELL']),
-    orderType: z.enum(['LO', 'MP', 'ATO', 'ATC']),
+    orderType: z.enum(['LO', 'MP', 'MTL', 'MOK', 'MAK', 'ATO', 'ATC']),
     price: z.number().int('Giá phải là số nguyên (VNĐ)').positive('Giá phải lớn hơn 0').nullable().optional(),
     qty: z.number().int('Khối lượng phải là số nguyên').positive('Khối lượng phải lớn hơn 0'),
     /** Lệnh nhiều ngày (chỉ LO): hiệu lực tới hết ngày này */
@@ -668,6 +700,100 @@ export const conditionalOrderSchema = z
   });
 
 export type ConditionalOrderInput = z.infer<typeof conditionalOrderSchema>;
+
+/* ===================== Danh sách theo dõi & cảnh báo giá ===================== */
+
+export const MAX_WATCHLISTS = 10;
+export const MAX_WATCHLIST_SYMBOLS = 100;
+
+export interface WatchlistDTO {
+  id: number;
+  name: string;
+  symbols: string[];
+}
+
+export const watchlistNameSchema = z
+  .object({ name: z.string().trim().min(1, 'Nhập tên danh sách').max(40, 'Tên danh sách tối đa 40 ký tự') })
+  .strict();
+
+export const watchlistSymbolSchema = z.object({ symbol: symbolField }).strict();
+
+export type PriceAlertKind = 'PRICE_ABOVE' | 'PRICE_BELOW' | 'CHANGE_UP' | 'CHANGE_DOWN' | 'VOLUME_ABOVE';
+export type PriceAlertStatus = 'ACTIVE' | 'TRIGGERED' | 'CANCELLED';
+
+export const MAX_ACTIVE_ALERTS = 50;
+
+export const PRICE_ALERT_LABEL: Record<PriceAlertKind, string> = {
+  PRICE_ABOVE: 'Giá khớp ≥',
+  PRICE_BELOW: 'Giá khớp ≤',
+  CHANGE_UP: 'Tăng ≥ (% so với tham chiếu)',
+  CHANGE_DOWN: 'Giảm ≥ (% so với tham chiếu)',
+  VOLUME_ABOVE: 'Tổng khối lượng ≥',
+};
+
+export const PRICE_ALERT_STATUS_LABEL: Record<PriceAlertStatus, string> = {
+  ACTIVE: 'Đang theo dõi',
+  TRIGGERED: 'Đã báo',
+  CANCELLED: 'Đã huỷ',
+};
+
+export interface PriceAlertDTO {
+  id: number;
+  symbol: string;
+  kind: PriceAlertKind;
+  /** Giá (đ) với PRICE_*; phần trăm (vd 3.5) với CHANGE_*; số cổ phiếu với VOLUME_ABOVE */
+  value: number;
+  note: string | null;
+  notifyEmail: boolean;
+  status: PriceAlertStatus;
+  triggeredPrice: number | null;
+  triggeredAt: string | null;
+  createdAt: string;
+}
+
+export const priceAlertSchema = z
+  .object({
+    symbol: symbolField,
+    kind: z.enum(['PRICE_ABOVE', 'PRICE_BELOW', 'CHANGE_UP', 'CHANGE_DOWN', 'VOLUME_ABOVE']),
+    value: z.number().positive('Giá trị phải lớn hơn 0'),
+    note: z.string().trim().max(100, 'Ghi chú tối đa 100 ký tự').optional(),
+    notifyEmail: z.boolean().optional(),
+  })
+  .strict()
+  .refine((o) => !o.kind.startsWith('CHANGE') || o.value <= 100, { message: 'Phần trăm thay đổi tối đa 100%', path: ['value'] })
+  .refine((o) => o.kind.startsWith('CHANGE') || Number.isInteger(o.value), { message: 'Giá / khối lượng phải là số nguyên', path: ['value'] });
+
+export type PriceAlertInput = z.infer<typeof priceAlertSchema>;
+
+/* ===================== Báo cáo lãi lỗ theo tháng ===================== */
+
+export interface MonthlyReportRow {
+  /** YYYY-MM (giờ Việt Nam) */
+  month: string;
+  /** Tổng giá trị khớp mua + bán */
+  tradedValue: number;
+  /** Lãi / lỗ đã thực hiện của các lần bán (đã trừ phí mua, phí bán, thuế bán) */
+  realizedPnl: number;
+  fees: number;
+  sellTax: number;
+  /** Cổ tức tiền + lãi trái phiếu, sau thuế */
+  income: number;
+  /** Tiền nhận khi chứng quyền / trái phiếu đáo hạn (không phải lãi) */
+  maturityProceeds: number;
+  depositInterest: number;
+  /** Lãi vay ký quỹ đã trả + phí ứng trước tiền bán */
+  financingCost: number;
+  /** = lãi / lỗ đã thực hiện + cổ tức, lãi TP + lãi tiền gửi − chi phí vốn */
+  net: number;
+}
+
+export interface MonthlyReportDTO {
+  year: number;
+  months: MonthlyReportRow[];
+  total: Omit<MonthlyReportRow, 'month'>;
+  /** Các năm có dữ liệu (để chọn) */
+  years: number[];
+}
 
 export const modifyOrderSchema = z
   .object({

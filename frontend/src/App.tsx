@@ -24,6 +24,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
+const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -72,6 +73,7 @@ export function App() {
               <Route path="trade/:symbol" element={<TradePage />} />
               <Route path="market" element={<MarketPage />} />
               <Route path="xep-hang" element={<LeaderboardPage />} />
+              <Route path="bo-loc" element={<ScreenerPage />} />
               <Route
                 path="portfolio"
                 element={
