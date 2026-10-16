@@ -25,6 +25,7 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -35,6 +36,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const loc = useLocation();
   if (!token) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   return <>{children}</>;
+}
+
+/** Trang chủ: khách chưa đăng nhập xem trang giới thiệu, người đã đăng nhập xem bảng giá (bảng giá luôn có ở /bang-gia) */
+function Home() {
+  const token = useAuth((s) => s.token);
+  return token ? <AppShell /> : <LandingPage />;
 }
 
 function Realtime() {
@@ -62,13 +69,17 @@ export function App() {
         <Realtime />
         <Suspense fallback={fallback}>
           <Routes>
+            <Route path="/gioi-thieu" element={<LandingPage />} />
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/register" element={<AuthPage mode="register" />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
-            <Route element={<AppShell />}>
+            <Route path="/" element={<Home />}>
               <Route index element={<BoardPage />} />
+            </Route>
+            <Route element={<AppShell />}>
+              <Route path="bang-gia" element={<BoardPage />} />
               <Route path="trade" element={<TradePage />} />
               <Route path="trade/:symbol" element={<TradePage />} />
               <Route path="market" element={<MarketPage />} />

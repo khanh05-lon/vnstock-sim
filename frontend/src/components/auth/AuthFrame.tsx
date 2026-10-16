@@ -60,7 +60,7 @@ export function AuthFrame({ children }: { children: ReactNode }) {
     <div className="flex min-h-full flex-col bg-bg-0">
       <div className="flex h-14 items-center justify-between border-b border-line px-4">
         <Logo />
-        <Link to="/" className="text-[13px] text-tx-2 hover:text-brand">
+        <Link to="/bang-gia" className="text-[13px] text-tx-2 hover:text-brand">
           Xem bảng giá →
         </Link>
       </div>

@@ -27,7 +27,10 @@ function StatusBar() {
           ? 'Giá thị trường thật (có độ trễ vài giây), giao dịch bằng vốn ảo — không phải khuyến nghị đầu tư'
           : 'Dữ liệu giả lập phục vụ học tập — không phải giá thật, không phải khuyến nghị đầu tư'}
       </span>
-      <Link to="/dieu-khoan" className="ml-auto hover:text-tx-2">
+      <Link to="/gioi-thieu" className="ml-auto hover:text-tx-2">
+        Giới thiệu
+      </Link>
+      <Link to="/dieu-khoan" className="hover:text-tx-2">
         Điều khoản sử dụng
       </Link>
       <Link to="/chinh-sach-bao-mat" className="hover:text-tx-2">

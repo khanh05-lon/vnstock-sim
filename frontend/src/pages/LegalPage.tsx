@@ -225,7 +225,7 @@ export default function LegalPage({ kind }: { kind: 'terms' | 'privacy' }) {
           <Link to={kind === 'terms' ? '/chinh-sach-bao-mat' : '/dieu-khoan'} className="text-brand hover:underline">
             {kind === 'terms' ? 'Chính sách bảo mật dữ liệu →' : 'Điều khoản sử dụng →'}
           </Link>
-          <Link to="/" className="text-tx-3 hover:text-tx-1">
+          <Link to="/bang-gia" className="text-tx-3 hover:text-tx-1">
             Về bảng giá
           </Link>
         </div>

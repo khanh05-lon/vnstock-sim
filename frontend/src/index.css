@@ -82,6 +82,8 @@
   --color-row-alt: var(--row-alt);
   --color-col-hl: var(--col-hl);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Font tiêu đề trang giới thiệu (Be Vietnam Pro chỉ tải cùng LandingPage) */
+  --font-display: 'Be Vietnam Pro', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { PHASE_LABEL } from '@vss/shared';
@@ -38,7 +38,6 @@ export function Logo({ compact = false }: { compact?: boolean }) {
 }
 
 const NAV = [
-  { to: '/', label: 'Bảng giá', end: true },
   { to: '/trade', label: 'Giao dịch' },
   { to: '/market', label: 'Thị trường' },
   { to: '/bo-loc', label: 'Bộ lọc' },
@@ -186,15 +185,27 @@ export function Header() {
   const { isAdmin } = useAdminMe();
   const theme = useUi((s) => s.theme);
   const toggleTheme = useUi((s) => s.toggleTheme);
+  const { pathname } = useLocation();
+  const onBoard = pathname === '/' || pathname === '/bang-gia';
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-line bg-bg-1 px-3 sm:px-4">
       <Logo />
       <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" aria-label="Điều hướng chính">
+        {/* "/" chỉ là bảng giá khi đã đăng nhập (khách thấy trang giới thiệu) → khách dùng /bang-gia */}
+        <Link
+          to={token ? '/' : '/bang-gia'}
+          aria-current={onBoard ? 'page' : undefined}
+          className={cn(
+            'rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
+            onBoard ? 'text-brand' : 'text-tx-2 hover:text-tx-1',
+          )}
+        >
+          Bảng giá
+        </Link>
         {NAV.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
-            end={n.end}
             className={({ isActive }) =>
               cn(
                 'rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
