@@ -34,4 +34,7 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 - Hook ngày mới của `MarketService`: settle → `engine.carryOver()` (lệnh GTD) → `corp.processDay()` → `margin.accrueInterest()`; cuối ngày: `expireAll` → `cond.expire` → `nav.snapshotAll`. Thêm nghiệp vụ theo ngày thì gắn vào đây trong `index.ts`.
 - Với Postgres thật (pool nhiều kết nối) các UPDATE bắn không chờ (`void db.many(...)`) có thể về đích lệch thứ tự — luôn `await`, và cập nhật một chiều dùng `GREATEST`/`LEAST` (PGlite tuần tự hoá nên không lộ lỗi này).
 - Tham số SQL số thực (tỷ lệ chia tách…) phải ép `$n::float8`, nếu không Postgres suy ra BIGINT từ cột và báo lỗi.
-- Sao lưu JSON (`admin/backup.ts`, `BACKUP_TABLES`): thêm bảng dữ liệu người dùng mới thì phải thêm vào danh sách này (theo thứ tự khoá ngoại).
+- Sao lưu JSON (`admin/backup.ts`, `BACKUP_TABLES`): thêm bảng dữ liệu người dùng mới thì phải thêm vào danh sách này (theo thứ tự khoá ngoại). Đổi cấu trúc bảng thì thêm bước chuyển đổi cho bản sao lưu cũ trong `restoreBackup` (xem ví dụ `watchlist_lists`).
+- Loại lệnh theo sàn nằm trong `RULES.orderTypes` (HOSE MP, HNX MTL/MOK/MAK). Kiểm tra "lệnh thị trường" bằng `isMarketOrder()`, chọn lệnh thị trường của sàn bằng `marketOrderTypeFor()` — không so sánh cứng `=== 'MP'`. CSDL có CHECK `orders_order_type_check`: thêm loại lệnh phải có migration.
+- Mọi khoản tiền cộng vào `cash_balance` (cổ tức, coupon, đáo hạn, lãi tiền gửi, quản trị viên cộng vốn) phải gọi `repayDebt(tx, userId)` trong cùng transaction.
+- `tradingRoutes` gắn `requireAuth` cho cả router ở `/api` → router công khai hoặc router mới phải `app.use` TRƯỚC nó trong `index.ts` (xem `communityRoutes`, `watchlistRoutes`, `alertRoutes`).

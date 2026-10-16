@@ -9,12 +9,13 @@ Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** 
 
 | Trang | Nội dung |
 |---|---|
-| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/**ETF/Chứng quyền/Trái phiếu**/Theo dõi, lọc ngành, tìm mã, sắp xếp cột |
-| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN) + thông tin chứng quyền (giá thực hiện, hoà vốn, ITM/OTM) hoặc trái phiếu (coupon, lợi suất); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume; sổ lệnh có thanh độ sâu; băng khớp lệnh realtime; form **lệnh thường** (lô chẵn / lô lẻ, lệnh nhiều ngày GTD, sức mua tính cả ứng trước và ký quỹ) và **lệnh điều kiện** (cắt lỗ, chốt lời, OCO, trailing stop, mua khi vượt đỉnh, bắt đáy); sửa & huỷ lệnh |
+| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/**ETF/Chứng quyền/Trái phiếu**/Theo dõi (**nhiều danh sách theo dõi**: tạo, đổi tên, xoá), lọc ngành, tìm mã, sắp xếp cột |
+| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN) + thông tin chứng quyền (giá thực hiện, hoà vốn, ITM/OTM) hoặc trái phiếu (coupon, lợi suất); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume; sổ lệnh có thanh độ sâu; băng khớp lệnh realtime; form **lệnh thường** (loại lệnh theo sàn: HOSE LO/MP/ATO/ATC, HNX LO/MTL/MOK/MAK/ATC, UPCOM LO; lô chẵn / lô lẻ, lệnh nhiều ngày GTD, sức mua tính cả ứng trước và ký quỹ) và **lệnh điều kiện** (cắt lỗ, chốt lời, OCO, trailing stop, mua khi vượt đỉnh, bắt đáy); **cảnh báo giá** (giá, % thay đổi, khối lượng; báo trong ứng dụng + email); sửa & huỷ lệnh |
 | **Thị trường** (`/market`) | Biểu đồ chỉ số trong ngày/3T/1N/tất cả; độ rộng từng sàn; **heatmap treemap** theo ngành (diện tích = vốn hoá); top tăng/giảm/GTGD/khối ngoại; hiệu suất ngành |
+| **Bộ lọc** (`/bo-loc`) | Lọc cổ phiếu theo sàn, loại, ngành, P/E, P/B, vốn hoá, giá trị giao dịch, % thay đổi, VN30, được cho vay ký quỹ; 6 bộ lọc mẫu (giá trị, vốn hoá lớn, thanh khoản cao, tăng / giảm mạnh, ký quỹ); sắp xếp cột, xuất CSV |
 | **Tài sản** (`/portfolio`) | NAV (gồm tiền chờ về, quyền chờ nhận, trừ nợ vay), **biểu đồ lợi nhuận so với VN-Index**; tiền & ký quỹ (ứng trước tiền bán, bật ký quỹ, tỷ lệ ký quỹ, trả nợ); quyền cổ tức / đăng ký mua phát hành thêm; danh mục, donut phân bổ, khớp gần đây; đặt lại tài khoản |
 | **Xếp hạng** (`/xep-hang`) | Bảng xếp hạng lợi nhuận 1 tuần / 1 tháng / 3 tháng / toàn thời gian, tên hiển thị tự chọn hoặc che bớt, tuỳ chọn không tham gia |
-| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền (cổ tức, lãi tiền gửi, vay / trả nợ, phí ứng…); lọc; phân trang; xuất CSV |
+| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền (cổ tức, lãi tiền gửi, vay / trả nợ, phí ứng…), **báo cáo lãi lỗ theo tháng** (lãi lỗ đã thực hiện, phí, thuế, cổ tức, lãi tiền gửi, chi phí vốn, kết quả ròng); lọc; phân trang; xuất CSV |
 | **Tài khoản** | Đăng ký nhận 1 tỷ vốn ảo + **xác thực email**; **quên / đặt lại mật khẩu** qua email; **xác thực 2 lớp** (ứng dụng TOTP + 10 mã khôi phục); email tổng hợp lệnh khớp; tài khoản demo |
 | **Quản trị** (`/admin`) | Xem mục [Quản trị & vận hành](#quản-trị--vận-hành) |
 
@@ -134,15 +135,17 @@ data-service giới hạn ≤ 120 request/phút tới nguồn (`UPSTREAM_RPM`) v
 - Lô chẵn 100 CP; **lô lẻ** 1–99 CP chỉ đặt LO, khớp trên bảng lô lẻ riêng (không ăn sổ lệnh lô chẵn, không tham gia ATO/ATC); tối đa 500.000 CP/lệnh (HOSE), 1.000.000 (HNX/UPCOM)
 - **Lệnh nhiều ngày (GTD)**: chỉ LO, tối đa 30 ngày; đầu mỗi ngày kiểm tra lại biên độ mới, ngoài biên độ thì huỷ
 - **Lệnh điều kiện**: dừng (STOP), chạm giá (LIT), trailing stop theo %, cặp OCO; kiểm tra theo giá khớp trong phiên liên tục, kích hoạt thì đặt lệnh thật (MP, hoặc LO trần/sàn với UPCOM và lô lẻ); hiệu lực tối đa 90 ngày
-- Loại lệnh: HOSE `LO/MP/ATO/ATC`, HNX `LO/MP/ATC`, UPCOM `LO`
+- Loại lệnh: HOSE `LO/MP/ATO/ATC`, HNX `LO/MTL/MOK/MAK/ATC`, UPCOM `LO`
 - Phí 0,15% mỗi chiều, thuế TNCN 0,1% khi bán; giá vốn bao gồm phí mua. Phí / thuế được chốt theo từng lệnh lúc đặt, đổi tham số không ảnh hưởng lệnh đang chờ
 - Lệnh mua phong toả `giá × KL + phí` (MP/ATO/ATC phong toả theo giá trần); lệnh bán phong toả cổ phiếu
-- Lệnh MP quét tối đa 3 bước giá, phần dư chuyển thành LO cao/thấp hơn 1 bước giá; không có đối ứng thì huỷ
+- Lệnh thị trường chỉ đặt trong phiên liên tục: **MP** (HOSE) và **MTL** (HNX) quét sổ lệnh, phần dư chuyển thành LO giá khớp cuối ± 1 bước giá (sửa / huỷ như LO); **MAK** khớp phần có thể rồi huỷ phần dư; **MOK** không khớp được toàn bộ thì huỷ cả lệnh; không có đối ứng thì huỷ
 - Cuối phiên, lệnh chưa khớp hết hiệu lực và được giải phóng phong toả
 - **Tiền bán về T+2** (`cash_pending`); **ứng trước** tính phí 0,04%/ngày; lệnh mua dùng lần lượt: tiền mặt → tự ứng trước (bật mặc định) → vay ký quỹ
 - **Ký quỹ** (phải tự bật + xác nhận rủi ro): chỉ mã có tỷ lệ cho vay, trong hạn mức; lãi 13%/năm tính hằng ngày; tỷ lệ ký quỹ < 40% → gọi ký quỹ (email + thông báo), < 30% → huỷ lệnh mua và bán giải chấp về 50%; tiền về tự trả lãi trước, gốc sau
 - **Lãi tiền gửi** 0,5%/năm trên tiền nhàn rỗi, trả vào ngày giao dịch đầu tháng
 - **Sự kiện quyền**: cổ tức tiền (thuế 5%), cổ tức cổ phiếu, chia tách, quyền mua — điều chỉnh giá tham chiếu và lịch sử giá ở ngày GDKHQ, huỷ lệnh GTD / điều kiện của mã, trả vào ngày thanh toán. Chứng quyền đáo hạn thanh toán bằng tiền theo giá cơ sở bình quân 5 phiên; trái phiếu trả coupon định kỳ và gốc khi đáo hạn
+- Mọi khoản tiền về (tiền bán T+2, cổ tức, lãi trái phiếu, thanh toán CW / TP đáo hạn, lãi tiền gửi, quản trị viên cộng vốn) đều tự trả nợ ký quỹ: lãi trước, gốc sau
+- Cảnh báo giá: báo 1 lần rồi dừng; từ chối điều kiện đã thoả ngay lúc tạo; tối đa 50 cảnh báo đang theo dõi; mã ngừng giao dịch thì tự huỷ
 - Tất cả tham số trên chỉnh được ở trang Quản trị
 - Không bán khống. Tiền dùng số nguyên VNĐ (BIGINT), mọi thay đổi tiền/CP nằm trong 1 transaction có khoá dòng
 
@@ -177,7 +180,9 @@ erDiagram
   users ||--o{ holdings : holds
   users ||--o{ settlement_lots : awaits
   users ||--o{ transactions_ledger : records
-  users ||--o{ watchlists : watches
+  users ||--o{ watchlist_lists : owns
+  watchlist_lists ||--o{ watchlists : contains
+  users ||--o{ price_alerts : sets
   users ||--o{ conditional_orders : sets
   users ||--o{ cash_settlements : awaits
   users ||--o{ nav_daily : snapshots
@@ -216,9 +221,13 @@ erDiagram
 | GET | `/api/health` · `/api/metrics` · `/api/system` | Sức khoẻ, Prometheus, trạng thái hệ thống + tham số giao dịch |
 | * | `/api/admin/*` | Quản trị (chỉ ADMIN) |
 | GET | `/api/trades` · `/api/ledger` | Lịch sử khớp, sao kê (lọc `from`, `to`, `symbol`, `side`) |
-| GET/POST/DELETE | `/api/watchlist` | Danh sách theo dõi |
+| GET/POST | `/api/watchlists` · PATCH/DELETE `/api/watchlists/:id` | Các danh sách theo dõi (tối đa 10 danh sách × 100 mã) |
+| POST/DELETE | `/api/watchlists/:id/symbols` · `/api/watchlists/:id/symbols/:symbol` | Thêm / bỏ mã khỏi 1 danh sách |
+| GET/POST/DELETE | `/api/watchlist` | API cũ: thao tác trên danh sách đầu tiên |
+| GET/POST/DELETE | `/api/alerts?scope=active\|all&symbol=` · `/api/alerts/:id` | Cảnh báo giá |
+| GET | `/api/reports/monthly?year=` | Báo cáo lãi lỗ theo tháng |
 
-Socket.io: `board`, `indices`, `session`, `symbols`, `system` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account`, `conditional`, `margin` (riêng người dùng, xác thực bằng `auth.token`).
+Socket.io: `board`, `indices`, `session`, `symbols`, `system` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account`, `conditional`, `margin`, `alert` (riêng người dùng, xác thực bằng `auth.token`).
 
 ## Cấu trúc thư mục
 
@@ -227,20 +236,20 @@ vnstock-sim/
 ├─ data-service/              FastAPI lấy bảng giá + nến ngày thật (app/vci.py, app/normalize.py, tests/)
 ├─ shared/src/index.ts        quy tắc giá, kiểu, schema zod dùng chung
 ├─ backend/
-│  ├─ migrations/             001_init … 080_margin_cash (tự chạy khi khởi động)
+│  ├─ migrations/             001_init … 100_watchlists_alerts (tự chạy khi khởi động)
 │  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên); instruments.ts (ETF/CW/TP); vnstock/ = RealProvider
-│  ├─ src/trading/            TradingEngine (khớp lệnh, lô lẻ, GTD, T+2), conditional.ts, margin.ts, cash.ts, DTO
+│  ├─ src/trading/            TradingEngine (khớp lệnh, lô lẻ, GTD, T+2), conditional.ts, margin.ts, cash.ts, priceAlerts.ts, DTO
 │  ├─ src/corporate/          sự kiện quyền, đáo hạn chứng quyền / trái phiếu
-│  ├─ src/portfolio/          NAV hằng ngày, bảng xếp hạng
+│  ├─ src/portfolio/          NAV hằng ngày, bảng xếp hạng, báo cáo lãi lỗ theo tháng
 │  ├─ src/ops/                metrics, cảnh báo, email tổng hợp khớp lệnh
 │  ├─ src/admin/              API quản trị, sao lưu / khôi phục
 │  ├─ src/lib/                auth, totp (2FA), mã hoá, email, lịch nghỉ
-│  ├─ src/routes/             auth, market, trading, corporate, community
+│  ├─ src/routes/             auth, market, trading, corporate, community, watchlists, alerts
 │  ├─ src/seed/               danh sách mã, sinh lịch sử, tài khoản demo
 │  ├─ scripts/                loadtest.ts, backup.ts (sao lưu / khôi phục bằng dòng lệnh)
 │  └─ test/                   vitest (PGlite hoặc TEST_DATABASE_URL)
 ├─ frontend/src/
-│  ├─ pages/                  Board, Trade, Market, Portfolio, History, Leaderboard, Admin, Auth, quên / đặt lại mật khẩu, xác thực email, pháp lý
+│  ├─ pages/                  Board, Trade, Market, Screener (bộ lọc), Portfolio, History, Leaderboard, Admin, Auth, quên / đặt lại mật khẩu, xác thực email, pháp lý
 │  ├─ components/             board, trade, chart, market, portfolio, admin, auth, layout, common
 │  ├─ store/                  zustand (market, auth, ui/ticket)
 │  ├─ hooks/ lib/             realtime socket, api, queries, format, instruments

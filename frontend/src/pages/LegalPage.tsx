@@ -52,6 +52,10 @@ function Terms() {
         <ul className="list-disc space-y-1 pl-5">
           <li>Lệnh được khớp theo quy tắc mô phỏng (bước giá, biên độ, lô, phiên) gần giống sàn thật nhưng không giống hoàn toàn; kết quả khớp có thể khác thị trường thật.</li>
           <li>
+            Loại lệnh theo sàn: HOSE LO / MP / ATO / ATC, HNX LO / MTL / MOK / MAK / ATC, UPCOM LO. Lệnh MAK, MOK có thể bị huỷ một phần hoặc toàn bộ ngay khi đặt nếu
+            không đủ khối lượng đối ứng.
+          </li>
+          <li>
             Lệnh điều kiện (cắt lỗ, chốt lời, OCO, xu hướng) chỉ là yêu cầu hệ thống <b className="text-tx-1">tự đặt lệnh khi giá chạm ngưỡng</b>. Hệ thống không bảo đảm
             lệnh được kích hoạt hay khớp đúng giá ngưỡng — giá có thể vượt qua ngưỡng, lệnh sinh ra có thể bị từ chối do thiếu tiền, ngoài phiên hoặc mã bị tạm ngừng.
           </li>
@@ -72,7 +76,7 @@ function Terms() {
             {pct(m.forceRatio, 0)} hệ thống <b className="text-tx-1">tự huỷ lệnh mua và bán giải chấp</b> mà không cần bạn đồng ý, kể cả ở giá bất lợi.
           </li>
           <li>Đòn bẩy làm khoản lỗ lớn hơn so với chỉ dùng vốn tự có; bạn có thể mất toàn bộ vốn ảo. Hãy tìm hiểu kỹ trước khi dùng ký quỹ trên tài khoản thật.</li>
-          <li>Tiền về tài khoản được tự động dùng trả lãi vay trước, rồi trả gốc.</li>
+          <li>Mọi khoản tiền về tài khoản (tiền bán, cổ tức, lãi trái phiếu, lãi tiền gửi…) được tự động dùng trả lãi vay trước, rồi trả gốc.</li>
         </ul>
       </Block>
       <Block n={6} title="Sự kiện quyền, chứng quyền, trái phiếu">
@@ -137,7 +141,7 @@ function Privacy() {
           </li>
           <li>
             <b className="text-tx-1">Khi sử dụng:</b> lệnh, lệnh điều kiện, kết quả khớp, danh mục, sao kê vốn ảo, khoản vay ký quỹ ảo, quyền nhận cổ tức, lịch sử tài sản
-            theo ngày, danh sách theo dõi, tuỳ chọn thông báo và bảng xếp hạng, thời điểm hoạt động gần nhất.
+            theo ngày, các danh sách theo dõi, cảnh báo giá, tuỳ chọn thông báo và bảng xếp hạng, thời điểm hoạt động gần nhất.
           </li>
           <li>
             <b className="text-tx-1">Nhật ký kỹ thuật:</b> địa chỉ IP, thời điểm, đường dẫn và kết quả request, phục vụ bảo mật và xử lý sự cố. Số liệu giám sát hệ thống
@@ -154,7 +158,7 @@ function Privacy() {
           <li>Vận hành tài khoản, khớp lệnh, tính tài sản, lãi / lỗ, ký quỹ và sự kiện quyền mô phỏng.</li>
           <li>
             Gửi email: xác thực địa chỉ, đặt lại mật khẩu, cảnh báo bảo mật (đổi mật khẩu, bật / tắt 2FA, dùng mã khôi phục, khoá tài khoản), gọi ký quỹ và bán giải chấp.
-            Email tổng hợp lệnh khớp <b className="text-tx-1">chỉ gửi khi bạn bật</b> trong Cài đặt.
+            Email tổng hợp lệnh khớp và email cảnh báo giá <b className="text-tx-1">chỉ gửi khi bạn bật</b> (trong Cài đặt / khi tạo cảnh báo).
           </li>
           <li>
             Bảng xếp hạng công khai: <b className="text-tx-1">tên hiển thị</b> bạn chọn (hoặc họ tên đã che bớt) và tỷ suất lợi nhuận. Email, số dư và danh mục không bao giờ
