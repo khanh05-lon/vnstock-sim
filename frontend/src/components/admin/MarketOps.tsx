@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { PHASE_LABEL, type SessionPhase } from '@vss/shared';
 import { useAdminAction, useAdminMarket } from '../../lib/admin';
-import { cn, fmtDateVN, fmtTimeVN } from '../../lib/format';
-import { Empty, Spinner } from '../common/ui';
+import { cn, fmtTime } from '../../lib/format';
+import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
 import { RulesEditor } from './RulesEditor';
 
@@ -20,8 +19,6 @@ export function MarketOps() {
   const [symbol, setSymbol] = useState('');
   const [text, setText] = useState('');
   const [level, setLevel] = useState<'info' | 'warning' | 'critical'>('info');
-  const [hDate, setHDate] = useState('');
-  const [hName, setHName] = useState('');
 
   if (isLoading || !data) {
     return (
@@ -33,22 +30,22 @@ export function MarketOps() {
   const st = data.status;
   const sym = symbol.trim().toUpperCase();
   const symOk = data.symbols.some((s) => s.symbol === sym);
-  const r = data.rules;
 
   return (
     <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-      <Section title="Phiên giao dịch">
+      <Section
+        title="Nguồn dữ liệu thị trường"
+        actions={data.market.feed === 'LIVE' ? <Pill tone="good">Binance (giá thật)</Pill> : <Pill tone="warn">Giả lập</Pill>}
+      >
         <KeyValue
           items={[
-            ['Trạng thái', PHASE_LABEL[data.session.phase as SessionPhase] ?? data.session.phase],
-            ['Chế độ', data.session.mode === 'REAL_HOURS' ? 'Theo giờ thật (HOSE)' : 'Mô phỏng 24/7'],
-            ['Ngày giao dịch', fmtDateVN(data.session.tradeDate)],
-            ['Giờ máy chủ (VN)', fmtTimeVN(data.session.serverTime)],
-            ['Nguồn giá', `${data.provider} · ${data.feed === 'LIVE' ? 'giá thật' : 'giả lập'}`],
-            ['Chu kỳ cập nhật giá', `${r.tickIntervalMs} ms`],
+            ['Cấu hình', data.source === 'binance' ? 'Binance, tự chuyển giả lập khi mất kết nối' : 'Chỉ giả lập (MARKET_FEED=sim)'],
+            ['Đang dùng', data.market.feed === 'LIVE' ? 'Luồng WebSocket của Binance' : 'Bộ giả lập giá'],
+            ['Số cặp giao dịch', String(data.symbols.length)],
+            ['Giờ máy chủ (UTC)', new Date(data.market.serverTime).toISOString().slice(11, 19)],
           ]}
         />
-        <p className="mt-3 text-[12px] text-tx-3">Chế độ, nguồn giá và chu kỳ đổi bằng biến môi trường MARKET_MODE, MARKET_PROVIDER, TICK_INTERVAL_MS rồi khởi động lại máy chủ.</p>
+        <p className="mt-3 text-[12px] text-tx-3">Đổi nguồn bằng biến môi trường MARKET_FEED (binance | sim) rồi khởi động lại máy chủ. Sàn hoạt động 24/7, chốt ngày theo 00:00 UTC.</p>
       </Section>
 
       <Section
@@ -56,7 +53,7 @@ export function MarketOps() {
         actions={st.tradingHalted ? <Pill tone="bad">Đang tạm ngừng</Pill> : <Pill tone="good">Bình thường</Pill>}
       >
         <p className="text-tx-2">
-          Tạm ngừng thì nhà đầu tư không đặt / sửa được lệnh và lệnh đang chờ không được khớp; vẫn huỷ lệnh và xem bảng giá được. Mọi trình duyệt thấy banner đỏ ngay lập tức.
+          Tạm ngừng thì người dùng không đặt / sửa được lệnh và lệnh đang chờ không được khớp; vẫn huỷ lệnh và xem thị trường được. Mọi trình duyệt thấy banner đỏ ngay lập tức.
         </p>
         {st.tradingHalted && <p className="mt-2 text-down">Lý do: {st.haltReason}</p>}
         <div className="mt-3">
@@ -72,19 +69,19 @@ export function MarketOps() {
         </div>
       </Section>
 
-      <Section title="Tạm ngừng giao dịch theo mã">
+      <Section title="Tạm ngừng giao dịch theo cặp">
         <div className="flex gap-2">
           <input
             className="input h-9 flex-1 uppercase"
             list="admin-symbols"
-            placeholder="Nhập mã, ví dụ HPG"
+            placeholder="Nhập cặp, ví dụ BTCUSDT"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
           />
           <datalist id="admin-symbols">
             {data.symbols.map((s) => (
               <option key={s.symbol} value={s.symbol}>
-                {s.exchange} · {s.name}
+                {s.baseAsset}/USDT · {s.name}
               </option>
             ))}
           </datalist>
@@ -95,7 +92,7 @@ export function MarketOps() {
               if (await act(`/admin/market/symbols/${sym}/halt`, 'POST', { halted: true }, `Đã tạm ngừng ${sym}`)) setSymbol('');
             }}
           >
-            Tạm ngừng mã
+            Tạm ngừng cặp
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -113,7 +110,7 @@ export function MarketOps() {
               </span>
             ))
           ) : (
-            <span className="text-[12px] text-tx-3">Không có mã nào bị tạm ngừng.</span>
+            <span className="text-[12px] text-tx-3">Không có cặp nào bị tạm ngừng.</span>
           )}
         </div>
       </Section>
@@ -123,7 +120,7 @@ export function MarketOps() {
           <div className={cn('rounded-md border px-3 py-2 text-[13px]', LEVELS.find((l) => l.value === st.announcement!.level)?.cls)}>
             {st.announcement.text}
             <div className="mt-1 flex items-center justify-between text-[11px] opacity-80">
-              <span>Đăng lúc {fmtTimeVN(st.announcement.updatedAt)}</span>
+              <span>Đăng lúc {fmtTime(st.announcement.updatedAt)}</span>
               <button className="underline" onClick={() => void act('/admin/announcement', 'DELETE', undefined, 'Đã gỡ thông báo')}>
                 Gỡ thông báo
               </button>
@@ -158,52 +155,15 @@ export function MarketOps() {
         </div>
       </Section>
 
-      <Section title="Ngày nghỉ lễ" pad={false}>
-        <div className="flex flex-wrap gap-2 border-b border-line p-4">
-          <input type="date" className="input h-9 w-44" value={hDate} onChange={(e) => setHDate(e.target.value)} aria-label="Ngày nghỉ" />
-          <input className="input h-9 min-w-0 flex-1" placeholder="Tên ngày lễ" value={hName} onChange={(e) => setHName(e.target.value)} />
-          <button
-            className="btn btn-ghost h-9"
-            disabled={!hDate || hName.trim().length < 2}
-            onClick={async () => {
-              if (await act('/admin/holidays', 'POST', { date: hDate, name: hName.trim() }, 'Đã thêm ngày nghỉ')) {
-                setHDate('');
-                setHName('');
-              }
-            }}
-          >
-            Thêm
-          </button>
-        </div>
-        {data.holidays.length ? (
-          <ul className="max-h-60 divide-y divide-line overflow-y-auto">
-            {data.holidays.map((h) => (
-              <li key={h.date} className="flex items-center gap-3 px-4 py-2 text-[13px]">
-                <span className="num w-24 font-medium">{fmtDateVN(h.date)}</span>
-                <span className="flex-1 text-tx-2">{h.name}</span>
-                <button className="text-[12px] text-down hover:underline" onClick={() => void act(`/admin/holidays/${h.date}`, 'DELETE', undefined, 'Đã xoá ngày nghỉ')}>
-                  Xoá
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty title="Chưa khai báo ngày nghỉ" />
-        )}
-        <p className="border-t border-line px-4 py-2.5 text-[11px] text-tx-3">
-          Áp dụng ở chế độ giờ thật: ngày lễ đóng cửa và không tính vào T+2. Danh sách mẫu cần cập nhật theo thông báo chính thức của Sở Giao dịch Chứng khoán.
-        </p>
-      </Section>
-
       <RulesEditor />
 
       <ReasonModal
         open={haltOpen}
         title="Tạm ngừng nhận lệnh toàn hệ thống"
-        description="Lý do sẽ hiển thị cho mọi nhà đầu tư trên banner và trong thông báo lỗi khi đặt lệnh."
+        description="Lý do sẽ hiển thị cho mọi người dùng trên banner và trong thông báo lỗi khi đặt lệnh."
         confirmLabel="Tạm ngừng"
         danger
-        placeholder="Ví dụ: Bảo trì hệ thống, sự cố nguồn giá…"
+        placeholder="Ví dụ: Bảo trì hệ thống, sự cố nguồn giá..."
         onClose={() => setHaltOpen(false)}
         onConfirm={async (reason) => {
           if (await act('/admin/market/halt', 'POST', { halted: true, reason }, 'Đã tạm ngừng nhận lệnh')) setHaltOpen(false);

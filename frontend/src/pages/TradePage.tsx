@@ -1,48 +1,48 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { CandleChart } from '../components/chart/CandleChart';
 import { Spinner, UnderlineTabs } from '../components/common/ui';
 import { OrderBook, TradeTape } from '../components/trade/OrderBook';
 import { OrderForm } from '../components/trade/OrderForm';
 import { OrdersPanel } from '../components/trade/OrdersPanel';
+import { AlertButton } from '../components/trade/PriceAlerts';
 import { SymbolHeader } from '../components/trade/SymbolHeader';
 import { SymbolList } from '../components/trade/SymbolList';
+import { fmtPrice } from '../lib/format';
 import { useMarket } from '../store/market';
-import { useTicket } from '../store/ui';
 
 const LAST_KEY = 'vss-last-symbol';
+const DEFAULT = 'BTCUSDT';
 
+/** Màn giao dịch Spot bố cục kiểu Binance: sổ lệnh | biểu đồ + đặt lệnh | danh sách cặp + giao dịch thị trường */
 export default function TradePage() {
   const { symbol: raw } = useParams();
-  const [params] = useSearchParams();
   const symbol = raw?.toUpperCase();
   const loaded = useMarket((s) => s.loaded);
-  const exists = useMarket((s) => (symbol ? !!s.rows[symbol] : false));
-  const [rightTab, setRightTab] = useState<'book' | 'tape'>('book');
+  const row = useMarket((s) => (symbol ? s.rows[symbol] : undefined));
+  const [mobileTab, setMobileTab] = useState<'chart' | 'book' | 'trades'>('chart');
 
   useEffect(() => {
-    if (symbol && exists) {
+    if (symbol && row) {
       try {
         localStorage.setItem(LAST_KEY, symbol);
       } catch {
         /* bỏ qua */
       }
-      document.title = `${symbol} · Giao dịch · VNStock`;
     }
-    return () => {
-      document.title = 'VNStock · Bảng giá & Giao dịch mô phỏng';
-    };
-  }, [symbol, exists]);
+  }, [symbol, row]);
 
+  // Tiêu đề tab hiển thị giá như Binance: "82,035.10 | BTCUSDT | VNCoin"
   useEffect(() => {
-    const side = params.get('side');
-    if (side === 'BUY' || side === 'SELL') useTicket.getState().setSide(side);
-  }, [params, symbol]);
+    if (!row) return;
+    document.title = `${fmtPrice(row.last, row.filters.tickSize)} | ${row.baseAsset}/${row.quoteAsset} | VNCoin`;
+  }, [row?.last, row]);
+  useEffect(() => () => void (document.title = 'VNCoin · Sàn giao dịch coin mô phỏng'), []);
 
   if (!symbol) {
-    let last = 'FPT';
+    let last = DEFAULT;
     try {
-      last = localStorage.getItem(LAST_KEY) || 'FPT';
+      last = localStorage.getItem(LAST_KEY) || DEFAULT;
     } catch {
       /* bỏ qua */
     }
@@ -55,52 +55,52 @@ export default function TradePage() {
       </div>
     );
   }
-  if (!exists) return <Navigate to="/trade/FPT" replace />;
+  if (!row) return <Navigate to={`/trade/${DEFAULT}`} replace />;
 
   return (
-    <div className="grid flex-1 grid-cols-1 gap-2 p-2 xl:h-[calc(100vh-56px-28px)] xl:min-h-[720px] xl:grid-cols-[minmax(0,1fr)_300px_330px] xl:grid-rows-[auto_minmax(0,1fr)_280px]">
-      <section className="panel xl:col-span-3" aria-label="Thông tin mã">
-        <SymbolHeader symbol={symbol} />
+    <div className="grid flex-1 grid-cols-1 gap-1 bg-bg-0 p-1 xl:grid-cols-[300px_minmax(0,1fr)_310px] xl:grid-rows-[auto_520px_auto_minmax(280px,auto)]">
+      <section className="panel flex items-center pr-3 xl:col-span-3" aria-label="Thông tin cặp">
+        <div className="min-w-0 flex-1">
+          <SymbolHeader symbol={symbol} />
+        </div>
+        <AlertButton symbol={symbol} />
       </section>
 
-      <section className="panel flex h-[480px] min-h-0 flex-col xl:h-auto" aria-label="Biểu đồ">
+      {/* Màn hẹp: chuyển tab Biểu đồ / Sổ lệnh / Giao dịch */}
+      <div className="panel xl:hidden">
+        <UnderlineTabs
+          value={mobileTab}
+          onChange={setMobileTab}
+          items={[
+            { value: 'chart', label: 'Biểu đồ' },
+            { value: 'book', label: 'Sổ lệnh' },
+            { value: 'trades', label: 'Giao dịch' },
+          ]}
+        />
+      </div>
+
+      <section className={`panel min-h-0 flex-col xl:row-span-2 xl:flex ${mobileTab === 'book' ? 'flex' : 'hidden'}`} aria-label="Sổ lệnh">
+        <OrderBook symbol={symbol} />
+      </section>
+
+      <section className={`panel h-[440px] min-h-0 flex-col xl:flex xl:h-auto ${mobileTab === 'chart' ? 'flex' : 'hidden'}`} aria-label="Biểu đồ">
         <CandleChart symbol={symbol} className="flex-1" />
       </section>
 
-      <section className="panel flex min-h-0 flex-col xl:row-span-2" aria-label="Sổ lệnh và khớp lệnh">
-        <UnderlineTabs
-          value={rightTab}
-          onChange={setRightTab}
-          items={[
-            { value: 'book', label: 'Sổ lệnh' },
-            { value: 'tape', label: 'Khớp lệnh' },
-          ]}
-        />
-        {rightTab === 'book' ? (
-          <>
-            <OrderBook symbol={symbol} />
-            <div className="border-t border-line text-[12px] font-medium text-tx-2">
-              <div className="px-3 pt-2">Khớp gần nhất</div>
-            </div>
-            <div className="flex min-h-[200px] flex-1 flex-col">
-              <TradeTape symbol={symbol} />
-            </div>
-          </>
-        ) : (
-          <div className="flex min-h-[400px] flex-1 flex-col">
-            <TradeTape symbol={symbol} />
-          </div>
-        )}
+      <section className="panel hidden min-h-0 flex-col xl:flex" aria-label="Danh sách cặp">
+        <SymbolList current={symbol} />
       </section>
 
-      <section className="panel flex min-h-0 flex-col xl:row-span-2" aria-label="Đặt lệnh">
+      <section className="panel" aria-label="Đặt lệnh">
         <OrderForm symbol={symbol} />
-        <div className="flex min-h-[260px] flex-1 flex-col border-t border-line">
-          <SymbolList current={symbol} />
-        </div>
       </section>
 
-      <section className="panel flex min-h-[280px] flex-col" aria-label="Lệnh và danh mục">
+      <section className={`panel min-h-[320px] flex-col xl:flex ${mobileTab === 'trades' ? 'flex' : 'hidden'}`} aria-label="Giao dịch thị trường">
+        <div className="px-3 pt-2 text-[13px] font-semibold">Giao dịch thị trường</div>
+        <TradeTape symbol={symbol} />
+      </section>
+
+      <section className="panel flex min-h-[280px] flex-col xl:col-span-3" aria-label="Lệnh và tài sản">
         <OrdersPanel symbol={symbol} />
       </section>
     </div>

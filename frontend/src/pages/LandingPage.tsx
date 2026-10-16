@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { MotionConfig, motion, useMotionValueEvent, useScroll } from 'motion/react';
 import { ArrowRight, Menu, Moon, Sun, X } from 'lucide-react';
-import { PHASE_LABEL, RULES } from '@vss/shared';
+import { RULES } from '@vss/shared';
 import { LiveTicker } from '../components/auth/AuthFrame';
 import { Faq } from '../components/landing/Faq';
 import { Features } from '../components/landing/Features';
@@ -170,13 +170,13 @@ function LandingNav() {
 }
 
 function SessionPill() {
-  const session = useMarket((s) => s.session);
+  const status = useMarket((s) => s.status);
   const connected = useMarket((s) => s.connected);
-  const open = session?.phase === 'CONTINUOUS' || session?.phase === 'ATO' || session?.phase === 'ATC';
+  const live = connected && status?.feed === 'LIVE';
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-line-2 bg-bg-1/70 px-3 py-1.5 text-[13px] text-tx-2">
-      <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : open ? 'bg-up pulse-dot' : 'bg-ref')} aria-hidden />
-      {session ? `${PHASE_LABEL[session.phase]}, ${session.feed === 'LIVE' ? 'giá thị trường thật' : 'giá mô phỏng'}` : 'Đang kết nối thị trường'}
+      <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : live ? 'bg-up pulse-dot' : 'bg-ref')} aria-hidden />
+      {!connected ? 'Đang kết nối thị trường' : live ? 'Giao dịch 24/7, giá thật từ Binance' : 'Giao dịch 24/7, đang dùng giá giả lập'}
     </span>
   );
 }
@@ -206,14 +206,14 @@ function Hero() {
             {...item(1)}
             className="mt-6 font-display text-[40px] font-bold leading-[1.1] tracking-tight sm:text-[52px] lg:text-[60px]"
           >
-            Tập đầu tư với <span className="whitespace-nowrap text-brand">{fmtCapital(RULES.initialCapital)}</span> vốn ảo
+            Tập giao dịch coin với <span className="whitespace-nowrap text-brand">{fmtCapital(RULES.initialUsdt)}</span> vốn ảo
           </motion.h1>
           <motion.p {...item(2)} className="mt-6 max-w-[34rem] text-[18px] leading-relaxed text-tx-2">
-            Bảng giá realtime, đặt lệnh như trên sàn HOSE, HNX, UPCOM. Sai thì rút kinh nghiệm, không mất tiền thật.
+            Giá và sổ lệnh thật từ Binance, đặt lệnh như sàn lớn. Sai thì rút kinh nghiệm, không mất tiền thật.
           </motion.p>
           <motion.div {...item(3)} className="mt-9 flex flex-col gap-3 sm:flex-row">
             <PrimaryCta />
-            <SecondaryCta to="/bang-gia">Xem bảng giá</SecondaryCta>
+            <SecondaryCta to="/thi-truong">Xem thị trường</SecondaryCta>
           </motion.div>
         </div>
         <motion.div
@@ -231,12 +231,11 @@ function Hero() {
 
 function Stats() {
   const total = useMarket((s) => s.symbols.length);
-  const orderTypes = new Set(Object.values(RULES.orderTypes).flat());
   const stats = [
-    { value: total ? String(total) : '...', label: 'mã cổ phiếu, ETF, chứng quyền và trái phiếu' },
-    { value: '3', label: 'sàn giao dịch HOSE, HNX và UPCOM' },
-    { value: String(orderTypes.size), label: `loại lệnh: ${[...orderTypes].join(', ')}` },
-    { value: '24/7', label: 'thị trường mô phỏng luôn mở để bạn luyện tập' },
+    { value: total ? String(total) : '...', label: 'cặp coin với USDT, từ BTC, ETH tới các altcoin lớn' },
+    { value: '5', label: 'loại lệnh: giới hạn, thị trường, post-only, stop-limit, OCO' },
+    { value: '<1s', label: 'độ trễ giá và sổ lệnh so với Binance' },
+    { value: '24/7', label: 'thị trường luôn mở, giống sàn coin thật' },
   ];
   return (
     <section className="py-16 lg:py-20">
@@ -269,8 +268,8 @@ function FinalCta() {
             </h2>
             <p className="mt-4 max-w-[52ch] text-[17px] leading-relaxed text-tx-2">
               {loggedIn
-                ? 'Danh mục, lệnh chờ và cảnh báo giá của bạn vẫn đang được cập nhật.'
-                : `Mở tài khoản miễn phí, nhận ${fmtCapital(RULES.initialCapital)} vốn ảo và giao dịch ngay hôm nay.`}
+                ? 'Ví, lệnh chờ và cảnh báo giá của bạn vẫn đang được cập nhật theo giá Binance.'
+                : `Mở tài khoản miễn phí, nhận ${fmtCapital(RULES.initialUsdt)} vốn ảo và giao dịch ngay hôm nay.`}
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <PrimaryCta />
@@ -285,10 +284,9 @@ function FinalCta() {
 
 function Footer() {
   const product = [
-    { to: '/bang-gia', label: 'Bảng giá' },
+    { to: '/thi-truong', label: 'Thị trường' },
     { to: '/trade', label: 'Giao dịch' },
-    { to: '/market', label: 'Thị trường' },
-    { to: '/bo-loc', label: 'Bộ lọc' },
+    { to: '/vi', label: 'Ví' },
     { to: '/xep-hang', label: 'Xếp hạng' },
   ];
   const legal = [
@@ -301,14 +299,14 @@ function Footer() {
         <div className="md:col-span-6">
           <Logo />
           <p className="mt-4 max-w-[46ch] text-[14px] leading-relaxed text-tx-3">
-            Sàn giao dịch chứng khoán Việt Nam mô phỏng, phục vụ học tập. Dữ liệu và kết quả không phải khuyến nghị đầu tư.
+            Sàn giao dịch coin mô phỏng với giá thật từ Binance, phục vụ học tập. Dữ liệu và kết quả không phải khuyến nghị đầu tư.
           </p>
         </div>
         <FooterCol title="Sản phẩm" links={product} className="md:col-span-3" />
         <FooterCol title="Pháp lý" links={legal} className="md:col-span-3" />
       </div>
       <div className="border-t border-line">
-        <div className="mx-auto max-w-7xl px-4 py-6 text-[13px] text-tx-3 sm:px-6">© {new Date().getFullYear()} VNStock SIM</div>
+        <div className="mx-auto max-w-7xl px-4 py-6 text-[13px] text-tx-3 sm:px-6">© {new Date().getFullYear()} VNCoin SIM</div>
       </div>
     </footer>
   );
@@ -335,7 +333,7 @@ export default function LandingPage() {
   useSystemStatus();
   useEffect(() => {
     const prev = document.title;
-    document.title = 'VNStock SIM · Tập đầu tư chứng khoán bằng vốn ảo';
+    document.title = 'VNCoin · Tập giao dịch coin bằng vốn ảo';
     return () => {
       document.title = prev;
     };

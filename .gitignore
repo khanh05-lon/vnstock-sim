@@ -1,7 +1,7 @@
 node_modules
 dist
 .env
-backend/data
+backend/data*
 *.log
 data-service/.venv
 __pycache__

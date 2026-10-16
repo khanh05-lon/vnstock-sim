@@ -45,15 +45,15 @@ export function Faq() {
   const items = [
     {
       q: 'Tôi có mất tiền thật không?',
-      a: `Không. Mỗi tài khoản nhận ${fmtCapital(RULES.initialCapital)} vốn ảo, hệ thống không có nạp hay rút tiền thật. Lãi lỗ chỉ tồn tại trong mô phỏng.`,
+      a: `Không. Mỗi tài khoản nhận ${fmtCapital(RULES.initialUsdt)} vốn ảo, hệ thống không có nạp hay rút tiền hoặc coin thật. Lãi lỗ chỉ tồn tại trong mô phỏng.`,
     },
     {
       q: 'Giá trên bảng là giá thật hay giả lập?',
-      a: 'Mặc định là giá mô phỏng chạy liên tục. Khi bật nguồn dữ liệu thị trường, bảng giá lấy theo giá thật với độ trễ vài giây và thanh trạng thái sẽ ghi rõ nguồn giá.',
+      a: 'Giá, sổ lệnh và giao dịch lấy thật từ Binance, trễ dưới 1 giây. Nếu mất kết nối, hệ thống tự chuyển sang giá giả lập và hiện nhãn "Giả lập" trên thanh trạng thái.',
     },
     {
       q: 'Lệnh của tôi được khớp như thế nào?',
-      a: 'Lệnh khớp với sổ lệnh theo thứ tự giá và thời gian, đúng bước giá, biên độ và lô chẵn của từng sàn. Lệnh lớn sẽ ăn dần nhiều mức giá như ngoài thị trường.',
+      a: 'Lệnh khớp với sổ lệnh thật của Binance nhưng không được gửi lên Binance. Lệnh lớn ăn dần nhiều mức giá nên có trượt giá; lệnh chờ khớp ở đúng giá đặt khi thị trường giao dịch qua mức giá đó.',
     },
     {
       q: 'Thua hết vốn ảo thì làm sao?',
@@ -61,7 +61,7 @@ export function Faq() {
     },
     {
       q: 'Thông tin ở đây có phải khuyến nghị đầu tư không?',
-      a: 'Không. Đây là công cụ học tập. Dữ liệu và kết quả mô phỏng không phải lời khuyên mua bán chứng khoán.',
+      a: 'Không. Đây là công cụ học tập. Dữ liệu và kết quả mô phỏng không phải lời khuyên mua bán tài sản mã hoá.',
     },
   ];
 

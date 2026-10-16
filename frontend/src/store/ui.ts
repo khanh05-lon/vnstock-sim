@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { OrderType, Side } from '@vss/shared';
+import type { Side } from '@vss/shared';
 
 export type Theme = 'dark' | 'light';
 
@@ -32,32 +32,26 @@ export const useUi = create<UiState>((set, get) => ({
   },
 }));
 
-/** Phiếu lệnh dùng chung giữa sổ lệnh (bấm giá) và form đặt lệnh */
+/** Loại form đặt lệnh (như Binance): Giới hạn / Thị trường / Stop-limit / OCO */
+export type TicketKind = 'LIMIT' | 'MARKET' | 'STOP_LIMIT' | 'OCO';
+
+/** Phiếu lệnh dùng chung: bấm giá trên sổ lệnh / lịch sử khớp → điền giá vào form */
 interface TicketState {
-  side: Side;
-  orderType: OrderType;
-  priceText: string;
-  qtyText: string;
-  setSide(s: Side): void;
-  setOrderType(t: OrderType): void;
-  setPriceText(t: string): void;
-  setQtyText(t: string): void;
-  pickPrice(price: number, side?: Side): void;
+  kind: TicketKind;
+  /** Giá vừa chọn từ sổ lệnh (đổi nonce để form nhận lại cả khi bấm cùng một giá) */
+  picked: { price: string; side: Side | null; nonce: number } | null;
+  setKind(k: TicketKind): void;
+  pickPrice(price: string, side?: Side): void;
 }
 
 export const useTicket = create<TicketState>((set) => ({
-  side: 'BUY',
-  orderType: 'LO',
-  priceText: '',
-  qtyText: '',
-  setSide: (side) => set({ side }),
-  setOrderType: (orderType) => set({ orderType }),
-  setPriceText: (priceText) => set({ priceText }),
-  setQtyText: (qtyText) => set({ qtyText }),
-  pickPrice: (price, side) => set((s) => ({ priceText: (price / 1000).toFixed(2), orderType: 'LO', side: side ?? s.side })),
+  kind: 'LIMIT',
+  picked: null,
+  setKind: (kind) => set({ kind }),
+  pickPrice: (price, side) => set((s) => ({ picked: { price, side: side ?? null, nonce: (s.picked?.nonce ?? 0) + 1 }, kind: s.kind === 'MARKET' ? 'LIMIT' : s.kind })),
 }));
 
-/** Danh sách theo dõi đang chọn (nút ☆ thêm / bỏ mã vào danh sách này) — nhớ theo trình duyệt */
+/** Danh sách theo dõi đang chọn (nút ☆ thêm / bỏ cặp vào danh sách này) — nhớ theo trình duyệt */
 interface WatchSelState {
   activeId: number | null;
   setActive(id: number | null): void;

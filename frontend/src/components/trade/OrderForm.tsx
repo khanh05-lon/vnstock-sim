@@ -1,444 +1,495 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { GTD_MAX_DAYS, ORDER_TYPE_HINT, RULES, calcFee, calcSellTax, isValidTick, stepPrice, tickSize, type OrderDTO, type OrderType } from '@vss/shared';
+import {
+  Big,
+  RULES,
+  TIF_LABEL,
+  floorStep,
+  validateOrder,
+  type FilterError,
+  type OrderType,
+  type Side,
+  type SymbolRow,
+  type TimeInForce,
+} from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
-import { cn, fmtInt, fmtPrice, fmtVnd, parseIntInput, parsePriceInput } from '../../lib/format';
-import { useBuyingPower, useInvalidateTrading, useLoggedIn, usePortfolio } from '../../lib/queries';
-import { useMarket, useStock } from '../../store/market';
-import { useTicket } from '../../store/ui';
-import { Modal, Tabs } from '../common/ui';
-import { ConditionalForm } from './ConditionalForm';
+import { cleanDecimal, cn, decOrNull, fmtPrice, fmtQty, fmtUsd } from '../../lib/format';
+import { useAccount, useFree, useInvalidateTrading, useLoggedIn } from '../../lib/queries';
+import { useSymbolRow } from '../../store/market';
+import { useTicket, type TicketKind } from '../../store/ui';
 
-/** YYYY-MM-DD cộng n ngày */
-export const addDaysISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
+const KINDS: { value: TicketKind; label: string }[] = [
+  { value: 'LIMIT', label: 'Giới hạn' },
+  { value: 'MARKET', label: 'Thị trường' },
+  { value: 'STOP_LIMIT', label: 'Stop-limit' },
+  { value: 'OCO', label: 'OCO' },
+];
 
-const TYPE_HINT = ORDER_TYPE_HINT;
-
-function Stepper({
+/** Ô nhập số có nhãn bên trái và đơn vị bên phải (kiểu Binance) */
+function Field({
   label,
+  unit,
   value,
   onChange,
-  onStep,
-  error,
+  step,
+  invalid,
   disabled,
   placeholder,
-  suffix,
-  inputMode,
 }: {
   label: string;
+  unit: string;
   value: string;
   onChange(v: string): void;
-  onStep(dir: 1 | -1): void;
-  error?: string | null;
+  step?: string;
+  invalid?: boolean;
   disabled?: boolean;
   placeholder?: string;
-  suffix?: ReactNode;
-  inputMode: 'decimal' | 'numeric';
 }) {
+  const bump = (dir: 1 | -1) => {
+    if (!step) return;
+    const cur = new Big(decOrNull(value) ?? 0);
+    const next = cur.plus(new Big(step).times(dir));
+    onChange(next.gt(0) ? floorStep(next, step) : '');
+  };
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="label">{label}</span>
-        {suffix}
-      </div>
-      <div className={cn('flex h-10 items-center rounded-md border bg-bg-3', error ? 'border-down' : 'border-transparent focus-within:border-brand')}>
-        <button type="button" disabled={disabled} onClick={() => onStep(-1)} className="flex h-full w-9 items-center justify-center text-tx-3 hover:text-tx-1 disabled:opacity-30" aria-label={`Giảm ${label}`}>
-          <Minus size={15} />
-        </button>
-        <input
-          value={disabled ? '' : value}
-          disabled={disabled}
-          placeholder={placeholder}
-          inputMode={inputMode}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              onStep(1);
-            }
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              onStep(-1);
-            }
-          }}
-          aria-label={label}
-          aria-invalid={!!error}
-          className="num h-full min-w-0 flex-1 bg-transparent text-center text-[15px] font-semibold outline-none placeholder:text-[13px] placeholder:font-normal placeholder:text-tx-3"
-        />
-        <button type="button" disabled={disabled} onClick={() => onStep(1)} className="flex h-full w-9 items-center justify-center text-tx-3 hover:text-tx-1 disabled:opacity-30" aria-label={`Tăng ${label}`}>
-          <Plus size={15} />
-        </button>
-      </div>
-      {error && <div className="mt-1 text-[11px] text-down">{error}</div>}
-    </div>
-  );
-}
-
-function Line({ label, value, strong, className }: { label: ReactNode; value: ReactNode; strong?: boolean; className?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 text-[12px]">
-      <span className="text-tx-3">{label}</span>
-      <span className={cn('num', strong ? 'font-semibold text-tx-1' : 'text-tx-2', className)}>{value}</span>
-    </div>
-  );
-}
-
-/** Khung đặt lệnh: lệnh thường hoặc lệnh điều kiện */
-export function OrderForm({ symbol }: { symbol: string }) {
-  const [mode, setMode] = useState<'normal' | 'conditional'>('normal');
-  return (
-    <div className="flex flex-col">
-      <Tabs
-        size="sm"
-        className="px-3 pt-3"
-        value={mode}
-        onChange={setMode}
-        items={[
-          { value: 'normal', label: 'Lệnh thường' },
-          { value: 'conditional', label: 'Lệnh điều kiện' },
-        ]}
+    <label
+      className={cn(
+        'flex h-10 items-center gap-2 rounded-lg border bg-bg-3 px-3 transition-colors focus-within:border-brand',
+        invalid ? 'border-down' : 'border-transparent hover:border-line-2',
+        disabled && 'opacity-60',
+      )}
+    >
+      <span className="shrink-0 text-[12px] text-tx-3">{label}</span>
+      <input
+        inputMode="decimal"
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => onChange(cleanDecimal(e.target.value))}
+        className="num min-w-0 flex-1 bg-transparent text-right text-[14px] font-medium text-tx-1 outline-none placeholder:text-tx-3"
+        aria-label={label}
+        aria-invalid={invalid}
       />
-      {mode === 'normal' ? <NormalOrderForm symbol={symbol} /> : <ConditionalForm symbol={symbol} />}
+      <span className="shrink-0 text-[12px] text-tx-2">{unit}</span>
+      {step && !disabled && (
+        <span className="-mr-1 flex flex-col">
+          <button type="button" onClick={() => bump(1)} className="text-tx-3 hover:text-tx-1" aria-label={`Tăng ${label}`} tabIndex={-1}>
+            <Plus size={12} />
+          </button>
+          <button type="button" onClick={() => bump(-1)} className="text-tx-3 hover:text-tx-1" aria-label={`Giảm ${label}`} tabIndex={-1}>
+            <Minus size={12} />
+          </button>
+        </span>
+      )}
+    </label>
+  );
+}
+
+/** Thanh trượt tỷ lệ số dư khả dụng 0–100% với các mốc 25/50/75/100 */
+function PercentSlider({ value, onChange, side, disabled }: { value: number; onChange(v: number): void; side: Side; disabled?: boolean }) {
+  return (
+    <div className="pt-1">
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className={cn('w-full', side === 'BUY' ? 'accent-[var(--up)]' : 'accent-[var(--down)]')}
+        aria-label="Tỷ lệ số dư khả dụng"
+      />
+      <div className="flex justify-between">
+        {[0, 25, 50, 75, 100].map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(p)}
+            className={cn('rounded px-1 text-[11px]', value === p ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+          >
+            {p}%
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function NormalOrderForm({ symbol }: { symbol: string }) {
-  const r = useStock(symbol);
-  const mode = useMarket((s) => s.session?.mode);
+function SidePanel({ r, side, kind }: { r: SymbolRow; side: Side; kind: TicketKind }) {
   const loggedIn = useLoggedIn();
-  const { data: pf } = usePortfolio();
   const invalidate = useInvalidateTrading();
-  const t = useTicket();
-  const [confirm, setConfirm] = useState(false);
+  const { data: account } = useAccount();
+  const picked = useTicket((s) => s.picked);
+  const f = r.filters;
+  const base = r.baseAsset;
+  const quote = r.quoteAsset;
+  const free = useFree(side === 'BUY' ? quote : base);
+
+  const [price, setPrice] = useState('');
+  const [stop, setStop] = useState('');
+  const [stopLimit, setStopLimit] = useState('');
+  const [qty, setQty] = useState('');
+  const [total, setTotal] = useState('');
+  const [pct, setPct] = useState(0);
+  const [tif, setTif] = useState<TimeInForce>('GTC');
+  const [postOnly, setPostOnly] = useState(false);
+  const [marketBy, setMarketBy] = useState<'qty' | 'total'>(side === 'BUY' ? 'total' : 'qty');
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState(false);
-  const tradeDate = useMarket((s) => s.session?.tradeDate) ?? new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
-  const [gtd, setGtd] = useState(false);
-  const [validUntil, setValidUntil] = useState('');
 
-  // Đổi mã → điền sẵn giá hiện tại
+  // Đổi cặp / loại lệnh: điền giá hiện tại, xoá khối lượng
   useEffect(() => {
-    const row = useMarket.getState().rows[symbol];
-    const st = useTicket.getState();
-    if (row) {
-      st.setPriceText((((row.volume ? row.last : row.ref) || row.ref) / 1000).toFixed(2));
-      if (!RULES.orderTypes[row.exchange].includes(st.orderType)) st.setOrderType('LO');
-    }
-    st.setQtyText('');
+    setPrice(r.last);
+    setStop('');
+    setStopLimit('');
+    setQty('');
+    setTotal('');
+    setPct(0);
     setTouched(false);
-  }, [symbol, !!r]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.symbol, kind]);
 
-  // Sức mua tính trên máy chủ: tiền mặt + ứng trước tiền bán + vay ký quỹ (theo tỷ lệ cho vay của mã)
-  const bpPrice = r ? (t.orderType === 'LO' ? parsePriceInput(t.priceText) : t.side === 'BUY' ? r.ceil : r.floor) : null;
-  const { data: bp } = useBuyingPower(symbol, bpPrice, t.side === 'BUY');
+  // Bấm giá trên sổ lệnh / lịch sử khớp
+  useEffect(() => {
+    if (!picked || (picked.side && picked.side !== side)) return;
+    if (kind === 'STOP_LIMIT') setStopLimit(picked.price);
+    else setPrice(picked.price);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked?.nonce]);
 
-  if (!r) return null;
-  const ex = r.exchange;
-  const isBuy = t.side === 'BUY';
-  const types = RULES.orderTypes[ex];
-  const isLO = t.orderType === 'LO';
-  const price = isLO ? parsePriceInput(t.priceText) : null;
-  const qty = parseIntInput(t.qtyText);
-  const marketRef = r.volume ? r.last : r.ref;
-  const lot = RULES.lotSize;
-  const odd = qty > 0 && qty < lot;
-  const gtdOn = gtd && isLO;
-  const maxValid = addDaysISO(tradeDate, GTD_MAX_DAYS);
-  const until = validUntil || addDaysISO(tradeDate, 7);
+  /** Giá dùng để quy đổi khối lượng ⇄ tổng tiền */
+  const refPrice = kind === 'MARKET' ? r.last : kind === 'STOP_LIMIT' ? stopLimit || r.last : kind === 'OCO' && side === 'BUY' ? maxOf(price, stopLimit) : price;
 
-  let priceErr: string | null = null;
-  if (isLO && touched) {
-    if (!price) priceErr = 'Vui lòng nhập giá';
-    else if (!isValidTick(r, price)) priceErr = `Sai bước giá — bước giá ${fmtInt(tickSize(r, price))}đ`;
-    else if (price > r.ceil) priceErr = `Vượt giá trần ${fmtPrice(r.ceil)}`;
-    else if (price < r.floor) priceErr = `Thấp hơn giá sàn ${fmtPrice(r.floor)}`;
-  }
-  let qtyErr: string | null = null;
-  if (touched) {
-    if (!qty) qtyErr = 'Vui lòng nhập khối lượng';
-    else if (odd && r.type === 'BOND') qtyErr = `Trái phiếu giao dịch theo lô ${lot}`;
-    else if (odd && !isLO) qtyErr = 'Lô lẻ (dưới 100 CP) chỉ đặt lệnh LO';
-    else if (!odd && qty % lot) qtyErr = `Lô chẵn là bội số của ${lot} — phần lẻ ${qty % lot} CP đặt thành lệnh riêng`;
-    else if (qty > RULES.maxOrderQty[ex]) qtyErr = `Tối đa ${fmtInt(RULES.maxOrderQty[ex])} CP/lệnh`;
-  }
-  const validErr = gtdOn && touched && (until <= tradeDate || until > maxValid) ? `Chọn ngày từ ${addDaysISO(tradeDate, 1)} tới ${maxValid}` : null;
-
-  const holdPrice = price ?? (isBuy ? r.ceil : r.floor);
-  const estPrice = price ?? marketRef;
-  const cashAvail = pf?.account.cashAvailable ?? 0;
-  const holding = pf?.holdings.find((h) => h.symbol === symbol);
-  const maxBuy =
-    bp?.maxQty ?? (holdPrice > 0 ? Math.min(RULES.maxOrderQty[ex], Math.floor(cashAvail / (holdPrice * (1 + RULES.feeRate)) / RULES.lotSize) * RULES.lotSize) : 0);
-  const maxSell = holding?.qtyAvailable ?? 0;
-  const maxQty = isBuy ? maxBuy : Math.min(maxSell - (maxSell % RULES.lotSize), RULES.maxOrderQty[ex]);
-  const oddAvail = isBuy ? 0 : maxSell % RULES.lotSize;
-  const value = estPrice * qty;
-  const fee = calcFee(value);
-  const tax = isBuy ? 0 : calcSellTax(value);
-  const total = isBuy ? value + fee : value - fee - tax;
-  const overMax = loggedIn && qty > 0 && qty > maxQty;
-
-  const stepPriceBy = (dir: 1 | -1) => {
-    const base = price ?? marketRef;
-    let next = isValidTick(r, base) ? stepPrice(r, base, dir) : base - (base % tickSize(r, base)) + (dir === 1 ? tickSize(r, base) : 0);
-    next = Math.min(r.ceil, Math.max(r.floor, next));
-    t.setPriceText((next / 1000).toFixed(2));
+  const setQtyLinked = (v: string) => {
+    setQty(v);
+    setPct(0);
+    const p = decOrNull(refPrice);
+    const q = decOrNull(v);
+    setTotal(p && q ? new Big(p).times(q).round(8, Big.roundDown).toFixed() : '');
   };
-  const stepQty = (dir: 1 | -1) => t.setQtyText(fmtInt(Math.max(0, qty - (qty % RULES.lotSize) + dir * RULES.lotSize)));
-  const setPct = (pct: number) => t.setQtyText(fmtInt(Math.floor((maxQty * pct) / 100 / RULES.lotSize) * RULES.lotSize));
-
-  const typeDisabled = (ot: OrderType) => mode === 'SIMULATED_24_7' && (ot === 'ATO' || ot === 'ATC');
-
-  const submit = () => {
-    setTouched(true);
-    const pErr = isLO && (!price || !isValidTick(r, price) || price > r.ceil || price < r.floor);
-    const qErr = !qty || (odd ? !isLO || r.type === 'BOND' : qty % lot !== 0) || qty > RULES.maxOrderQty[ex];
-    const vErr = gtdOn && (until <= tradeDate || until > maxValid);
-    if (pErr || qErr || vErr) return;
-    if (overMax) {
-      toast.error(isBuy ? 'Sức mua không đủ cho khối lượng này' : 'Không đủ cổ phiếu khả dụng để bán');
-      return;
+  const setTotalLinked = (v: string) => {
+    setTotal(v);
+    setPct(0);
+    const p = decOrNull(refPrice);
+    const t = decOrNull(v);
+    setQty(p && t ? floorStep(new Big(t).div(p), f.stepSize) : '');
+  };
+  const setPctLinked = (p: number) => {
+    setPct(p);
+    const avail = new Big(free);
+    const rp = decOrNull(refPrice);
+    if (side === 'BUY') {
+      // Mua: chừa phần phí không cần (phí thu bằng coin nhận về)
+      const t = avail.times(p).div(100).round(8, Big.roundDown);
+      setTotal(t.gt(0) ? t.toFixed() : '');
+      setQty(rp && t.gt(0) ? floorStep(t.div(rp), f.stepSize) : '');
+    } else {
+      const q = floorStep(avail.times(p).div(100), f.stepSize);
+      setQty(new Big(q).gt(0) ? q : '');
+      setTotal(rp && new Big(q).gt(0) ? new Big(q).times(rp).round(8, Big.roundDown).toFixed() : '');
     }
-    setConfirm(true);
   };
 
-  const place = async () => {
+  // Giá đổi → cập nhật tổng tiền theo khối lượng đang nhập
+  useEffect(() => {
+    if (kind === 'MARKET') return;
+    const p = decOrNull(refPrice);
+    const q = decOrNull(qty);
+    setTotal(p && q ? new Big(p).times(q).round(8, Big.roundDown).toFixed() : total);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refPrice]);
+
+  /** Lệnh sẽ gửi lên API + lỗi kiểm tra trước (bộ lọc của cặp, số dư) */
+  const plan = useMemo(() => {
+    const p = decOrNull(price);
+    const q = decOrNull(qty);
+    const t = decOrNull(total);
+    const s = decOrNull(stop);
+    const sl = decOrNull(stopLimit);
+    let type: OrderType = 'LIMIT';
+    let body: Record<string, unknown> | null = null;
+    let path = '/orders';
+    let err: FilterError | { field: string; message: string } | null = null;
+    let need = '0';
+
+    if (kind === 'LIMIT') {
+      type = postOnly ? 'LIMIT_MAKER' : 'LIMIT';
+      if (p && q) {
+        body = { symbol: r.symbol, side, type, price: p, quantity: q, ...(postOnly ? {} : { timeInForce: tif }) };
+        err = validateOrder(r, { side, type, price: p, quantity: q }, r.last);
+        need = side === 'BUY' ? new Big(p).times(q).toFixed() : q;
+      }
+    } else if (kind === 'MARKET') {
+      type = 'MARKET';
+      if (marketBy === 'total' && t) {
+        body = { symbol: r.symbol, side, type, quoteOrderQty: t };
+        err = validateOrder(r, { side, type, quoteOrderQty: t }, r.last);
+        need = side === 'BUY' ? t : new Big(t).div(r.last).toFixed(8);
+      } else if (marketBy === 'qty' && q) {
+        body = { symbol: r.symbol, side, type, quantity: q };
+        err = validateOrder(r, { side, type, quantity: q }, r.last);
+        need = side === 'BUY' ? new Big(q).times(r.last).toFixed() : q;
+      }
+    } else if (kind === 'STOP_LIMIT') {
+      if (s && sl && q) {
+        // Bán: stop dưới giá hiện tại = cắt lỗ, trên giá = chốt lời; mua thì ngược lại
+        const below = new Big(s).lt(r.last);
+        type = side === 'SELL' ? (below ? 'STOP_LOSS_LIMIT' : 'TAKE_PROFIT_LIMIT') : below ? 'TAKE_PROFIT_LIMIT' : 'STOP_LOSS_LIMIT';
+        body = { symbol: r.symbol, side, type, stopPrice: s, price: sl, quantity: q, timeInForce: 'GTC' };
+        err = validateOrder(r, { side, type, stopPrice: s, price: sl, quantity: q }, r.last);
+        if (!err && new Big(s).eq(r.last)) err = { field: 'stopPrice', message: 'Giá kích hoạt phải khác giá hiện tại' };
+        need = side === 'BUY' ? new Big(sl).times(q).toFixed() : q;
+      }
+    } else if (kind === 'OCO') {
+      path = '/orders/oco';
+      if (p && s && sl && q) {
+        body = { symbol: r.symbol, side, quantity: q, price: p, stopPrice: s, stopLimitPrice: sl };
+        const okOrder = side === 'SELL' ? new Big(p).gt(r.last) && new Big(s).lt(r.last) : new Big(p).lt(r.last) && new Big(s).gt(r.last);
+        err =
+          validateOrder(r, { side, type: 'LIMIT_MAKER', price: p, quantity: q }, r.last) ??
+          validateOrder(r, { side, type: 'STOP_LOSS_LIMIT', stopPrice: s, price: sl, quantity: q }, r.last) ??
+          (okOrder
+            ? null
+            : {
+                field: 'price',
+                message: side === 'SELL' ? 'OCO bán: giá giới hạn phải cao hơn giá hiện tại, giá kích hoạt thấp hơn' : 'OCO mua: giá giới hạn phải thấp hơn giá hiện tại, giá kích hoạt cao hơn',
+              });
+        need = side === 'BUY' ? new Big(maxOf(p, sl)).times(q).toFixed() : q;
+      }
+    }
+    if (body && !err && loggedIn && new Big(need).gt(free)) {
+      err = { field: 'quantity', message: `Số dư ${side === 'BUY' ? quote : base} khả dụng không đủ` };
+    }
+    return { body, err, type, path, need };
+  }, [kind, price, qty, total, stop, stopLimit, tif, postOnly, marketBy, side, r, free, loggedIn, quote, base]);
+
+  const submit = async () => {
+    setTouched(true);
+    if (!plan.body || plan.err) return;
     setBusy(true);
     try {
-      const o = await api<OrderDTO>('/orders', {
-        method: 'POST',
-        body: { symbol, side: t.side, orderType: t.orderType, price: isLO ? price : null, qty, ...(gtdOn ? { validUntil: until } : {}) },
-      });
-      const label = `${isBuy ? 'MUA' : 'BÁN'} ${fmtInt(qty)} ${symbol}`;
-      if (o.status === 'FILLED') toast.success(`Lệnh #${o.id} ${label} đã khớp toàn bộ`, { description: `Giá khớp TB ${fmtPrice(o.avgFillPrice)}` });
-      else if (o.status === 'PARTIAL') toast.success(`Lệnh #${o.id} ${label} khớp ${fmtInt(o.filledQty)} CP`, { description: 'Phần còn lại đang chờ khớp' });
-      else if (o.status === 'PENDING') toast.success(`Đặt lệnh #${o.id} ${label} thành công`, { description: 'Lệnh đang chờ khớp' });
-      setConfirm(false);
+      await api(plan.path, { method: 'POST', body: plan.body });
+      if (kind !== 'MARKET') toast.success(`Đã đặt lệnh ${side === 'BUY' ? 'mua' : 'bán'} ${base}`);
+      setQty('');
+      setTotal('');
+      setPct(0);
       setTouched(false);
-      t.setQtyText('');
-      invalidate();
     } catch (e) {
       toast.error(errMsg(e));
     } finally {
       setBusy(false);
+      invalidate();
     }
   };
 
+  const feeRate = account?.takerFee ?? RULES.takerFee;
+  const estFee = plan.body ? (side === 'BUY' ? new Big(decOrNull(qty) ?? 0).times(feeRate) : new Big(decOrNull(total) ?? 0).times(feeRate)) : null;
+  const showErr = touched || !!plan.body;
+  const isBuy = side === 'BUY';
+
   return (
-    <div className="relative flex flex-col gap-3 p-3">
-      <div className="grid grid-cols-2 rounded-lg bg-bg-3 p-1" role="tablist" aria-label="Chiều lệnh">
+    <form
+      className="flex flex-col gap-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-tx-3">Khả dụng</span>
+        <span className="num font-medium text-tx-1">
+          {loggedIn ? (isBuy ? fmtUsd(free) : fmtQty(free, f.stepSize)) : '--'} {isBuy ? quote : base}
+        </span>
+      </div>
+
+      {kind === 'STOP_LIMIT' && (
+        <Field label="Kích hoạt" unit={quote} value={stop} onChange={setStop} step={f.tickSize} invalid={showErr && plan.err?.field === 'stopPrice'} />
+      )}
+      {kind === 'OCO' && (
+        <>
+          <Field label="Giới hạn" unit={quote} value={price} onChange={setPrice} step={f.tickSize} invalid={showErr && plan.err?.field === 'price'} />
+          <Field label="Kích hoạt" unit={quote} value={stop} onChange={setStop} step={f.tickSize} invalid={showErr && plan.err?.field === 'stopPrice'} />
+        </>
+      )}
+      {kind === 'LIMIT' && <Field label="Giá" unit={quote} value={price} onChange={setPrice} step={f.tickSize} invalid={showErr && plan.err?.field === 'price'} />}
+      {kind === 'STOP_LIMIT' && (
+        <Field label="Giá đặt" unit={quote} value={stopLimit} onChange={setStopLimit} step={f.tickSize} invalid={showErr && plan.err?.field === 'price'} />
+      )}
+      {kind === 'OCO' && <Field label="Giá đặt khi kích hoạt" unit={quote} value={stopLimit} onChange={setStopLimit} step={f.tickSize} />}
+      {kind === 'MARKET' && (
+        <div className="flex h-10 items-center justify-between rounded-lg bg-bg-3/60 px-3 text-[12px] text-tx-3">
+          <span>Giá</span>
+          <span>Giá thị trường tốt nhất</span>
+        </div>
+      )}
+
+      {kind === 'MARKET' && (
+        <div className="flex gap-1 text-[12px]">
+          {(['total', 'qty'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                setMarketBy(m);
+                setQty('');
+                setTotal('');
+                setPct(0);
+              }}
+              className={cn('rounded-md px-2.5 py-1', marketBy === m ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+            >
+              {m === 'total' ? `Theo tổng (${quote})` : `Theo số lượng (${base})`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(kind !== 'MARKET' || marketBy === 'qty') && (
+        <Field label="Số lượng" unit={base} value={qty} onChange={setQtyLinked} step={f.stepSize} invalid={showErr && plan.err?.field === 'quantity'} />
+      )}
+      <PercentSlider value={pct} onChange={setPctLinked} side={side} disabled={!loggedIn} />
+      {(kind !== 'MARKET' || marketBy === 'total') && (
+        <Field
+          label="Tổng"
+          unit={quote}
+          value={total}
+          onChange={setTotalLinked}
+          invalid={showErr && (plan.err?.field === 'quoteOrderQty' || (plan.err?.field === 'quantity' && kind === 'MARKET'))}
+          placeholder={`Tối thiểu ${f.minNotional}`}
+        />
+      )}
+
+      {kind === 'LIMIT' && (
+        <div className="flex items-center justify-between gap-2 text-[12px]">
+          <label className="flex items-center gap-1.5 text-tx-2">
+            <input type="checkbox" checked={postOnly} onChange={(e) => setPostOnly(e.target.checked)} className="accent-[var(--brand)]" />
+            Post-only
+          </label>
+          {!postOnly && (
+            <select
+              value={tif}
+              onChange={(e) => setTif(e.target.value as TimeInForce)}
+              className="h-7 rounded-md bg-bg-3 px-2 text-[12px] text-tx-2 outline-none"
+              aria-label="Hiệu lực lệnh"
+              title={TIF_LABEL[tif]}
+            >
+              {(['GTC', 'IOC', 'FOK'] as const).map((t) => (
+                <option key={t} value={t}>
+                  {TIF_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+      {kind === 'STOP_LIMIT' && decOrNull(stop) && (
+        <p className="text-[11px] leading-relaxed text-tx-3">
+          Khi giá {new Big(decOrNull(stop)!).lt(r.last) ? '≤' : '≥'} {fmtPrice(stop, f.tickSize)}, đặt lệnh giới hạn {isBuy ? 'mua' : 'bán'} ở giá{' '}
+          {fmtPrice(stopLimit || stop, f.tickSize)} ({plan.type === 'STOP_LOSS_LIMIT' ? 'cắt lỗ' : 'chốt lời'}).
+        </p>
+      )}
+
+      {showErr && plan.err && <p className="text-[12px] text-down">{plan.err.message}</p>}
+      {estFee && !plan.err && (
+        <div className="flex justify-between text-[11px] text-tx-3">
+          <span>Phí ước tính (taker {new Big(feeRate).times(100).toFixed()}%)</span>
+          <span className="num">
+            ≈ {isBuy ? fmtQty(estFee.toFixed(), '0.00000001') : fmtUsd(estFee.toFixed(), 6)} {isBuy ? base : quote}
+          </span>
+        </div>
+      )}
+
+      {loggedIn ? (
+        <button
+          type="submit"
+          disabled={busy || r.status !== 'TRADING'}
+          className={cn('btn h-10 w-full rounded-lg text-[14px] text-white', isBuy ? 'btn-up' : 'btn-down')}
+        >
+          {r.status !== 'TRADING' ? 'Tạm ngừng giao dịch' : busy ? 'Đang gửi...' : `${isBuy ? 'Mua' : 'Bán'} ${base}`}
+        </button>
+      ) : (
+        <div className="flex h-10 items-center justify-center gap-1 rounded-lg bg-bg-3 text-[13px]">
+          <Link to="/login" className="font-semibold text-brand hover:underline">
+            Đăng nhập
+          </Link>
+          <span className="text-tx-3">hoặc</span>
+          <Link to="/register" className="font-semibold text-brand hover:underline">
+            Đăng ký
+          </Link>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function maxOf(a: string, b: string): string {
+  const x = decOrNull(a);
+  const y = decOrNull(b);
+  if (!x) return y ?? '';
+  if (!y) return x;
+  return new Big(x).gte(y) ? x : y;
+}
+
+/** Form đặt lệnh Spot: tab Giới hạn / Thị trường / Stop-limit / OCO, Mua và Bán song song (màn rộng) */
+export function OrderForm({ symbol }: { symbol: string }) {
+  const r = useSymbolRow(symbol);
+  const kind = useTicket((s) => s.kind);
+  const setKind = useTicket((s) => s.setKind);
+  const picked = useTicket((s) => s.picked);
+  const [mobileSide, setMobileSide] = useState<Side>('BUY');
+
+  useEffect(() => {
+    if (picked?.side) setMobileSide(picked.side);
+  }, [picked?.nonce, picked?.side]);
+
+  if (!r) return null;
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-4 border-b border-line px-4" role="tablist" aria-label="Loại lệnh">
+        {KINDS.map((k) => (
+          <button
+            key={k.value}
+            role="tab"
+            aria-selected={kind === k.value}
+            onClick={() => setKind(k.value)}
+            className={cn(
+              'relative h-10 text-[13px] font-medium transition-colors',
+              kind === k.value ? 'text-tx-1 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand' : 'text-tx-3 hover:text-tx-1',
+            )}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-1 p-3 pb-0 md:hidden" role="tablist" aria-label="Chiều lệnh">
         {(['BUY', 'SELL'] as const).map((s) => (
           <button
             key={s}
             role="tab"
-            aria-selected={t.side === s}
-            onClick={() => t.setSide(s)}
+            aria-selected={mobileSide === s}
+            onClick={() => setMobileSide(s)}
             className={cn(
-              'h-9 rounded-md text-[14px] font-bold transition-colors',
-              t.side === s ? (s === 'BUY' ? 'bg-up text-white' : 'bg-down text-white') : 'text-tx-3 hover:text-tx-1',
+              'h-9 flex-1 rounded-lg text-[14px] font-semibold',
+              mobileSide === s ? (s === 'BUY' ? 'bg-up text-white' : 'bg-down text-white') : 'bg-bg-3 text-tx-2',
             )}
           >
-            {s === 'BUY' ? 'MUA' : 'BÁN'}
+            {s === 'BUY' ? 'Mua' : 'Bán'}
           </button>
         ))}
       </div>
 
-      <div>
-        <div className="mb-1 label">Loại lệnh</div>
-        <div className="flex gap-1">
-          {/* Mỗi sàn một bộ lệnh: HOSE LO/MP/ATO/ATC, HNX LO/MTL/MOK/MAK/ATC, UPCOM chỉ LO */}
-          {types.map((ot) => {
-            const disabled = typeDisabled(ot);
-            return (
-              <button
-                key={ot}
-                disabled={disabled}
-                onClick={() => t.setOrderType(ot)}
-                title={typeDisabled(ot) ? 'Chế độ 24/7 không có phiên ATO/ATC' : TYPE_HINT[ot]}
-                className={cn(
-                  'h-8 flex-1 rounded-md border text-[12px] font-semibold transition-colors',
-                  t.orderType === ot ? 'border-brand bg-brand/10 text-brand' : 'border-line text-tx-2 hover:border-line-2',
-                  disabled && 'opacity-30',
-                )}
-              >
-                {ot}
-              </button>
-            );
-          })}
+      <div className="grid grid-cols-1 gap-6 p-4 md:grid-cols-2">
+        <div className={cn(mobileSide !== 'BUY' && 'hidden md:block')}>
+          <SidePanel r={r} side="BUY" kind={kind} />
         </div>
-        <div className="mt-1 text-[11px] text-tx-3">{TYPE_HINT[t.orderType]}</div>
+        <div className={cn(mobileSide !== 'SELL' && 'hidden md:block')}>
+          <SidePanel r={r} side="SELL" kind={kind} />
+        </div>
       </div>
-
-      <Stepper
-        label="Giá (x1.000đ)"
-        value={t.priceText}
-        onChange={t.setPriceText}
-        onStep={stepPriceBy}
-        error={priceErr}
-        disabled={!isLO}
-        placeholder={isLO ? 'Nhập giá' : t.orderType}
-        inputMode="decimal"
-        suffix={
-          <span className="num flex gap-2 text-[11px]">
-            {(
-              [
-                ['Trần', r.ceil, 'text-ceil'],
-                ['TC', r.ref, 'text-ref'],
-                ['Sàn', r.floor, 'text-floor'],
-              ] as const
-            ).map(([l, v, c]) => (
-              <button key={l} disabled={!isLO} onClick={() => t.setPriceText((v / 1000).toFixed(2))} className={cn(c, 'hover:underline disabled:opacity-40')}>
-                {l} {fmtPrice(v)}
-              </button>
-            ))}
-          </span>
-        }
-      />
-
-      <Stepper
-        label="Khối lượng (CP)"
-        value={t.qtyText}
-        onChange={(v) => t.setQtyText(v ? fmtInt(parseIntInput(v)) : '')}
-        onStep={stepQty}
-        error={qtyErr ?? (overMax ? (isBuy ? 'Vượt sức mua' : 'Vượt KL khả dụng') : null)}
-        placeholder={`Bội số ${RULES.lotSize}`}
-        inputMode="numeric"
-        suffix={
-          loggedIn && (
-            <span className="num text-[11px] text-tx-3">
-              {isBuy ? 'Mua tối đa' : 'Bán tối đa'} <b className="text-tx-1">{fmtInt(Math.max(0, maxQty))}</b>
-            </span>
-          )
-        }
-      />
-
-      <div className="grid grid-cols-4 gap-1">
-        {[25, 50, 75, 100].map((p) => (
-          <button key={p} disabled={!loggedIn || maxQty <= 0} onClick={() => setPct(p)} className="h-7 rounded border border-line text-[11px] font-medium text-tx-2 hover:border-brand hover:text-brand disabled:opacity-30">
-            {p === 100 ? 'Tối đa' : `${p}%`}
-          </button>
-        ))}
-      </div>
-
-      {(odd || oddAvail > 0) && (
-        <div className="rounded-md border border-info/30 bg-info/10 px-2.5 py-1.5 text-[11px] text-info">
-          {odd ? (
-            <>Lô lẻ: chỉ lệnh LO, khớp trên bảng lô lẻ riêng (không theo sổ lệnh lô chẵn).</>
-          ) : (
-            <>
-              Bạn có {fmtInt(oddAvail)} CP lô lẻ —{' '}
-              <button
-                className="font-semibold underline-offset-2 hover:underline"
-                onClick={() => {
-                  t.setOrderType('LO');
-                  t.setQtyText(fmtInt(oddAvail));
-                }}
-              >
-                bán phần lẻ
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {isLO && (
-        <div className="flex items-center gap-2 text-[12px]">
-          <span className="label">Hiệu lực</span>
-          <select className="input h-8 w-32" value={gtd ? 'GTD' : 'DAY'} onChange={(e) => setGtd(e.target.value === 'GTD')} aria-label="Hiệu lực lệnh">
-            <option value="DAY">Trong ngày</option>
-            <option value="GTD">Nhiều ngày</option>
-          </select>
-          {gtd && (
-            <input
-              type="date"
-              className={cn('input h-8 min-w-0 flex-1', validErr && 'border-down')}
-              min={addDaysISO(tradeDate, 1)}
-              max={maxValid}
-              value={until}
-              onChange={(e) => setValidUntil(e.target.value)}
-              aria-label="Hiệu lực đến ngày"
-              title={validErr ?? 'Lệnh chưa khớp được chuyển sang phiên sau tới hết ngày này (giá phải nằm trong biên độ phiên mới)'}
-            />
-          )}
-        </div>
-      )}
-
-      <div className="space-y-1.5 rounded-md bg-bg-2 p-2.5">
-        {loggedIn &&
-          (isBuy ? (
-            <>
-              <Line label="Tiền mặt khả dụng" value={`${fmtVnd(cashAvail)}đ`} />
-              {!!pf?.account.advanceable && pf.account.autoAdvance && <Line label="Có thể ứng trước" value={`${fmtVnd(pf.account.advanceable)}đ`} />}
-              {pf?.account.marginEnabled && (
-                <Line
-                  label={`Vay ký quỹ (mã cho vay ${Math.round((r.marginRatio ?? 0) * 100)}%)`}
-                  value={bp?.usesMargin ? `tới ${fmtVnd(bp.loanPart)}đ` : r.marginRatio ? 'sẵn sàng' : 'không cho vay'}
-                />
-              )}
-            </>
-          ) : (
-            <Line label="KL khả dụng" value={`${fmtInt(maxSell)} CP${holding?.qtyPending ? ` (+${fmtInt(holding.qtyPending)} chờ về)` : ''}`} />
-          ))}
-        <Line label={`Giá trị lệnh${isLO ? '' : ' (ước tính)'}`} value={`${fmtVnd(value)}đ`} />
-        <Line label={`Phí giao dịch (${(RULES.feeRate * 100).toFixed(2)}%)`} value={`${fmtVnd(fee)}đ`} />
-        {!isBuy && <Line label={`Thuế TNCN (${(RULES.sellTaxRate * 100).toFixed(1)}%)`} value={`${fmtVnd(tax)}đ`} />}
-        <div className="h-px bg-line" />
-        <Line label={isBuy ? 'Tổng thanh toán' : 'Thực nhận ước tính'} value={`${fmtVnd(total)}đ`} strong className={isBuy ? 'text-up' : 'text-down'} />
-      </div>
-
-      {loggedIn ? (
-        <button onClick={submit} className={cn('btn h-11 text-[15px]', isBuy ? 'btn-up' : 'btn-down')}>
-          {isBuy ? 'Mua' : 'Bán'} {symbol}
-        </button>
-      ) : (
-        <div className="rounded-md border border-dashed border-line-2 p-3 text-center">
-          <div className="text-tx-2">Đăng nhập để giao dịch với 1 tỷ đồng vốn ảo</div>
-          <div className="mt-2 flex justify-center gap-2">
-            <Link to="/login" state={{ from: `/trade/${symbol}` }} className="btn btn-ghost h-8">
-              Đăng nhập
-            </Link>
-            <Link to="/register" className="btn btn-brand h-8">
-              Đăng ký
-            </Link>
-          </div>
-        </div>
-      )}
-
-      <Modal
-        open={confirm}
-        onClose={() => !busy && setConfirm(false)}
-        title="Xác nhận đặt lệnh"
-        width={400}
-        footer={
-          <>
-            <button className="btn btn-ghost" onClick={() => setConfirm(false)} disabled={busy}>
-              Huỷ
-            </button>
-            <button className={cn('btn min-w-32', isBuy ? 'btn-up' : 'btn-down')} onClick={() => void place()} disabled={busy}>
-              {busy ? 'Đang gửi…' : `Xác nhận ${isBuy ? 'MUA' : 'BÁN'}`}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className={cn('chip text-white', isBuy ? 'bg-up' : 'bg-down')}>{isBuy ? 'MUA' : 'BÁN'}</span>
-            <span className="text-[18px] font-bold">{symbol}</span>
-            <span className="chip bg-bg-3 text-tx-2">{ex}</span>
-          </div>
-          <Line label="Loại lệnh" value={t.orderType} strong />
-          <Line label="Giá đặt" value={isLO ? `${fmtVnd(price)}đ` : `${t.orderType} (giá thị trường)`} strong />
-          <Line label="Khối lượng" value={`${fmtInt(qty)} CP${odd ? ' (lô lẻ)' : ''}`} strong />
-          <Line label="Hiệu lực" value={gtdOn ? `Đến hết ${until.slice(8, 10)}/${until.slice(5, 7)}/${until.slice(0, 4)}` : 'Trong ngày'} />
-          <Line label="Giá trị (ước tính)" value={`${fmtVnd(value)}đ`} />
-          <Line label="Phí + thuế (ước tính)" value={`${fmtVnd(fee + tax)}đ`} />
-          <Line label={isBuy ? 'Tổng thanh toán' : 'Thực nhận'} value={`${fmtVnd(total)}đ`} strong />
-          {isBuy && !isLO && <p className="pt-1 text-[11px] text-tx-3">Lệnh {t.orderType} phong toả tạm tiền theo giá trần, phần dư được hoàn lại sau khi khớp.</p>}
-        </div>
-      </Modal>
     </div>
   );
 }

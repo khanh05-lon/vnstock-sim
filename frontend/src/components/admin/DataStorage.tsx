@@ -3,7 +3,7 @@ import { Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { downloadBackup, fmtBytes, uploadRestore, useAdminData, type RestoreReport } from '../../lib/admin';
-import { fmtDateTimeVN, fmtInt } from '../../lib/format';
+import { fmtDateTime, fmtInt } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
 
@@ -63,7 +63,7 @@ function RestorePanel() {
           </div>
           <KeyValue
             items={[
-              ['Thời điểm sao lưu', fmtDateTimeVN(report.meta.exportedAt)],
+              ['Thời điểm sao lưu', fmtDateTime(report.meta.exportedAt)],
               ['Người tạo', report.meta.exportedBy],
               ['Ngày giao dịch lúc sao lưu', report.meta.tradeDate || '—'],
               ['Phiên bản định dạng', `v${report.meta.version}`],

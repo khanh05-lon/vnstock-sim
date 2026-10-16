@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, CalendarClock, Database, Gauge, HandCoins, Landmark, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, Users as UsersIcon } from 'lucide-react';
-import { CorporateActions } from '../components/admin/CorporateActions';
+import { Activity, Coins, Database, Gauge, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, Users as UsersIcon } from 'lucide-react';
 import { DataStorage } from '../components/admin/DataStorage';
 import { Logs } from '../components/admin/Logs';
-import { MarginAdmin } from '../components/admin/MarginAdmin';
 import { MarketOps } from '../components/admin/MarketOps';
 import { Monitor } from '../components/admin/Monitor';
 import { Orders } from '../components/admin/Orders';
@@ -18,12 +16,10 @@ import { useAuth } from '../store/auth';
 
 const TABS = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard, hint: 'Chỉ số chính & sức khoẻ hệ thống' },
-  { id: 'users', label: 'Người dùng', icon: UsersIcon, hint: 'Khoá, điều chỉnh vốn, phân quyền' },
+  { id: 'users', label: 'Người dùng', icon: UsersIcon, hint: 'Khoá, điều chỉnh số dư, phân quyền' },
   { id: 'orders', label: 'Lệnh giao dịch', icon: ListOrdered, hint: 'Theo dõi & huỷ hộ lệnh' },
-  { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Ngừng giao dịch, thông báo, ngày lễ, tham số giao dịch' },
-  { id: 'symbols', label: 'Danh mục mã', icon: Landmark, hint: 'Niêm yết, huỷ niêm yết, rổ VN30, tỷ lệ ký quỹ' },
-  { id: 'corporate', label: 'Sự kiện quyền', icon: CalendarClock, hint: 'Cổ tức, cổ phiếu thưởng, chia tách, quyền mua' },
-  { id: 'margin', label: 'Ký quỹ', icon: HandCoins, hint: 'Dư nợ, tỷ lệ ký quỹ, hạn mức vay' },
+  { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Nguồn giá, tạm ngừng giao dịch, thông báo, biểu phí' },
+  { id: 'symbols', label: 'Cặp giao dịch', icon: Coins, hint: 'Thêm cặp từ Binance, tạm ngừng, gỡ khỏi sàn' },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục' },
   { id: 'monitor', label: 'Giám sát', icon: Gauge, hint: 'Chỉ số vận hành, cảnh báo tự động' },
   { id: 'logs', label: 'Nhật ký', icon: ScrollText, hint: 'Nhật ký quản trị & log máy chủ' },
@@ -39,9 +35,9 @@ export default function AdminPage() {
   const go = (t: string) => setParams({ tab: t }, { replace: true });
 
   useEffect(() => {
-    document.title = 'Quản trị · VNStock';
+    document.title = 'Quản trị · VNCoin';
     return () => {
-      document.title = 'VNStock · Bảng giá & Giao dịch mô phỏng';
+      document.title = 'VNCoin · Sàn giao dịch coin mô phỏng';
     };
   }, []);
 
@@ -97,8 +93,6 @@ export default function AdminPage() {
         {tab === 'orders' && <Orders onOpenUser={setOpenUser} />}
         {tab === 'market' && <MarketOps />}
         {tab === 'symbols' && <Symbols />}
-        {tab === 'corporate' && <CorporateActions />}
-        {tab === 'margin' && <MarginAdmin onOpenUser={setOpenUser} />}
         {tab === 'data' && <DataStorage />}
         {tab === 'monitor' && <Monitor />}
         {tab === 'logs' && <Logs />}

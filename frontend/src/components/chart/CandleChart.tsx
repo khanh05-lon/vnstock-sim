@@ -5,56 +5,71 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineSeries,
-  LineStyle,
   createChart,
   type IChartApi,
-  type IPriceLine,
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { Candle } from '@vss/shared';
+import { decimalsOf, type Kline, type KlineInterval } from '@vss/shared';
 import { useSymbolFeed } from '../../hooks/useSymbolFeed';
-import { cn, fmtInt } from '../../lib/format';
-import { useCandles, type Timeframe } from '../../lib/queries';
-import { useMarket, useStock } from '../../store/market';
+import { cn, fmtCompact, fmtPrice } from '../../lib/format';
+import { useKlines } from '../../lib/queries';
+import { useSymbolRow } from '../../store/market';
 import { useUi } from '../../store/ui';
 import { Spinner } from '../common/ui';
 
-const TFS: { value: Timeframe; label: string }[] = [
+const INTERVALS: { value: KlineInterval; label: string }[] = [
   { value: '1m', label: '1m' },
   { value: '5m', label: '5m' },
   { value: '15m', label: '15m' },
   { value: '1h', label: '1H' },
-  { value: '1D', label: '1D' },
-  { value: '1W', label: '1W' },
+  { value: '4h', label: '4H' },
+  { value: '1d', label: '1D' },
+  { value: '1w', label: '1W' },
   { value: '1M', label: '1M' },
 ];
-const PERIOD: Partial<Record<Timeframe, number>> = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 };
-const VN = 7 * 3600;
-const isIntraday = (tf: Timeframe) => tf in PERIOD;
+const SECONDS: Partial<Record<KlineInterval, number>> = {
+  '1m': 60,
+  '3m': 180,
+  '5m': 300,
+  '15m': 900,
+  '30m': 1800,
+  '1h': 3600,
+  '4h': 14_400,
+  '1d': 86_400,
+};
+/** Đường trung bình như mặc định của Binance: MA(7), MA(25), MA(99) */
+const MAS = [
+  { n: 7, color: '#f0b90b' },
+  { n: 25, color: '#e84393' },
+  { n: 99, color: '#a855f7' },
+] as const;
 
-function aggregate(minutes: Candle[], period: number): Candle[] {
-  const out: Candle[] = [];
-  for (const c of minutes) {
-    const k = Math.floor(c.time / period) * period;
-    const last = out[out.length - 1];
-    if (last && last.time === k) {
-      last.high = Math.max(last.high, c.high);
-      last.low = Math.min(last.low, c.low);
-      last.close = c.close;
-      last.volume += c.volume;
-    } else out.push({ ...c, time: k });
+/** Lệch múi giờ của máy (giây): lightweight-charts hiển thị theo UTC nên cộng thêm cho khung trong ngày */
+const TZ = -new Date().getTimezoneOffset() * 60;
+const intraday = (iv: KlineInterval) => (SECONDS[iv] ?? 86_400) < 86_400;
+
+/** Mốc mở nến của khung (giây UTC) — tuần bắt đầu thứ Hai, tháng bắt đầu ngày 1 */
+function bucketOf(time: number, iv: KlineInterval): number {
+  if (iv === '1M') {
+    const d = new Date(time * 1000);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000;
   }
-  return out;
+  if (iv === '1w') {
+    const day = Math.floor(time / 86_400);
+    return (day - ((day + 3) % 7)) * 86_400;
+  }
+  const s = SECONDS[iv]!;
+  return Math.floor(time / s) * s;
 }
 
-function sma(bars: Candle[], n: number) {
+function sma(bars: Kline[], n: number) {
   const out: { time: number; value: number }[] = [];
   let sum = 0;
   for (let i = 0; i < bars.length; i++) {
-    sum += bars[i].close;
-    if (i >= n) sum -= bars[i - n].close;
-    if (i >= n - 1) out.push({ time: bars[i].time, value: sum / n / 1000 });
+    sum += bars[i]!.close;
+    if (i >= n) sum -= bars[i - n]!.close;
+    if (i >= n - 1) out.push({ time: bars[i]!.time, value: sum / n });
   }
   return out;
 }
@@ -67,42 +82,39 @@ function css(name: string) {
 function alpha(hex: string, a: number) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;
-  const n = parseInt(m[1], 16);
+  const n = parseInt(m[1]!, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-function readTf(): Timeframe {
+function readInterval(): KlineInterval {
   try {
-    const v = localStorage.getItem('vss-tf') as Timeframe | null;
-    if (v && TFS.some((t) => t.value === v)) return v;
+    const v = localStorage.getItem('vss-interval') as KlineInterval | null;
+    if (v && INTERVALS.some((t) => t.value === v)) return v;
   } catch {
     /* bỏ qua */
   }
-  return '1D';
+  return '15m';
 }
 
 export function CandleChart({ symbol, className }: { symbol: string; className?: string }) {
-  const [tf, setTf] = useState<Timeframe>(readTf);
-  const [ma20, setMa20] = useState(true);
-  const [ma50, setMa50] = useState(true);
-  const [hover, setHover] = useState<Candle | null>(null);
+  const [iv, setIv] = useState<KlineInterval>(readInterval);
+  const [showMa, setShowMa] = useState(true);
+  const [hover, setHover] = useState<Kline | null>(null);
   const theme = useUi((s) => s.theme);
-  const tradeDate = useMarket((s) => s.session?.tradeDate);
-  const row = useStock(symbol);
-  const { data: raw, isLoading } = useCandles(symbol, tf);
+  const row = useSymbolRow(symbol);
+  const tick = row?.filters.tickSize;
+  const { data: raw, isLoading } = useKlines(symbol, iv);
 
   const boxRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ma50Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const refLineRef = useRef<IPriceLine | null>(null);
-  const barsRef = useRef<Candle[]>([]);
-  const minutesRef = useRef<Candle[]>([]);
-  const baseRef = useRef<{ volAtLoad: number; lastBar: Candle | null }>({ volAtLoad: 0, lastBar: null });
+  const maRefs = useRef<ISeriesApi<'Line'>[]>([]);
+  const barsRef = useRef<Kline[]>([]);
+  const ivRef = useRef(iv);
+  ivRef.current = iv;
 
-  const toTime = (t: number) => (isIntraday(tf) ? t + VN : t) as UTCTimestamp;
+  const toTime = (t: number) => (intraday(ivRef.current) ? t + TZ : t) as UTCTimestamp;
 
   // Khởi tạo biểu đồ
   useEffect(() => {
@@ -113,27 +125,20 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
       grid: { vertLines: { color: css('--line') }, horzLines: { color: css('--line') } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: css('--line'), scaleMargins: { top: 0.08, bottom: 0.26 } },
-      timeScale: { borderColor: css('--line'), rightOffset: 4, barSpacing: 7 },
+      timeScale: { borderColor: css('--line'), rightOffset: 6, barSpacing: 7 },
       localization: { locale: 'vi-VN' },
     });
     const up = css('--up');
     const down = css('--down');
-    candleRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: up,
-      downColor: down,
-      wickUpColor: up,
-      wickDownColor: down,
-      borderVisible: false,
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-    });
+    candleRef.current = chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false });
     volRef.current = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    const lineOpts = { lineWidth: 1 as const, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
-    ma20Ref.current = chart.addSeries(LineSeries, { ...lineOpts, color: '#f0b90b' });
-    ma50Ref.current = chart.addSeries(LineSeries, { ...lineOpts, color: '#a855f7' });
+    maRefs.current = MAS.map((m) =>
+      chart.addSeries(LineSeries, { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, color: m.color }),
+    );
     chart.subscribeCrosshairMove((p) => {
-      if (!p.time || !candleRef.current) return setHover(null);
-      const t = (p.time as number) - (isIntradayRef.current ? VN : 0);
+      if (!p.time) return setHover(null);
+      const t = (p.time as number) - (intraday(ivRef.current) ? TZ : 0);
       setHover(barsRef.current.find((b) => b.time === t) ?? null);
     });
     chartRef.current = chart;
@@ -143,8 +148,20 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
     };
   }, []);
 
-  const isIntradayRef = useRef(isIntraday(tf));
-  isIntradayRef.current = isIntraday(tf);
+  // Định dạng giá theo bước giá của cặp (BTC 2 chữ số, PEPE 8 chữ số)
+  useEffect(() => {
+    if (!tick) return;
+    const precision = decimalsOf(tick);
+    candleRef.current?.applyOptions({ priceFormat: { type: 'price', precision, minMove: Number(tick) } });
+    for (const s of maRefs.current) s.applyOptions({ priceFormat: { type: 'price', precision, minMove: Number(tick) } });
+  }, [tick]);
+
+  const volPoint = (b: Kline) => ({ time: toTime(b.time), value: b.volume, color: alpha(css(b.close >= b.open ? '--up' : '--down'), 0.45) });
+  const candlePoint = (b: Kline) => ({ time: toTime(b.time), open: b.open, high: b.high, low: b.low, close: b.close });
+
+  const applyMA = (bars: Kline[]) => {
+    MAS.forEach((m, i) => maRefs.current[i]?.setData(showMa ? sma(bars, m.n).map((p) => ({ time: toTime(p.time), value: p.value })) : []));
+  };
 
   // Đổi theme
   useEffect(() => {
@@ -163,172 +180,103 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
-  const volPoint = (b: Candle) => ({
-    time: toTime(b.time),
-    value: b.volume,
-    color: alpha(css(b.close >= b.open ? '--up' : '--down'), 0.45),
-  });
-  const candlePoint = (b: Candle) => ({ time: toTime(b.time), open: b.open / 1000, high: b.high / 1000, low: b.low / 1000, close: b.close / 1000 });
-
-  const applyMA = (bars: Candle[]) => {
-    ma20Ref.current?.setData(ma20 ? sma(bars, 20).map((p) => ({ time: toTime(p.time), value: p.value })) : []);
-    ma50Ref.current?.setData(ma50 ? sma(bars, 50).map((p) => ({ time: toTime(p.time), value: p.value })) : []);
-  };
-
-  // Nạp dữ liệu khi đổi mã / khung thời gian
+  // Nạp dữ liệu khi đổi cặp / khung
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || !raw) return;
-    const intraday = isIntraday(tf);
-    let bars: Candle[];
-    if (intraday) {
-      minutesRef.current = raw.map((c) => ({ ...c }));
-      bars = aggregate(minutesRef.current, PERIOD[tf]!);
-    } else {
-      bars = raw.map((c) => ({ ...c }));
-      const st = useMarket.getState();
-      const r = st.rows[symbol];
-      const today = st.session?.tradeDate;
-      const todayTime = today ? Date.parse(`${today}T00:00:00Z`) / 1000 : 0;
-      const includesToday = tf === '1D' ? bars[bars.length - 1]?.time === todayTime : true;
-      baseRef.current = { volAtLoad: includesToday && r ? r.volume : 0, lastBar: bars[bars.length - 1] ? { ...bars[bars.length - 1] } : null };
-    }
+    const bars = raw.map((k) => ({ ...k }));
     barsRef.current = bars;
-    chart.applyOptions({ timeScale: { timeVisible: intraday, secondsVisible: false } });
+    chart.applyOptions({ timeScale: { timeVisible: intraday(iv), secondsVisible: false } });
     candleRef.current!.setData(bars.map(candlePoint));
     volRef.current!.setData(bars.map(volPoint));
     applyMA(bars);
-    const visible = intraday ? 150 : tf === '1D' ? 160 : 120;
-    if (bars.length > visible) chart.timeScale().setVisibleLogicalRange({ from: bars.length - visible, to: bars.length + 3 });
+    const visible = 140;
+    if (bars.length > visible) chart.timeScale().setVisibleLogicalRange({ from: bars.length - visible, to: bars.length + 4 });
     else chart.timeScale().fitContent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [raw, tf, symbol]);
+  }, [raw, iv, symbol]);
 
-  // Bật/tắt MA
   useEffect(() => {
     applyMA(barsRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ma20, ma50]);
+  }, [showMa]);
 
-  // Đường tham chiếu
-  useEffect(() => {
-    const s = candleRef.current;
-    if (!s || !row) return;
-    if (refLineRef.current) s.removePriceLine(refLineRef.current);
-    refLineRef.current = s.createPriceLine({
-      price: row.ref / 1000,
-      color: css('--ref'),
-      lineStyle: LineStyle.Dashed,
-      lineWidth: 1,
-      axisLabelVisible: true,
-      title: 'TC',
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row?.ref, symbol, theme]);
-
-  const pushBar = (bar: Candle) => {
-    const bars = barsRef.current;
-    const last = bars[bars.length - 1];
-    if (last && last.time === bar.time) bars[bars.length - 1] = bar;
-    else if (!last || bar.time > last.time) bars.push(bar);
-    else return;
-    candleRef.current?.update(candlePoint(bar));
-    volRef.current?.update(volPoint(bar));
-    const n = bars.length;
-    const maAt = (len: number) => {
-      if (n < len) return null;
-      let sum = 0;
-      for (let i = n - len; i < n; i++) sum += bars[i].close;
-      return { time: toTime(bar.time), value: sum / len / 1000 };
-    };
-    const m20 = maAt(20);
-    const m50 = maAt(50);
-    if (ma20 && m20) ma20Ref.current?.update(m20);
-    if (ma50 && m50) ma50Ref.current?.update(m50);
-  };
-
-  // Realtime: nến phút (khung trong ngày)
+  // Realtime: nến 1 phút đang chạy → gộp vào nến của khung đang xem
   useSymbolFeed(symbol, {
-    onCandle: (c) => {
-      if (!isIntraday(tf) || !raw) return;
-      const mins = minutesRef.current;
-      const last = mins[mins.length - 1];
-      if (last && last.time === c.time) mins[mins.length - 1] = c;
-      else if (!last || c.time > last.time) mins.push(c);
-      const period = PERIOD[tf]!;
-      const bucket = Math.floor(c.time / period) * period;
-      const inBucket = mins.filter((m) => m.time >= bucket && m.time < bucket + period);
-      const agg = aggregate(inBucket, period)[0];
-      if (agg) pushBar(agg);
+    onKline: (k) => {
+      const bars = barsRef.current;
+      if (!bars.length) return;
+      const t = bucketOf(k.time, ivRef.current);
+      const last = bars[bars.length - 1]!;
+      let bar: Kline;
+      if (last.time === t) {
+        // Nến khung lớn: giữ open, cập nhật cao / thấp / đóng; khối lượng chỉ chính xác ở khung 1m
+        bar = {
+          time: t,
+          open: last.open,
+          high: Math.max(last.high, k.high),
+          low: Math.min(last.low, k.low),
+          close: k.close,
+          volume: ivRef.current === '1m' ? k.volume : last.volume,
+        };
+        bars[bars.length - 1] = bar;
+      } else if (t > last.time) {
+        bar = { ...k, time: t };
+        bars.push(bar);
+      } else return;
+      candleRef.current?.update(candlePoint(bar));
+      volRef.current?.update(volPoint(bar));
+      if (showMa) {
+        MAS.forEach((m, i) => {
+          if (bars.length < m.n) return;
+          let sum = 0;
+          for (let j = bars.length - m.n; j < bars.length; j++) sum += bars[j]!.close;
+          maRefs.current[i]?.update({ time: toTime(bar.time), value: sum / m.n });
+        });
+      }
     },
   });
 
-  // Realtime: nến ngày/tuần/tháng từ bảng giá
-  useEffect(() => {
-    if (isIntraday(tf) || !row || !row.volume || !tradeDate || !raw) return;
-    const todayTime = Date.parse(`${tradeDate}T00:00:00Z`) / 1000;
-    if (tf === '1D') {
-      pushBar({ time: todayTime, open: row.open, high: row.high, low: row.low, close: row.last, volume: row.volume });
-      return;
-    }
-    const base = baseRef.current.lastBar;
-    if (!base) return;
-    pushBar({
-      time: base.time,
-      open: base.open,
-      high: Math.max(base.high, row.high),
-      low: Math.min(base.low, row.low),
-      close: row.last,
-      volume: base.volume + (row.volume - baseRef.current.volAtLoad),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row?.last, row?.volume, tf, tradeDate]);
-
   const legend = hover ?? barsRef.current[barsRef.current.length - 1] ?? null;
-  const prevClose = useMemo(() => {
-    if (!legend) return 0;
-    const i = barsRef.current.findIndex((b) => b.time === legend.time);
-    return i > 0 ? barsRef.current[i - 1].close : legend.open;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legend?.time, legend?.close]);
-  const chg = legend && prevClose ? ((legend.close - prevClose) / prevClose) * 100 : 0;
+  const chg = useMemo(() => (legend && legend.open ? ((legend.close - legend.open) / legend.open) * 100 : 0), [legend]);
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-1.5">
         <div className="flex items-center gap-0.5" role="tablist" aria-label="Khung thời gian">
-          {TFS.map((t) => (
+          {INTERVALS.map((t) => (
             <button
               key={t.value}
               role="tab"
-              aria-selected={tf === t.value}
+              aria-selected={iv === t.value}
               onClick={() => {
-                setTf(t.value);
+                setIv(t.value);
                 try {
-                  localStorage.setItem('vss-tf', t.value);
+                  localStorage.setItem('vss-interval', t.value);
                 } catch {
                   /* bỏ qua */
                 }
               }}
-              className={cn('h-6 rounded px-2 text-[12px] font-medium', tf === t.value ? 'bg-bg-3 text-brand' : 'text-tx-3 hover:text-tx-1')}
+              className={cn('h-6 rounded px-2 text-[12px] font-medium', iv === t.value ? 'bg-bg-3 text-brand' : 'text-tx-3 hover:text-tx-1')}
             >
               {t.label}
             </button>
           ))}
         </div>
         <span className="h-4 w-px bg-line" />
-        <button onClick={() => setMa20((v) => !v)} className={cn('text-[12px] font-medium', ma20 ? 'text-[#f0b90b]' : 'text-tx-3')}>
-          MA20
-        </button>
-        <button onClick={() => setMa50((v) => !v)} className={cn('text-[12px] font-medium', ma50 ? 'text-[#a855f7]' : 'text-tx-3')}>
-          MA50
+        <button onClick={() => setShowMa((v) => !v)} className={cn('flex items-center gap-2 text-[12px] font-medium', showMa ? 'text-tx-2' : 'text-tx-3')}>
+          {MAS.map((m) => (
+            <span key={m.n} style={{ color: showMa ? m.color : undefined }}>
+              MA{m.n}
+            </span>
+          ))}
         </button>
         {legend && (
           <div className="num ml-auto flex flex-wrap gap-x-2.5 text-[11px] text-tx-3">
             {(['open', 'high', 'low', 'close'] as const).map((k) => (
               <span key={k}>
                 {k === 'open' ? 'O' : k === 'high' ? 'H' : k === 'low' ? 'L' : 'C'}{' '}
-                <b className={cn('font-medium', legend.close >= legend.open ? 'text-up' : 'text-down')}>{(legend[k] / 1000).toFixed(2)}</b>
+                <b className={cn('font-medium', legend.close >= legend.open ? 'text-up' : 'text-down')}>{fmtPrice(legend[k], tick)}</b>
               </span>
             ))}
             <span className={chg >= 0 ? 'text-up' : 'text-down'}>
@@ -336,7 +284,7 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
               {chg.toFixed(2)}%
             </span>
             <span>
-              KL <b className="font-medium text-tx-2">{fmtInt(legend.volume)}</b>
+              Vol <b className="font-medium text-tx-2">{fmtCompact(legend.volume)}</b>
             </span>
           </div>
         )}
@@ -348,9 +296,7 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
             <Spinner />
           </div>
         )}
-        {!isLoading && raw && raw.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-tx-3">Chưa có dữ liệu cho khung thời gian này</div>
-        )}
+        {!isLoading && raw && raw.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-tx-3">Chưa có dữ liệu cho khung thời gian này</div>}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { HoldingDTO, InstrumentType, LedgerDTO, OrderDTO, RulesPatch, TradingRules } from '@vss/shared';
+import type { AccountDTO, LedgerDTO, OrderDTO, RulesPatch, SymbolFilters, TradingRules } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
 
@@ -11,7 +11,7 @@ export interface SystemStatus {
   haltedSymbols: string[];
   /** Đang bảo trì (vd. khôi phục dữ liệu) */
   maintenance: string | null;
-  /** Quy tắc giao dịch đang áp dụng */
+  /** Biểu phí đang áp dụng */
   rules: TradingRules;
 }
 
@@ -29,15 +29,14 @@ export interface AdminOverview {
   tradeDate: string;
   users: { total: number; new7d: number; locked: number; admins: number; active15m: number; online: number; connections: number };
   orders: Record<string, number>;
-  trades: { n: number; value: number; fee: number; tax: number };
+  trades: { n: number; value: number; fee: number };
   totalNav: number;
   topInvestors: { id: string; email: string; fullName: string; nav: number; pnl: number; pnlPct: number }[];
   bottomInvestors: { id: string; email: string; fullName: string; nav: number; pnl: number; pnlPct: number }[];
   health: {
-    phase: string;
-    mode: string;
-    provider: string;
+    source: string;
     feed: string;
+    symbols: number;
     uptimeSec: number;
     rssBytes: number;
     heapBytes: number;
@@ -62,8 +61,9 @@ export interface AdminUser {
   emailVerified: boolean;
   twoFactorEnabled: boolean;
   online: boolean;
-  cashBalance: number;
-  cashHold: number;
+  /** Số dư USDT (khả dụng + khoá) */
+  usdt: number;
+  /** Tổng tài sản quy USDT */
   nav: number;
   pnl: number;
   pnlPct: number;
@@ -76,9 +76,8 @@ export interface AdminUserDetail {
     AdminUser,
     'id' | 'email' | 'fullName' | 'role' | 'status' | 'lockedReason' | 'createdAt' | 'lastSeenAt' | 'online' | 'emailVerified' | 'twoFactorEnabled'
   >;
-  account: { cashBalance: number; cashHold: number; cashAvailable: number; initialCapital: number; stockValue: number; nav: number } | null;
+  account: AccountDTO;
   stats: { trades: number; realized: number; fees: number; watch: number };
-  holdings: (HoldingDTO & { marketPrice: number; marketValue: number })[];
   orders: OrderDTO[];
   ledger: LedgerDTO[];
   audit: AuditRow[];
@@ -87,52 +86,41 @@ export interface AdminUserDetail {
 export type AdminOrder = OrderDTO & { userId: string; userEmail: string };
 
 export interface AdminMarket {
-  session: { mode: string; phase: string; tradeDate: string; serverTime: number };
-  provider: string;
-  feed: string;
+  market: { feed: 'LIVE' | 'SIM'; source: string; serverTime: number };
+  source: string;
   status: SystemStatus;
-  holidays: { date: string; name: string }[];
-  rules: TradingRules & { settlementDays: number; tickIntervalMs: number };
-  symbols: { symbol: string; exchange: string; name: string }[];
+  rules: TradingRules;
+  symbols: { symbol: string; baseAsset: string; name: string; status: string }[];
 }
 
 export interface AdminSymbol {
   symbol: string;
-  exchange: 'HOSE' | 'HNX' | 'UPCOM';
-  type: InstrumentType;
-  status: 'ACTIVE' | 'DELISTED';
+  baseAsset: string;
+  quoteAsset: string;
   name: string;
-  industry: string;
-  listedShares: number;
-  eps: number;
-  bvps: number;
-  isVn30: boolean;
-  marginRatio: number;
-  liquidity: number;
-  volatility: number;
-  listedAt: string | null;
-  delistedAt: string | null;
-  delistReason: string | null;
+  status: 'TRADING' | 'HALT' | 'BREAK';
+  enabled: boolean;
+  sortOrder: number;
+  filters: SymbolFilters;
+  halted: boolean;
   holders: number;
   openOrders: number;
-  halted: boolean;
-  ref: number | null;
-  last: number | null;
-  volume: number;
+  last: string | null;
+  changePct: number | null;
+  quoteVolume: string | null;
 }
 
 export interface RulesResponse {
   rules: TradingRules;
   defaults: TradingRules;
   overrides: RulesPatch;
-  settlementDays: number;
 }
 
 export interface RestoreReport {
   dryRun: boolean;
   meta: { version: number; exportedAt: string; exportedBy: string; tradeDate: string };
   tables: { name: string; rows: number; ignoredColumns: string[] }[];
-  stocksAdded: string[];
+  symbolsAdded: string[];
   warnings: string[];
   autoBackupFile?: string;
 }
@@ -335,11 +323,12 @@ export const AUDIT_LABEL: Record<string, string> = {
   ROLE_REVOKE_ADMIN: 'Thu quyền quản trị',
   ACCOUNT_RESET: 'Đặt lại tài khoản ảo',
   CASH_ADJUST: 'Điều chỉnh vốn ảo',
+  BALANCE_ADJUST: 'Điều chỉnh số dư',
   ORDER_CANCEL: 'Huỷ lệnh hộ',
   TRADING_HALT: 'Tạm ngừng nhận lệnh',
   TRADING_RESUME: 'Mở lại nhận lệnh',
-  SYMBOL_HALT: 'Tạm ngừng mã',
-  SYMBOL_RESUME: 'Mở lại mã',
+  SYMBOL_HALT: 'Tạm ngừng cặp',
+  SYMBOL_RESUME: 'Mở lại cặp',
   ANNOUNCEMENT_SET: 'Đăng thông báo',
   ANNOUNCEMENT_CLEAR: 'Gỡ thông báo',
   HOLIDAY_ADD: 'Thêm ngày nghỉ',
@@ -350,11 +339,11 @@ export const AUDIT_LABEL: Record<string, string> = {
   CA_CREATE: 'Công bố sự kiện quyền',
   CA_CANCEL: 'Huỷ sự kiện quyền',
   CREDIT_LIMIT: 'Đổi hạn mức vay ký quỹ',
-  RULES_UPDATE: 'Đổi tham số giao dịch',
-  RULES_RESET: 'Khôi phục tham số mặc định',
-  SYMBOL_LIST: 'Niêm yết mã',
-  SYMBOL_UPDATE: 'Sửa thông tin mã',
-  SYMBOL_DELIST: 'Huỷ niêm yết',
+  RULES_UPDATE: 'Đổi biểu phí',
+  RULES_RESET: 'Khôi phục biểu phí mặc định',
+  SYMBOL_LIST: 'Thêm cặp giao dịch',
+  SYMBOL_UPDATE: 'Sửa thông tin cặp',
+  SYMBOL_DELIST: 'Gỡ cặp khỏi sàn',
   VN30_ADD: 'Thêm vào VN30',
   VN30_REMOVE: 'Đưa khỏi VN30',
 };
@@ -378,15 +367,16 @@ export function auditSummary(a: AuditRow): string {
   const d = a.detail ?? {};
   const parts: string[] = [];
   if (typeof d.email === 'string') parts.push(d.email);
-  if (typeof d.amount === 'number') parts.push(`${d.amount > 0 ? '+' : ''}${d.amount.toLocaleString('en-US')}đ`);
+  if (typeof d.amount === 'number') parts.push(`${d.amount > 0 ? '+' : ''}${d.amount.toLocaleString('en-US')}`);
+  if (typeof d.amount === 'string' && typeof d.asset === 'string') parts.push(`${d.amount.startsWith('-') ? '' : '+'}${d.amount} ${d.asset}`);
   if (typeof d.symbol === 'string') parts.push(`${d.symbol}`);
   if (a.target_type === 'symbol' && a.target_id) parts.push(a.target_id);
   if (a.action === 'RULES_UPDATE' && d.patch && typeof d.patch === 'object') parts.push(Object.keys(d.patch as object).join(', '));
-  if (typeof d.payoutPrice === 'number') parts.push(`thanh toán ${d.payoutPrice.toLocaleString('en-US')}đ/CP`);
   if (a.target_type === 'holiday' && a.target_id) parts.push(`${a.target_id}${typeof d.name === 'string' ? ` · ${d.name}` : ''}`);
   if (a.target_type === 'order' && a.target_id) parts.push(`lệnh #${a.target_id}`);
   if (typeof d.text === 'string') parts.push(`"${d.text}"`);
   if (typeof d.reason === 'string' && d.reason) parts.push(`lý do: ${d.reason}`);
   if (typeof d.cancelledOrders === 'number' && d.cancelledOrders) parts.push(`huỷ ${d.cancelledOrders} lệnh`);
+  if (typeof d.canceledOrders === 'number' && d.canceledOrders) parts.push(`huỷ ${d.canceledOrders} lệnh`);
   return parts.join(' · ');
 }

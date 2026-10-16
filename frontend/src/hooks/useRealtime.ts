@@ -2,10 +2,10 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
 import { toast } from 'sonner';
-import { conditionalLabel, type ConditionalOrderDTO, type IndexSnapshot, type OrderDTO, type SessionInfo, type StockRow, type StockSnapshot, type TradeDTO } from '@vss/shared';
+import { ORDER_STATUS_LABEL, type FillDTO, type MarketStatus, type OrderDTO, type SymbolRow, type Ticker24h } from '@vss/shared';
 import type { SystemStatus } from '../lib/admin';
 import { api } from '../lib/api';
-import { fmtInt, fmtPrice } from '../lib/format';
+import { fmtPrice, fmtQty } from '../lib/format';
 import { useAuth } from '../store/auth';
 import { useMarket } from '../store/market';
 
@@ -23,21 +23,17 @@ export function onSocket(fn: (s: Socket) => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** Kết nối realtime: bảng giá, chỉ số, phiên, sự kiện lệnh của người dùng */
+const loadSymbols = () => api<SymbolRow[]>('/market/symbols').then((rows) => useMarket.getState().setInitial(rows));
+
+/** Kết nối realtime: ticker 24h, nguồn dữ liệu, sự kiện lệnh / khớp / ví của người dùng */
 export function useRealtime() {
   const token = useAuth((s) => s.token);
   const qc = useQueryClient();
 
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      api<StockRow[]>('/market/stocks')
-        .then((rows) => alive && useMarket.getState().setInitial(rows))
-        .catch(() => setTimeout(() => alive && load(), 3000));
+    const load = () => loadSymbols().catch(() => setTimeout(() => alive && load(), 3000));
     void load();
-    api<IndexSnapshot[]>('/market/indices')
-      .then((x) => useMarket.getState().setIndices(x))
-      .catch(() => undefined);
     return () => {
       alive = false;
     };
@@ -50,27 +46,19 @@ export function useRealtime() {
     s.on('connect', () => {
       m.setConnected(true);
       // đồng bộ lại toàn bảng sau khi kết nối lại
-      api<StockRow[]>('/market/stocks')
-        .then((rows) => useMarket.getState().setInitial(rows))
-        .catch(() => undefined);
+      void loadSymbols().catch(() => undefined);
     });
     s.on('disconnect', (reason) => {
       m.setConnected(false);
       // Máy chủ chủ động ngắt (vd. tài khoản vừa bị khoá) → kết nối lại để nhận lý do từ máy chủ
       if (reason === 'io server disconnect') s.connect();
     });
-    s.on('board', (rows: StockSnapshot[]) => useMarket.getState().applyBoard(rows));
-    s.on('indices', (rows: IndexSnapshot[]) => useMarket.getState().setIndices(rows));
-    s.on('session', (x: SessionInfo) => useMarket.getState().setSession(x));
+    s.on('tickers', (list: Ticker24h[]) => useMarket.getState().applyTickers(list));
+    s.on('feed', (x: MarketStatus) => useMarket.getState().setStatus(x));
     // Quản trị viên đổi trạng thái vận hành (tạm ngừng nhận lệnh, thông báo) → cập nhật banner ngay
     s.on('system', (x: SystemStatus) => qc.setQueryData(['system'], x));
-    // Danh mục mã thay đổi (niêm yết mới / huỷ niêm yết / đổi rổ VN30) → tải lại bảng giá
-    s.on('symbols', () => {
-      api<StockRow[]>('/market/stocks')
-        .then((rows) => useMarket.getState().setInitial(rows))
-        .catch(() => undefined);
-      void qc.invalidateQueries({ queryKey: ['portfolio'] });
-    });
+    // Danh sách cặp thay đổi (thêm / gỡ / tạm ngừng) → tải lại
+    s.on('symbols', () => void loadSymbols().catch(() => undefined));
     // Tài khoản bị khoá: máy chủ từ chối kết nối realtime → đăng xuất
     s.on('connect_error', (err: Error) => {
       if (token && /bị khoá/.test(err.message)) {
@@ -81,31 +69,27 @@ export function useRealtime() {
 
     s.on('order', (o: OrderDTO) => {
       void qc.invalidateQueries({ queryKey: ['orders'] });
-      if (o.status === 'EXPIRED') toast.message(`Lệnh #${o.id} ${o.symbol} hết hiệu lực`);
-      if (o.status === 'CANCELLED' && o.rejectReason) toast.warning(`Lệnh #${o.id}: ${o.rejectReason}`);
+      const info = useMarket.getState().rows[o.symbol];
+      if (o.status === 'EXPIRED' && o.reason) toast.message(`Lệnh ${o.side === 'BUY' ? 'mua' : 'bán'} ${o.symbol} hết hiệu lực`, { description: o.reason });
+      if (o.status === 'CANCELED' && o.reason && !/Đã sửa lệnh/.test(o.reason)) toast.warning(`Lệnh ${o.symbol} đã bị huỷ`, { description: o.reason });
+      if (o.status === 'NEW' && o.stopPrice && o.isWorking && o.executedQty === '0' && o.type !== 'LIMIT_MAKER') {
+        toast.info(`Lệnh dừng ${o.symbol} đã kích hoạt`, { description: `Giá kích hoạt ${fmtPrice(o.stopPrice, info?.filters.tickSize)}` });
+      }
+      if (o.status === 'FILLED' && o.type === 'MARKET') {
+        toast.success(`${ORDER_STATUS_LABEL.FILLED}: ${o.side === 'BUY' ? 'mua' : 'bán'} ${fmtQty(o.executedQty, info?.filters.stepSize)} ${info?.baseAsset ?? ''}`, {
+          description: `Giá trung bình ${fmtPrice(o.avgPrice, info?.filters.tickSize)}`,
+          id: `fill-${o.id}`,
+        });
+      }
     });
-    s.on('fill', (t: TradeDTO) => {
-      const buy = t.side === 'BUY';
-      toast.success(`Khớp ${buy ? 'MUA' : 'BÁN'} ${fmtInt(t.qty)} ${t.symbol} @ ${fmtPrice(t.price)}`, {
-        description: `Giá trị ${fmtInt(t.value)}đ · phí ${fmtInt(t.fee)}đ${t.tax ? ` · thuế ${fmtInt(t.tax)}đ` : ''}`,
+    s.on('fill', (f: FillDTO) => {
+      const info = useMarket.getState().rows[f.symbol];
+      // Lệnh khớp nhiều mức giá: cùng id thông báo → chỉ hiện 1 thông báo (lần khớp mới nhất) cho mỗi lệnh
+      toast.success(`Khớp ${f.side === 'BUY' ? 'MUA' : 'BÁN'} ${fmtQty(f.qty, info?.filters.stepSize)} ${info?.baseAsset ?? f.symbol} @ ${fmtPrice(f.price, info?.filters.tickSize)}`, {
+        description: `Phí ${f.commission} ${f.commissionAsset}${f.isMaker ? ' (maker)' : ' (taker)'}`,
+        id: `fill-${f.orderId}`,
       });
       void qc.invalidateQueries({ queryKey: ['trades'] });
-    });
-    // Lệnh điều kiện kích hoạt / lỗi / hết hạn
-    s.on('conditional', (c: ConditionalOrderDTO) => {
-      void qc.invalidateQueries({ queryKey: ['conditional'] });
-      const name = `${conditionalLabel(c.kind, c.side)} ${c.symbol}`;
-      if (c.status === 'TRIGGERED') toast.success(`${name} đã kích hoạt`, { description: c.message ?? undefined });
-      else if (c.status === 'FAILED') toast.error(`${name} kích hoạt nhưng không đặt được lệnh`, { description: c.message ?? undefined });
-      else if (c.status === 'EXPIRED') toast.message(`${name} hết hiệu lực`);
-      else if (c.status === 'CANCELLED' && c.message && c.message !== 'Người dùng huỷ') toast.message(`${name} đã huỷ`, { description: c.message });
-    });
-    // Ký quỹ: cảnh báo tỷ lệ / bán giải chấp
-    s.on('margin', (ev: { status: string; message: string }) => {
-      if (ev.status === 'FORCE') toast.error('Bán giải chấp ký quỹ', { description: ev.message, duration: 15_000 });
-      else if (ev.status === 'CALL') toast.warning('Cảnh báo ký quỹ (margin call)', { description: ev.message, duration: 15_000 });
-      else toast.success(ev.message);
-      void qc.invalidateQueries({ queryKey: ['portfolio'] });
     });
     // Cảnh báo giá kích hoạt (báo 1 lần)
     s.on('alert', (ev: { alert: { symbol: string }; message: string }) => {
@@ -113,10 +97,8 @@ export function useRealtime() {
       void qc.invalidateQueries({ queryKey: ['alerts'] });
     });
     s.on('account', () => {
-      void qc.invalidateQueries({ queryKey: ['portfolio'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
       void qc.invalidateQueries({ queryKey: ['ledger'] });
-      void qc.invalidateQueries({ queryKey: ['entitlements'] });
-      void qc.invalidateQueries({ queryKey: ['buying-power'] });
     });
 
     for (const fn of listeners) fn(s);

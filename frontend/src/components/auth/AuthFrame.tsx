@@ -1,30 +1,28 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../layout/Header';
-import { cn, fmtPrice, priceTone, toneText } from '../../lib/format';
+import { cn, fmtPct, fmtPrice, signTone, toneText } from '../../lib/format';
 import { useMarket } from '../../store/market';
+import { CoinIcon } from '../common/CoinIcon';
 
-/** Dải giá VN30 chạy ngang ở các trang đăng nhập / đăng ký */
+/** Dải giá các cặp chạy ngang (trang đăng nhập / đăng ký, trang giới thiệu) */
 export function LiveTicker() {
   const rows = useMarket((s) => s.rows);
-  const list = useMemo(() => Object.values(rows).filter((r) => r.isVn30), [rows]);
+  const symbols = useMarket((s) => s.symbols);
+  const list = useMemo(() => symbols.map((s) => rows[s]!).filter(Boolean), [rows, symbols]);
   if (!list.length) return null;
   const items = [...list, ...list];
   return (
     <div className="overflow-hidden border-y border-line bg-bg-1/60 py-2">
       <div className="ticker-track flex w-max gap-6">
         {items.map((r, i) => {
-          const traded = r.volume > 0;
-          const tone = traded ? priceTone(r.last, r.ref, r.ceil, r.floor) : 'ref';
+          const tone = signTone(r.changePct);
           return (
-            <span key={`${r.symbol}-${i}`} className="num flex items-center gap-1.5 text-[12px]">
-              <b className="text-tx-1">{r.symbol}</b>
-              <span className={toneText[tone]}>{fmtPrice(traded ? r.last : r.ref)}</span>
-              <span className={cn('text-[11px]', toneText[tone])}>
-                {r.changePct > 0 ? '+' : ''}
-                {r.changePct.toFixed(2)}%
-              </span>
-            </span>
+            <Link key={`${r.symbol}-${i}`} to={`/trade/${r.symbol}`} className="num flex items-center gap-1.5 text-[12px]">
+              <b className="text-tx-1">{r.baseAsset}</b>
+              <span className="text-tx-2">{fmtPrice(r.last, r.filters.tickSize)}</span>
+              <span className={cn('text-[11px]', toneText[tone])}>{fmtPct(r.changePct)}</span>
+            </Link>
           );
         })}
       </div>
@@ -32,20 +30,21 @@ export function LiveTicker() {
   );
 }
 
-export function IndexMini() {
-  const indices = useMarket((s) => s.indices);
+/** 4 coin chính với giá và % 24h */
+export function MajorsMini() {
+  const rows = useMarket((s) => s.rows);
+  const list = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'].map((s) => rows[s]).filter((r) => !!r);
   return (
     <div className="grid grid-cols-2 gap-2">
-      {indices.map((ix) => {
-        const tone = ix.change > 0 ? 'up' : ix.change < 0 ? 'down' : 'ref';
+      {list.map((r) => {
+        const tone = signTone(r!.changePct);
         return (
-          <div key={ix.code} className="rounded-lg border border-line bg-bg-1/70 px-3 py-2">
-            <div className="text-[11px] text-tx-3">{ix.name}</div>
-            <div className={cn('num text-[16px] font-bold', toneText[tone])}>{ix.value.toFixed(2)}</div>
-            <div className={cn('num text-[11px]', toneText[tone])}>
-              {ix.change > 0 ? '+' : ''}
-              {ix.change.toFixed(2)} ({ix.changePct > 0 ? '+' : ''}
-              {ix.changePct.toFixed(2)}%)
+          <div key={r!.symbol} className="flex items-center gap-3 rounded-lg border border-line bg-bg-1/70 px-3 py-2">
+            <CoinIcon asset={r!.baseAsset} size={26} />
+            <div className="min-w-0">
+              <div className="text-[11px] text-tx-3">{r!.baseAsset}/USDT</div>
+              <div className="num text-[15px] font-bold">{fmtPrice(r!.last, r!.filters.tickSize)}</div>
+              <div className={cn('num text-[11px]', toneText[tone])}>{fmtPct(r!.changePct)}</div>
             </div>
           </div>
         );
@@ -60,8 +59,8 @@ export function AuthFrame({ children }: { children: ReactNode }) {
     <div className="flex min-h-full flex-col bg-bg-0">
       <div className="flex h-14 items-center justify-between border-b border-line px-4">
         <Logo />
-        <Link to="/bang-gia" className="text-[13px] text-tx-2 hover:text-brand">
-          Xem bảng giá →
+        <Link to="/thi-truong" className="text-[13px] text-tx-2 hover:text-brand">
+          Xem thị trường →
         </Link>
       </div>
       <LiveTicker />

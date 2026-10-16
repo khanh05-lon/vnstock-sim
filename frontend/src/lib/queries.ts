@@ -2,36 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type {
   AccountDTO,
-  Candle,
-  ConditionalOrderDTO,
-  HoldingDTO,
+  FillDTO,
+  Kline,
+  KlineInterval,
   LedgerDTO,
+  MonthlyReportDTO,
   OrderDTO,
   PriceAlertDTO,
   PriceAlertInput,
-  StockRow,
-  TradeDTO,
-  TradeTick,
   WatchlistDTO,
 } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { useWatchSel } from '../store/ui';
 import { api, errMsg } from './api';
-
-export type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D' | '1W' | '1M';
-
-export interface PortfolioHolding extends HoldingDTO {
-  marketPrice: number;
-  marketValue: number;
-}
-
-export interface PortfolioResponse {
-  account: AccountDTO;
-  holdings: PortfolioHolding[];
-  realizedPnl: number;
-  totalFees: number;
-  totalTaxes: number;
-}
 
 export interface HistoryFilter {
   from?: string;
@@ -39,74 +22,66 @@ export interface HistoryFilter {
   symbol?: string;
   side?: string;
   status?: string;
+  asset?: string;
 }
 
-const qs = (o: Record<string, string | undefined>) => {
+const qs = (o: Record<string, string | number | undefined>) => {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(o)) if (v) p.set(k, v);
+  for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== '') p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : '';
 };
 
 export const useLoggedIn = () => useAuth((s) => !!s.token);
 
-export function useStockDetail(symbol: string) {
-  return useQuery({
-    queryKey: ['stock', symbol],
-    queryFn: () => api<StockRow & { trades: TradeTick[] }>(`/market/stocks/${symbol}`),
-    staleTime: 60_000,
-  });
-}
+/* ------------------------------ thị trường ------------------------------ */
 
-export function useCandles(symbol: string, tf: Timeframe) {
-  const fetchTf: Timeframe = tf === '5m' || tf === '15m' || tf === '1h' ? '1m' : tf;
+export function useKlines(symbol: string, interval: KlineInterval) {
   return useQuery({
-    queryKey: ['candles', symbol, fetchTf],
-    queryFn: () => api<Candle[]>(`/market/stocks/${symbol}/candles?tf=${fetchTf}`),
+    queryKey: ['klines', symbol, interval],
+    queryFn: () => api<Kline[]>(`/market/klines/${symbol}${qs({ interval, limit: 500 })}`),
     staleTime: 30_000,
+    enabled: !!symbol,
   });
 }
 
-export function useIndexHistory(code: string, tf: '1m' | '1D') {
-  return useQuery({
-    queryKey: ['index-history', code, tf],
-    queryFn: () => api<{ time: number; value: number }[]>(`/market/indices/${code}/history?tf=${tf}`),
-    refetchInterval: tf === '1m' ? 60_000 : false,
-  });
+/* ------------------------------ ví & lệnh ------------------------------ */
+
+export function useAccount() {
+  const loggedIn = useLoggedIn();
+  return useQuery({ queryKey: ['account'], queryFn: () => api<AccountDTO>('/account'), enabled: loggedIn, staleTime: 5_000 });
 }
 
-export function usePortfolio() {
+/** Số dư khả dụng 1 tài sản (chuỗi thập phân, "0" nếu chưa có) */
+export function useFree(asset: string | undefined): string {
+  const { data } = useAccount();
+  if (!asset) return '0';
+  return data?.balances.find((b) => b.asset === asset)?.free ?? '0';
+}
+
+export function useOpenOrders(symbol?: string) {
   const loggedIn = useLoggedIn();
   return useQuery({
-    queryKey: ['portfolio'],
-    queryFn: () => api<PortfolioResponse>('/portfolio'),
+    queryKey: ['orders', 'open', symbol ?? null],
+    queryFn: () => api<OrderDTO[]>(`/openOrders${qs({ symbol })}`),
     enabled: loggedIn,
   });
 }
 
-export function useOrders(scope: 'open' | 'today' | 'all', filter: HistoryFilter = {}) {
+export function useOrderHistory(filter: HistoryFilter = {}, limit = 500) {
   const loggedIn = useLoggedIn();
   return useQuery({
-    queryKey: ['orders', scope, filter],
-    queryFn: () => api<OrderDTO[]>(`/orders${qs({ scope, ...filter })}`),
+    queryKey: ['orders', 'history', filter, limit],
+    queryFn: () => api<OrderDTO[]>(`/orders${qs({ ...filter, limit })}`),
     enabled: loggedIn,
   });
 }
 
-export function useConditionalOrders(scope: 'active' | 'all') {
+export function useMyTrades(filter: HistoryFilter = {}, limit = 500) {
   const loggedIn = useLoggedIn();
   return useQuery({
-    queryKey: ['conditional', scope],
-    queryFn: () => api<ConditionalOrderDTO[]>(`/conditional-orders?scope=${scope}`),
-    enabled: loggedIn,
-  });
-}
-
-export function useTrades(filter: HistoryFilter = {}) {
-  const loggedIn = useLoggedIn();
-  return useQuery({
-    queryKey: ['trades', filter],
-    queryFn: () => api<TradeDTO[]>(`/trades${qs({ ...filter })}`),
+    queryKey: ['trades', filter, limit],
+    queryFn: () => api<FillDTO[]>(`/myTrades${qs({ ...filter, limit })}`),
     enabled: loggedIn,
   });
 }
@@ -115,10 +90,81 @@ export function useLedger(filter: HistoryFilter = {}) {
   const loggedIn = useLoggedIn();
   return useQuery({
     queryKey: ['ledger', filter],
-    queryFn: () => api<LedgerDTO[]>(`/ledger${qs({ from: filter.from, to: filter.to })}`),
+    queryFn: () => api<LedgerDTO[]>(`/ledger${qs({ from: filter.from, to: filter.to, asset: filter.asset })}`),
     enabled: loggedIn,
   });
 }
+
+export function useInvalidateTrading() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['orders'] });
+    void qc.invalidateQueries({ queryKey: ['account'] });
+    void qc.invalidateQueries({ queryKey: ['trades'] });
+    void qc.invalidateQueries({ queryKey: ['ledger'] });
+  };
+}
+
+/** Huỷ lệnh (huỷ 1 chân OCO là huỷ cả danh sách) */
+export function useCancelOrder() {
+  const invalidate = useInvalidateTrading();
+  return async (o: Pick<OrderDTO, 'id' | 'symbol'>) => {
+    try {
+      await api(`/orders/${o.id}`, { method: 'DELETE' });
+      toast.success(`Đã huỷ lệnh ${o.symbol}`);
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+    invalidate();
+  };
+}
+
+export type NavRange = '7D' | '1M' | '3M' | '1Y' | 'ALL';
+
+export interface NavHistory {
+  points: { date: string; nav: number; contributed: number }[];
+  benchmark: { date: string; value: number }[];
+}
+
+export function useNavHistory(range: NavRange) {
+  const loggedIn = useLoggedIn();
+  return useQuery({
+    queryKey: ['nav-history', range],
+    queryFn: () => api<NavHistory>(`/account/nav?range=${range}`),
+    enabled: loggedIn,
+    staleTime: 60_000,
+  });
+}
+
+export function useMonthlyReport(year: number) {
+  const loggedIn = useLoggedIn();
+  return useQuery({
+    queryKey: ['monthly-report', year],
+    queryFn: () => api<MonthlyReportDTO>(`/reports/monthly?year=${year}`),
+    enabled: loggedIn,
+  });
+}
+
+export type LeaderboardPeriod = '1W' | '1M' | '3M' | 'ALL';
+
+export interface Leaderboard {
+  period: LeaderboardPeriod;
+  updatedAt: string;
+  total: number;
+  rows: { rank: number; name: string; returnPct: number; nav: number; trades: number; topSymbol: string | null; isMe: boolean }[];
+  me: { rank: number | null; hidden: boolean; returnPct: number; nav: number; name: string } | null;
+}
+
+export function useLeaderboard(period: LeaderboardPeriod) {
+  const token = useAuth((s) => s.token);
+  return useQuery({
+    queryKey: ['leaderboard', period, !!token],
+    queryFn: () => api<Leaderboard>(`/leaderboard?period=${period}`),
+    refetchInterval: 60_000,
+  });
+}
+
+/* ------------------------------ danh sách theo dõi ------------------------------ */
 
 /** Các danh sách theo dõi + danh sách đang chọn (nút ☆ thao tác trên danh sách này) */
 export function useWatchlists() {
@@ -193,10 +239,10 @@ export function useWatchlists() {
   };
 }
 
-/** Rút gọn cho nút ☆: mã trong danh sách đang chọn */
+/** Rút gọn cho nút ☆: cặp trong danh sách đang chọn */
 export function useWatchlist() {
   const w = useWatchlists();
-  return { list: w.active?.symbols ?? [], listName: w.active?.name ?? 'Theo dõi', loggedIn: w.loggedIn, toggle: w.toggle };
+  return { list: w.active?.symbols ?? [], listName: w.active?.name ?? 'Yêu thích', loggedIn: w.loggedIn, toggle: w.toggle };
 }
 
 /* ------------------------------ cảnh báo giá ------------------------------ */
@@ -229,142 +275,4 @@ export function useAlertActions() {
       await refresh();
     },
   };
-}
-
-export function useInvalidateTrading() {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: ['orders'] });
-    void qc.invalidateQueries({ queryKey: ['portfolio'] });
-    void qc.invalidateQueries({ queryKey: ['trades'] });
-    void qc.invalidateQueries({ queryKey: ['ledger'] });
-    void qc.invalidateQueries({ queryKey: ['conditional'] });
-    void qc.invalidateQueries({ queryKey: ['entitlements'] });
-    void qc.invalidateQueries({ queryKey: ['buying-power'] });
-  };
-}
-
-export type NavRange = '1M' | '3M' | '6M' | '1Y' | 'ALL';
-
-export interface NavHistory {
-  points: { date: string; nav: number; cash: number; stock: number; debt: number; contributed: number }[];
-  benchmark: { date: string; value: number }[];
-}
-
-export function useNavHistory(range: NavRange) {
-  const loggedIn = useLoggedIn();
-  return useQuery({
-    queryKey: ['nav-history', range],
-    queryFn: () => api<NavHistory>(`/portfolio/nav?range=${range}`),
-    enabled: loggedIn,
-    staleTime: 60_000,
-  });
-}
-
-export type LeaderboardPeriod = '1W' | '1M' | '3M' | 'ALL';
-
-export interface Leaderboard {
-  period: LeaderboardPeriod;
-  updatedAt: string;
-  total: number;
-  rows: { rank: number; name: string; returnPct: number; nav: number; trades: number; topSymbol: string | null; isMe: boolean }[];
-  me: { rank: number | null; hidden: boolean; returnPct: number; nav: number; name: string } | null;
-}
-
-export function useLeaderboard(period: LeaderboardPeriod) {
-  const token = useAuth((s) => s.token);
-  return useQuery({
-    queryKey: ['leaderboard', period, !!token],
-    queryFn: () => api<Leaderboard>(`/leaderboard?period=${period}`),
-    refetchInterval: 60_000,
-  });
-}
-
-export type CaType = 'CASH_DIVIDEND' | 'STOCK_DIVIDEND' | 'SPLIT' | 'RIGHTS';
-
-export interface CorporateAction {
-  id: number;
-  symbol: string;
-  type: CaType;
-  label: string;
-  exDate: string;
-  recordDate: string;
-  payDate: string;
-  cashPerShare: number | null;
-  ratioFrom: number | null;
-  ratioTo: number | null;
-  issuePrice: number | null;
-  subscribeUntil: string | null;
-  status: 'ANNOUNCED' | 'EX_DONE' | 'COMPLETED' | 'CANCELLED';
-  refBefore: number | null;
-  refAfter: number | null;
-  note: string | null;
-  createdBy: string | null;
-  createdAt: string;
-  holders?: number;
-}
-
-export interface Entitlement {
-  id: number;
-  action: CorporateAction;
-  qtyHeld: number;
-  cashAmount: number;
-  taxAmount: number;
-  shares: number;
-  subscribed: number;
-  status: 'PENDING' | 'PAID' | 'CANCELLED';
-  paidAt: string | null;
-}
-
-export function useEntitlements() {
-  const loggedIn = useLoggedIn();
-  return useQuery({ queryKey: ['entitlements'], queryFn: () => api<Entitlement[]>('/entitlements'), enabled: loggedIn });
-}
-
-export function useCorporateActions(opts: { upcoming?: boolean; symbol?: string } = {}) {
-  return useQuery({
-    queryKey: ['corporate-actions', opts],
-    queryFn: () => api<CorporateAction[]>(`/corporate-actions${qs({ upcoming: opts.upcoming ? '1' : undefined, symbol: opts.symbol })}`),
-    staleTime: 60_000,
-  });
-}
-
-/** Mô tả ngắn 1 sự kiện quyền: "Cổ tức 2.000đ/CP", "Chia tách 1:2", "Quyền mua 4:1 giá 10.000đ" */
-export function describeAction(a: Pick<CorporateAction, 'type' | 'cashPerShare' | 'ratioFrom' | 'ratioTo' | 'issuePrice'>): string {
-  const n = (v: number | null) => (v ?? 0).toLocaleString('en-US');
-  if (a.type === 'CASH_DIVIDEND') return `Cổ tức tiền ${n(a.cashPerShare)}đ/CP`;
-  if (a.type === 'STOCK_DIVIDEND') return `Cổ tức / thưởng cổ phiếu ${a.ratioFrom}:${a.ratioTo}`;
-  if (a.type === 'SPLIT') return `Chia tách ${a.ratioFrom}:${a.ratioTo}`;
-  return `Quyền mua ${a.ratioFrom}:${a.ratioTo} giá ${n(a.issuePrice)}đ`;
-}
-
-/** Tài sản ròng = tiền mặt + tiền bán chờ về + cổ phiếu + quyền chờ về − nợ ký quỹ (gốc + lãi) */
-export function navOfAccount(a: AccountDTO, stockValue: number): number {
-  return a.cashBalance + (a.cashPending ?? 0) + stockValue + (a.rightsValue ?? 0) - (a.loanBalance ?? 0) - (a.loanInterest ?? 0);
-}
-
-export interface BuyingPower {
-  maxQty: number;
-  cashOnlyQty: number;
-  usesAdvance: boolean;
-  usesMargin: boolean;
-  loanPart: number;
-  marginRatio: number;
-}
-
-export function useBuyingPower(symbol: string, price: number | null, enabled: boolean) {
-  const loggedIn = useLoggedIn();
-  return useQuery({
-    queryKey: ['buying-power', symbol, price],
-    queryFn: () => api<BuyingPower>(`/account/buying-power?symbol=${symbol}&price=${price}`),
-    enabled: loggedIn && enabled && !!price && price > 0,
-    staleTime: 5_000,
-  });
-}
-
-export interface AdvancePreview {
-  gross: number;
-  fee: number;
-  maxNet: number;
-  items: { id: number; settleDate: string; available: number; days: number; fee: number }[];
 }

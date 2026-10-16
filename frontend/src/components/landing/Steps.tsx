@@ -20,17 +20,17 @@ export function Steps({ cta }: { cta: ReactNode }) {
     {
       icon: UserPlus,
       title: 'Mở tài khoản',
-      body: `Đăng ký bằng email và nhận ngay ${fmtCapital(RULES.initialCapital)} vốn ảo. Muốn xem trước thì dùng tài khoản demo.`,
+      body: `Đăng ký bằng email và nhận ngay ${fmtCapital(RULES.initialUsdt)} vốn ảo. Muốn xem trước thì dùng tài khoản demo.`,
     },
     {
       icon: CandlestickChart,
       title: 'Đặt lệnh mua bán',
-      body: 'Chọn mã, xem biểu đồ nến và sổ lệnh 3 bước giá, rồi đặt lệnh giới hạn, lệnh thị trường hoặc lệnh điều kiện.',
+      body: 'Chọn coin, xem biểu đồ nến và sổ lệnh 20 mức giá, rồi đặt lệnh giới hạn, thị trường, stop-limit hoặc OCO.',
     },
     {
       icon: PieChart,
       title: 'Theo dõi lãi lỗ',
-      body: 'Danh mục, lịch sử khớp lệnh và báo cáo lãi lỗ theo tháng cập nhật ngay sau mỗi lệnh khớp.',
+      body: 'Ví, giá vốn bình quân, lịch sử khớp lệnh và báo cáo lãi lỗ theo tháng cập nhật ngay sau mỗi lệnh khớp.',
     },
   ];
 

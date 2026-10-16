@@ -8,13 +8,12 @@ import { AppShell } from './components/layout/AppShell';
 import { useRealtime } from './hooks/useRealtime';
 import { useSessionSync } from './hooks/useSessionSync';
 import { useSystemStatus } from './lib/admin';
-import { BoardPage } from './pages/BoardPage';
+import { MarketsPage } from './pages/MarketsPage';
 import { useAuth } from './store/auth';
 import { useUi } from './store/ui';
 
 const TradePage = lazy(() => import('./pages/TradePage'));
-const MarketPage = lazy(() => import('./pages/MarketPage'));
-const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
+const WalletPage = lazy(() => import('./pages/WalletPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -24,7 +23,6 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
-const ScreenerPage = lazy(() => import('./pages/ScreenerPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 
 const queryClient = new QueryClient({
@@ -38,7 +36,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Trang chủ: khách chưa đăng nhập xem trang giới thiệu, người đã đăng nhập xem bảng giá (bảng giá luôn có ở /bang-gia) */
+/** Trang chủ: khách chưa đăng nhập xem trang giới thiệu, người đã đăng nhập xem thị trường (thị trường luôn có ở /thi-truong) */
 function Home() {
   const token = useAuth((s) => s.token);
   return token ? <AppShell /> : <LandingPage />;
@@ -47,7 +45,7 @@ function Home() {
 function Realtime() {
   useRealtime();
   useSessionSync();
-  // Tham số giao dịch (phí, thuế, biên độ...) do quản trị viên chỉnh → dùng để tính trước trên giao diện
+  // Biểu phí do quản trị viên chỉnh → dùng để tính trước trên giao diện
   const { data: system } = useSystemStatus();
   useEffect(() => {
     if (system?.rules) applyRules(system.rules);
@@ -76,31 +74,35 @@ export function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/" element={<Home />}>
-              <Route index element={<BoardPage />} />
+              <Route index element={<MarketsPage />} />
             </Route>
             <Route element={<AppShell />}>
-              <Route path="bang-gia" element={<BoardPage />} />
+              <Route path="thi-truong" element={<MarketsPage />} />
               <Route path="trade" element={<TradePage />} />
               <Route path="trade/:symbol" element={<TradePage />} />
-              <Route path="market" element={<MarketPage />} />
               <Route path="xep-hang" element={<LeaderboardPage />} />
-              <Route path="bo-loc" element={<ScreenerPage />} />
               <Route
-                path="portfolio"
+                path="vi"
                 element={
                   <RequireAuth>
-                    <PortfolioPage />
+                    <WalletPage />
                   </RequireAuth>
                 }
               />
               <Route
-                path="history"
+                path="lich-su"
                 element={
                   <RequireAuth>
                     <HistoryPage />
                   </RequireAuth>
                 }
               />
+              {/* Đường dẫn cũ của sàn chứng khoán */}
+              <Route path="bang-gia" element={<Navigate to="/thi-truong" replace />} />
+              <Route path="market" element={<Navigate to="/thi-truong" replace />} />
+              <Route path="bo-loc" element={<Navigate to="/thi-truong" replace />} />
+              <Route path="portfolio" element={<Navigate to="/vi" replace />} />
+              <Route path="history" element={<Navigate to="/lich-su" replace />} />
               <Route path="admin" element={<AdminPage />} />
               <Route path="dieu-khoan" element={<LegalPage kind="terms" />} />
               <Route path="chinh-sach-bao-mat" element={<LegalPage kind="privacy" />} />

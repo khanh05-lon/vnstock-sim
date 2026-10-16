@@ -1,51 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RotateCcw, Save } from 'lucide-react';
-import type { RulesPatch } from '@vss/shared';
+import { Big, type RulesPatch, type TradingRules } from '@vss/shared';
 import { useAdminAction, useAdminRules } from '../../lib/admin';
-import { cn, fmtInt } from '../../lib/format';
+import { cn } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { ReasonModal, Section } from './adminUi';
 
-/** 1 ô tham số: đường dẫn trong RULES, nhãn, đơn vị hiển thị và hệ số đổi (0.0015 ↔ 0,15%) */
+/** 1 ô tham số: khoá trong RULES, nhãn, đơn vị hiển thị và hệ số đổi (0.001 ↔ 0,1%) */
 interface Field {
-  path: string;
+  key: keyof RulesPatch;
   label: string;
   unit: string;
   scale: number;
-  group: string;
   hint?: string;
 }
 
 const FIELDS: Field[] = [
-  { group: 'Phí & thuế', path: 'feeRate', label: 'Phí giao dịch mỗi chiều', unit: '%', scale: 100, hint: 'Áp dụng cho lệnh đặt sau khi lưu' },
-  { group: 'Phí & thuế', path: 'sellTaxRate', label: 'Thuế TNCN khi bán', unit: '%', scale: 100 },
-  { group: 'Phí & thuế', path: 'dividendTaxRate', label: 'Thuế cổ tức / lãi trái phiếu bằng tiền', unit: '%', scale: 100 },
-  { group: 'Biên độ giá', path: 'priceLimitPct.HOSE', label: 'HOSE', unit: '%', scale: 1, hint: 'Áp dụng từ phiên giao dịch kế tiếp' },
-  { group: 'Biên độ giá', path: 'priceLimitPct.HNX', label: 'HNX', unit: '%', scale: 1 },
-  { group: 'Biên độ giá', path: 'priceLimitPct.UPCOM', label: 'UPCOM', unit: '%', scale: 1 },
-  { group: 'Biên độ giá', path: 'bondLimitPct', label: 'Trái phiếu niêm yết', unit: '%', scale: 1 },
-  { group: 'Khối lượng tối đa mỗi lệnh', path: 'maxOrderQty.HOSE', label: 'HOSE', unit: 'CP', scale: 1 },
-  { group: 'Khối lượng tối đa mỗi lệnh', path: 'maxOrderQty.HNX', label: 'HNX', unit: 'CP', scale: 1 },
-  { group: 'Khối lượng tối đa mỗi lệnh', path: 'maxOrderQty.UPCOM', label: 'UPCOM', unit: 'CP', scale: 1 },
-  { group: 'Tài khoản & tiền', path: 'initialCapital', label: 'Vốn ảo khi mở tài khoản', unit: 'đ', scale: 1, hint: 'Áp dụng cho tài khoản mới và khi đặt lại' },
-  { group: 'Tài khoản & tiền', path: 'advanceFeeRateDaily', label: 'Phí ứng trước tiền bán', unit: '%/ngày', scale: 100 },
-  { group: 'Tài khoản & tiền', path: 'depositRateYear', label: 'Lãi tiền gửi không kỳ hạn', unit: '%/năm', scale: 100 },
-  { group: 'Ký quỹ (margin)', path: 'margin.interestRateYear', label: 'Lãi vay ký quỹ', unit: '%/năm', scale: 100 },
-  { group: 'Ký quỹ (margin)', path: 'margin.initialRatio', label: 'Tỷ lệ ký quỹ ban đầu', unit: '%', scale: 100 },
-  { group: 'Ký quỹ (margin)', path: 'margin.callRatio', label: 'Tỷ lệ duy trì (cảnh báo)', unit: '%', scale: 100 },
-  { group: 'Ký quỹ (margin)', path: 'margin.forceRatio', label: 'Tỷ lệ xử lý (bán giải chấp)', unit: '%', scale: 100 },
-  { group: 'Ký quỹ (margin)', path: 'margin.defaultCreditLimit', label: 'Hạn mức vay mặc định', unit: 'đ', scale: 1 },
+  { key: 'makerFee', label: 'Phí maker', unit: '%', scale: 100, hint: 'Lệnh nằm chờ trên sổ rồi được khớp' },
+  { key: 'takerFee', label: 'Phí taker', unit: '%', scale: 100, hint: 'Lệnh khớp ngay với sổ lệnh' },
+  { key: 'bnbDiscount', label: 'Giảm phí khi trả bằng BNB', unit: '%', scale: 100 },
+  { key: 'initialUsdt', label: 'Vốn ảo khi mở tài khoản', unit: 'USDT', scale: 1, hint: 'Áp dụng cho tài khoản mới và khi đặt lại' },
 ];
 
-const getPath = (o: unknown, path: string): number => path.split('.').reduce((a: unknown, k) => (a as Record<string, unknown>)?.[k], o) as number;
-
-/** Hiển thị số theo đơn vị (0.0015 → "0.15") — làm tròn bỏ sai số dấu phẩy động */
-const toText = (v: number, f: Field) => {
-  const x = Math.round(v * f.scale * 1e6) / 1e6;
-  return f.unit === 'đ' || f.unit === 'CP' ? fmtInt(x) : String(x);
+const toText = (v: string, f: Field) => new Big(v).times(f.scale).toFixed();
+const fromText = (s: string, f: Field) => {
+  const t = s.replace(/,/g, '').trim();
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  return new Big(t).div(f.scale).toFixed();
 };
-
-const parse = (s: string) => Number(s.replace(/,/g, '').trim());
 
 export function RulesEditor() {
   const { data, isLoading } = useAdminRules();
@@ -55,47 +37,37 @@ export function RulesEditor() {
 
   useEffect(() => {
     if (!data) return;
-    setForm(Object.fromEntries(FIELDS.map((f) => [f.path, toText(getPath(data.rules, f.path), f)])));
+    setForm(Object.fromEntries(FIELDS.map((f) => [f.key, toText(data.rules[f.key as keyof TradingRules] as string, f)])));
   }, [data]);
 
   const changes = useMemo(() => {
-    if (!data) return [] as { f: Field; value: number }[];
-    const out: { f: Field; value: number }[] = [];
+    if (!data) return [] as { f: Field; value: string }[];
+    const out: { f: Field; value: string }[] = [];
     for (const f of FIELDS) {
-      const raw = form[f.path];
-      if (raw == null || raw.trim() === '') continue;
-      const n = parse(raw);
-      if (!Number.isFinite(n)) continue;
-      const value = Math.round((n / f.scale) * 1e8) / 1e8;
-      if (Math.abs(value - getPath(data.rules, f.path)) > 1e-9) out.push({ f, value });
+      const v = fromText(form[f.key] ?? '', f);
+      if (v != null && !new Big(v).eq(data.rules[f.key as keyof TradingRules] as string)) out.push({ f, value: v });
     }
     return out;
   }, [form, data]);
 
   if (isLoading || !data) {
     return (
-      <Section title="Tham số giao dịch">
+      <Section title="Biểu phí">
         <Spinner />
       </Section>
     );
   }
 
-  const invalid = FIELDS.some((f) => form[f.path] != null && !Number.isFinite(parse(form[f.path])));
-  const groups = [...new Set(FIELDS.map((f) => f.group))];
+  const invalid = FIELDS.some((f) => form[f.key] && fromText(form[f.key]!, f) == null);
 
   const save = async () => {
-    const patch: Record<string, unknown> = {};
-    for (const { f, value } of changes) {
-      const [a, b] = f.path.split('.');
-      if (b) patch[a] = { ...((patch[a] as object) ?? {}), [b]: value };
-      else patch[a] = value;
-    }
-    await act('/admin/rules', 'PUT', patch as RulesPatch, `Đã lưu ${changes.length} tham số`);
+    const patch = Object.fromEntries(changes.map((c) => [c.f.key, c.value])) as RulesPatch;
+    await act('/admin/rules', 'PUT', patch, `Đã lưu ${changes.length} tham số`);
   };
 
   return (
     <Section
-      title="Tham số giao dịch"
+      title="Biểu phí và vốn ảo"
       className="xl:col-span-2"
       actions={
         <>
@@ -108,52 +80,46 @@ export function RulesEditor() {
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
-        {groups.map((g) => (
-          <fieldset key={g} className="space-y-2">
-            <legend className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-tx-3">{g}</legend>
-            {FIELDS.filter((f) => f.group === g).map((f) => {
-              const def = getPath(data.defaults, f.path);
-              const cur = getPath(data.rules, f.path);
-              const changed = changes.some((c) => c.f.path === f.path);
-              return (
-                <label key={f.path} className="block">
-                  <span className="flex items-baseline justify-between gap-2 text-[12.5px]">
-                    <span className="text-tx-2">{f.label}</span>
-                    {Math.abs(cur - def) > 1e-9 && <span className="text-[11px] text-ref">mặc định {toText(def, f)}</span>}
-                  </span>
-                  <span className="mt-1 flex items-center gap-2">
-                    <input
-                      className={cn('input num h-8 text-right', changed && 'border-brand')}
-                      inputMode="decimal"
-                      value={form[f.path] ?? ''}
-                      onChange={(e) => setForm((s) => ({ ...s, [f.path]: e.target.value }))}
-                    />
-                    <span className="w-14 shrink-0 text-[12px] text-tx-3">{f.unit}</span>
-                  </span>
-                  {f.hint && <span className="mt-0.5 block text-[11px] text-tx-3">{f.hint}</span>}
-                </label>
-              );
-            })}
-          </fieldset>
-        ))}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
+        {FIELDS.map((f) => {
+          const def = data.defaults[f.key as keyof TradingRules] as string;
+          const cur = data.rules[f.key as keyof TradingRules] as string;
+          const changed = changes.some((c) => c.f.key === f.key);
+          return (
+            <label key={f.key} className="block">
+              <span className="flex items-baseline justify-between gap-2 text-[12.5px]">
+                <span className="text-tx-2">{f.label}</span>
+                {!new Big(cur).eq(def) && <span className="text-[11px] text-ref">mặc định {toText(def, f)}</span>}
+              </span>
+              <span className="mt-1 flex items-center gap-2">
+                <input
+                  className={cn('input num h-8 text-right', changed && 'border-brand')}
+                  inputMode="decimal"
+                  value={form[f.key] ?? ''}
+                  onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                />
+                <span className="w-12 shrink-0 text-[12px] text-tx-3">{f.unit}</span>
+              </span>
+              {f.hint && <span className="mt-0.5 block text-[11px] text-tx-3">{f.hint}</span>}
+            </label>
+          );
+        })}
       </div>
       <p className="mt-4 text-[12px] text-tx-3">
-        Lô chẵn {fmtInt(data.rules.lotSize)} CP, loại lệnh theo sàn và T+{data.settlementDays} là quy định cố định. Phí / thuế được chốt theo từng lệnh lúc đặt — đổi biểu phí
-        không ảnh hưởng lệnh đang chờ. Mọi thay đổi ghi vào nhật ký quản trị và áp dụng ngay cho mọi trình duyệt.
+        Mặc định theo biểu phí Spot của Binance cho người dùng thường (maker 0,1%, taker 0,1%, giảm 25% khi trả bằng BNB). Phí được chốt theo từng lệnh lúc đặt, đổi biểu phí
+        không ảnh hưởng lệnh đang chờ. Bộ lọc giá / khối lượng của từng cặp lấy từ Binance, xem ở mục Cặp giao dịch.
       </p>
       <ReasonModal
         open={resetOpen}
-        title="Khôi phục tham số mặc định"
-        description="Mọi tham số quay về giá trị gốc theo quy định tham khảo của HOSE / HNX / UPCOM."
+        title="Khôi phục biểu phí mặc định"
+        description="Phí maker / taker, mức giảm BNB và vốn ảo quay về giá trị mặc định."
         confirmLabel="Khôi phục"
         requireReason={false}
         onClose={() => setResetOpen(false)}
         onConfirm={async () => {
-          if (await act('/admin/rules', 'DELETE', undefined, 'Đã khôi phục tham số mặc định')) setResetOpen(false);
+          if (await act('/admin/rules', 'DELETE', undefined, 'Đã khôi phục biểu phí mặc định')) setResetOpen(false);
         }}
       />
     </Section>
   );
 }
-

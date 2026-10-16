@@ -4,7 +4,7 @@ import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { changePasswordSchema, preferencesSchema, RULES, type UserDTO } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
-import { fmtDateTimeVN, fmtInt } from '../../lib/format';
+import { fmtDateTime } from '../../lib/format';
 import { useAuth } from '../../store/auth';
 import { Modal, Spinner, UnderlineTabs } from '../common/ui';
 
@@ -213,7 +213,7 @@ function TwoFactorPanel() {
         <ShieldCheck size={18} className="mt-0.5 shrink-0 text-up" />
         <span>
           Xác thực 2 lớp <b className="text-up">đang bật</b>
-          {status.data?.enabledAt && <> từ {fmtDateTimeVN(status.data.enabledAt)}</>}. Còn <b className="text-tx-1">{status.data?.recoveryCodesLeft ?? 0}</b> mã
+          {status.data?.enabledAt && <> từ {fmtDateTime(status.data.enabledAt)}</>}. Còn <b className="text-tx-1">{status.data?.recoveryCodesLeft ?? 0}</b> mã
           khôi phục chưa dùng.
         </span>
       </div>
@@ -328,7 +328,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'password' }:
     try {
       await api('/account/reset', { method: 'POST' });
       await qc.invalidateQueries();
-      toast.success(`Tài khoản đã được đặt lại về ${fmtInt(RULES.initialCapital)}đ`);
+      toast.success(`Tài khoản đã được đặt lại về ${Number(RULES.initialUsdt).toLocaleString('en-US')} USDT`);
       setConfirmText('');
       onClose();
     } catch (e) {
@@ -377,7 +377,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'password' }:
       {tab === 'reset' && (
         <div className="space-y-3">
           <p className="text-tx-2">
-            Toàn bộ lệnh, lịch sử khớp, danh mục và sao kê sẽ bị xoá. Tiền mặt trở về <b className="text-tx-1">{fmtInt(RULES.initialCapital)}đ</b>. Thao tác không thể
+            Toàn bộ lệnh, lịch sử khớp, số dư coin và sổ cái sẽ bị xoá. Ví trở về <b className="text-tx-1">{Number(RULES.initialUsdt).toLocaleString('en-US')} USDT</b>. Thao tác không thể
             hoàn tác.
           </p>
           <label className="block">

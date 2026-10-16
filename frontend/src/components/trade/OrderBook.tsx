@@ -1,113 +1,177 @@
-import { useEffect, useState } from 'react';
-import type { TradeTick } from '@vss/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { Big, ceilStep, decimalsOf, floorStep, type BookLevel, type DepthSnapshot, type TradeTick } from '@vss/shared';
 import { useSymbolFeed } from '../../hooks/useSymbolFeed';
-import { cn, fmtChange, fmtPrice, fmtTimeVN, fmtVol, priceTone, toneText } from '../../lib/format';
-import { useStockDetail } from '../../lib/queries';
-import { useStock } from '../../store/market';
+import { api } from '../../lib/api';
+import { cn, fmtCompact, fmtPrice, fmtQty, fmtTime, signTone, toneText } from '../../lib/format';
+import { useSymbolRow } from '../../store/market';
 import { useTicket } from '../../store/ui';
 import { Empty, useFlash } from '../common/ui';
 
-export function OrderBook({ symbol }: { symbol: string }) {
-  const r = useStock(symbol);
-  const pickPrice = useTicket((s) => s.pickPrice);
-  const lastFlash = useFlash(r?.last);
-  if (!r) return null;
-  const asks = [...r.asks].reverse();
-  const max = Math.max(1, ...r.bids.map((l) => l.v), ...r.asks.map((l) => l.v));
-  const totBid = r.bids.reduce((a, l) => a + l.v, 0);
-  const totAsk = r.asks.reduce((a, l) => a + l.v, 0);
-  const bidPct = totBid + totAsk ? Math.round((totBid / (totBid + totAsk)) * 100) : 50;
-  const traded = r.volume > 0;
-  const tone = traded ? priceTone(r.last, r.ref, r.ceil, r.floor) : 'ref';
+const ROWS = 12;
 
-  const level = (p: number, v: number, side: 'bid' | 'ask') => {
-    const t = priceTone(p, r.ref, r.ceil, r.floor);
-    return (
-      <button
-        key={`${side}${p}`}
-        onClick={() => pickPrice(p, side === 'ask' ? 'BUY' : 'SELL')}
-        className="relative grid h-7 w-full grid-cols-2 items-center px-3 text-[12px] hover:bg-bg-3"
-        title={side === 'ask' ? 'Bấm để đặt MUA tại giá này' : 'Bấm để đặt BÁN tại giá này'}
-      >
-        <span
-          className={cn('absolute inset-y-0.5 right-0', side === 'bid' ? 'bg-up/12' : 'bg-down/12')}
-          style={{ width: `${(v / max) * 100}%` }}
-        />
-        <span className={cn('relative text-left font-medium', toneText[t])}>{fmtPrice(p)}</span>
-        <span className="relative text-right text-tx-1">{fmtVol(v)}</span>
-      </button>
-    );
-  };
+/** Gộp mức giá theo bội số bước giá (như Binance: 0.01 / 0.1 / 1 / 10...) — bên mua làm tròn xuống, bên bán làm tròn lên */
+function group(levels: BookLevel[], step: string, side: 'bid' | 'ask'): BookLevel[] {
+  const out = new Map<string, Big>();
+  for (const [p, q] of levels) {
+    const k = side === 'bid' ? floorStep(p, step) : ceilStep(p, step);
+    out.set(k, (out.get(k) ?? new Big(0)).plus(q));
+  }
+  return [...out.entries()].map(([p, q]) => [p, q.toFixed()]);
+}
+
+export function OrderBook({ symbol }: { symbol: string }) {
+  const r = useSymbolRow(symbol);
+  const pickPrice = useTicket((s) => s.pickPrice);
+  const [depth, setDepth] = useState<DepthSnapshot | null>(null);
+  const [mult, setMult] = useState(1);
+  const tick = r?.filters.tickSize ?? '0.01';
+  const step = r?.filters.stepSize;
+  const lastFlash = useFlash(r ? Number(r.last) : undefined);
+  const [lastDir, setLastDir] = useState<'up' | 'down' | 'flat'>('flat');
+  const [prevLast, setPrevLast] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDepth(null);
+    setMult(1);
+    let alive = true;
+    void api<DepthSnapshot>(`/market/depth/${symbol}?limit=20`)
+      .then((d) => alive && setDepth(d))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [symbol]);
+
+  useSymbolFeed(symbol, { onDepth: setDepth });
+
+  // Mũi tên giá khớp gần nhất so với lần trước
+  useEffect(() => {
+    if (!r) return;
+    if (prevLast && prevLast !== r.last) setLastDir(new Big(r.last).gt(prevLast) ? 'up' : 'down');
+    setPrevLast(r.last);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r?.last]);
+
+  const groupStep = useMemo(() => new Big(tick).times(mult).toFixed(), [tick, mult]);
+  const { bids, asks, max } = useMemo(() => {
+    if (!depth) return { bids: [], asks: [], max: 1 };
+    const b = mult === 1 ? depth.bids : group(depth.bids, groupStep, 'bid');
+    const a = mult === 1 ? depth.asks : group(depth.asks, groupStep, 'ask');
+    const bs = b.slice(0, ROWS);
+    const as = a.slice(0, ROWS);
+    const m = Math.max(1e-18, ...bs.map((l) => Number(l[1])), ...as.map((l) => Number(l[1])));
+    return { bids: bs, asks: as, max: m };
+  }, [depth, mult, groupStep]);
+
+  if (!r) return null;
+  const bidSum = bids.reduce((s, l) => s + Number(l[1]), 0);
+  const askSum = asks.reduce((s, l) => s + Number(l[1]), 0);
+  const bidPct = bidSum + askSum ? Math.round((bidSum / (bidSum + askSum)) * 100) : 50;
+  const showTick = mult === 1 ? tick : groupStep;
+  const mults = [1, 10, 100, 1000].filter((m) => decimalsOf(new Big(tick).times(m).toFixed()) >= 0 && new Big(tick).times(m).lte(new Big(r.last).div(10)));
+
+  const level = ([p, q]: BookLevel, side: 'bid' | 'ask') => (
+    <button
+      key={`${side}${p}`}
+      onClick={() => pickPrice(p, side === 'ask' ? 'BUY' : 'SELL')}
+      className="relative grid h-[22px] w-full grid-cols-3 items-center px-3 text-[12px] hover:bg-bg-3"
+      title={side === 'ask' ? 'Bấm để điền giá vào lệnh mua' : 'Bấm để điền giá vào lệnh bán'}
+    >
+      <span className={cn('absolute inset-y-0 right-0', side === 'bid' ? 'bg-up/12' : 'bg-down/12')} style={{ width: `${(Number(q) / max) * 100}%` }} />
+      <span className={cn('relative text-left font-medium', side === 'bid' ? 'text-up' : 'text-down')}>{fmtPrice(p, showTick)}</span>
+      <span className="relative text-right text-tx-1">{fmtQty(q, step)}</span>
+      <span className="relative text-right text-tx-2">{fmtCompact(Number(p) * Number(q))}</span>
+    </button>
+  );
 
   return (
-    <div className="num">
-      <div className="grid grid-cols-2 px-3 py-1.5 text-[11px] text-tx-3">
-        <span>Giá</span>
-        <span className="text-right">Khối lượng</span>
+    <div className="num flex min-h-0 flex-col">
+      <div className="flex items-center justify-between px-3 pt-2">
+        <span className="text-[13px] font-semibold">Sổ lệnh</span>
+        {mults.length > 1 && (
+          <select
+            value={mult}
+            onChange={(e) => setMult(Number(e.target.value))}
+            className="h-6 rounded bg-bg-3 px-1.5 text-[11px] text-tx-2 outline-none"
+            aria-label="Gộp mức giá"
+          >
+            {mults.map((m) => (
+              <option key={m} value={m}>
+                {new Big(tick).times(m).toFixed()}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
-      <div className="flex min-h-[84px] flex-col justify-end">
-        {asks.length ? asks.map((l) => level(l.p, l.v, 'ask')) : <div className="px-3 py-2 text-center text-[11px] text-tx-3">Hết dư bán</div>}
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[11px] text-tx-3">
+        <span>Giá ({r.quoteAsset})</span>
+        <span className="text-right">Số lượng ({r.baseAsset})</span>
+        <span className="text-right">Tổng</span>
       </div>
-      <div className="my-1 flex items-center justify-between border-y border-line bg-bg-2 px-3 py-2">
-        <div className="flex items-baseline gap-2">
-          <span className={cn('rounded px-1 text-[20px] font-bold', toneText[tone], lastFlash)}>{fmtPrice(traded ? r.last : r.ref)}</span>
-          <span className={cn('text-[12px] font-medium', toneText[tone])}>
-            {traded ? `${fmtChange(r.change)} (${r.changePct.toFixed(2)}%)` : 'Chưa khớp'}
-          </span>
-        </div>
-        <span className="text-[11px] text-tx-3">TC {fmtPrice(r.ref)}</span>
+      <div className="flex min-h-[132px] flex-col justify-end">
+        {asks.length ? [...asks].reverse().map((l) => level(l, 'ask')) : !depth ? <Empty title="Đang tải sổ lệnh" /> : null}
       </div>
-      <div className="min-h-[84px]">
-        {r.bids.length ? r.bids.map((l) => level(l.p, l.v, 'bid')) : <div className="px-3 py-2 text-center text-[11px] text-tx-3">Hết dư mua</div>}
+      <div className="my-1 flex items-center gap-2 border-y border-line bg-bg-2 px-3 py-1.5">
+        <span className={cn('rounded px-1 text-[18px] font-bold', toneText[lastDir], lastFlash)}>
+          {fmtPrice(r.last, tick)}
+          {lastDir !== 'flat' && <span className="ml-1 text-[13px]">{lastDir === 'up' ? '↑' : '↓'}</span>}
+        </span>
+        <span className={cn('text-[12px]', toneText[signTone(r.changePct)])}>{r.changePct > 0 ? '+' : ''}{r.changePct.toFixed(2)}%</span>
       </div>
-      <div className="px-3 pb-3 pt-2">
-        <div className="flex h-1.5 overflow-hidden rounded-full bg-down/70">
+      <div className="min-h-[132px]">{bids.map((l) => level(l, 'bid'))}</div>
+      <div className="mt-1 flex items-center gap-2 px-3 pb-2 text-[11px]">
+        <span className="text-up">M {bidPct}%</span>
+        <div className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-down/40">
           <div className="bg-up" style={{ width: `${bidPct}%` }} />
         </div>
-        <div className="mt-1 flex justify-between text-[11px]">
-          <span className="text-up">Dư mua {bidPct}%</span>
-          <span className="text-down">Dư bán {100 - bidPct}%</span>
-        </div>
+        <span className="text-down">{100 - bidPct}% B</span>
       </div>
     </div>
   );
 }
 
+/** Giao dịch thị trường gần nhất (như "Market Trades" của Binance) */
 export function TradeTape({ symbol }: { symbol: string }) {
-  const { data } = useStockDetail(symbol);
-  const r = useStock(symbol);
+  const r = useSymbolRow(symbol);
+  const pickPrice = useTicket((s) => s.pickPrice);
   const [ticks, setTicks] = useState<TradeTick[]>([]);
 
   useEffect(() => {
-    setTicks(data?.symbol === symbol ? data.trades : []);
-  }, [data, symbol]);
+    setTicks([]);
+    let alive = true;
+    void api<TradeTick[]>(`/market/trades/${symbol}`)
+      .then((t) => alive && setTicks(t))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [symbol]);
 
   useSymbolFeed(symbol, {
-    onTrades: (list) => setTicks((prev) => [...[...list].reverse(), ...prev].slice(0, 80)),
+    onTrades: (list) => setTicks((prev) => [...[...list].reverse(), ...prev].slice(0, 60)),
   });
 
-  if (!r) return null;
   return (
     <div className="num flex min-h-0 flex-1 flex-col">
-      <div className="grid grid-cols-[64px_1fr_1fr_24px] px-3 py-1.5 text-[11px] text-tx-3">
-        <span>Thời gian</span>
-        <span className="text-right">Giá</span>
-        <span className="text-right">KL</span>
-        <span className="text-right">M/B</span>
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[11px] text-tx-3">
+        <span>Giá ({r?.quoteAsset ?? 'USDT'})</span>
+        <span className="text-right">Số lượng ({r?.baseAsset ?? ''})</span>
+        <span className="text-right">Thời gian</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {ticks.length === 0 ? (
-          <Empty title="Chưa có giao dịch" />
-        ) : (
-          ticks.map((t, i) => (
-            <div key={`${t.time}-${i}`} className="grid h-6 grid-cols-[64px_1fr_1fr_24px] items-center px-3 text-[12px] hover:bg-bg-3">
-              <span className="text-tx-3">{fmtTimeVN(t.time)}</span>
-              <span className={cn('text-right font-medium', toneText[priceTone(t.price, r.ref, r.ceil, r.floor)])}>{fmtPrice(t.price)}</span>
-              <span className="text-right text-tx-1">{fmtVol(t.vol)}</span>
-              <span className={cn('text-right font-semibold', t.side === 'B' ? 'text-up' : 'text-down')}>{t.side === 'B' ? 'M' : 'B'}</span>
-            </div>
-          ))
-        )}
+        {ticks.length === 0 && <Empty title="Chưa có giao dịch" />}
+        {ticks.map((t) => (
+          <button
+            key={`${t.id}-${t.time}`}
+            onClick={() => pickPrice(t.price)}
+            className="grid h-[22px] w-full grid-cols-3 items-center px-3 text-[12px] hover:bg-bg-3"
+          >
+            {/* buyerMaker = bên bán chủ động → đỏ */}
+            <span className={cn('text-left', t.buyerMaker ? 'text-down' : 'text-up')}>{fmtPrice(t.price, r?.filters.tickSize)}</span>
+            <span className="text-right text-tx-1">{fmtQty(t.qty, r?.filters.stepSize)}</span>
+            <span className="text-right text-tx-3">{fmtTime(t.time)}</span>
+          </button>
+        ))}
       </div>
     </div>
   );

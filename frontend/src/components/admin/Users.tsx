@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Search, UserPlus } from 'lucide-react';
 import { LEDGER_LABEL, ORDER_STATUS_LABEL } from '@vss/shared';
 import { AUDIT_LABEL, auditSummary, useAdminAction, useAdminUser, useAdminUsers, type AdminUserDetail } from '../../lib/admin';
-import { cn, fmtCompact, fmtDateTimeVN, fmtInt, fmtPct, fmtPrice, fmtVnd, parseIntInput, signTone, toneText } from '../../lib/format';
+import { cleanDecimal, cn, decOrNull, fmtDateTime, fmtInt, fmtPct, fmtPrice, fmtQty, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAuth } from '../../store/auth';
 import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
-import { STATUS_STYLE, SideChip } from '../trade/OrdersPanel';
+import { STATUS_STYLE, SideChip, typeLabel } from '../trade/OrdersPanel';
 import { KeyValue, Pill, ReasonModal, fmtAgo } from './adminUi';
 
 type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'grant' | 'revoke' | 'delete' | 'verify' | 'reset2fa' | null;
@@ -15,12 +15,13 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
   const act = useAdminAction();
   const [kind, setKind] = useState<ActionKind>(null);
   const [amountText, setAmountText] = useState('');
+  const [asset, setAsset] = useState('USDT');
   const [sign, setSign] = useState<1 | -1>(1);
   const [confirmEmail, setConfirmEmail] = useState('');
   const u = d.user;
   const self = me?.id === u.id;
   const base = `/admin/users/${u.id}`;
-  const amount = parseIntInput(amountText) * sign;
+  const amount = decOrNull(amountText);
   const close = () => {
     setKind(null);
     setAmountText('');
@@ -40,7 +41,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
           </button>
         )}
         <button className="btn btn-ghost h-8" onClick={() => setKind('adjust')}>
-          Điều chỉnh vốn ảo
+          Điều chỉnh số dư
         </button>
         <button className="btn btn-ghost h-8" onClick={() => setKind('reset')}>
           Đặt lại tài khoản
@@ -118,39 +119,53 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
       />
       <ReasonModal
         open={kind === 'adjust'}
-        title="Điều chỉnh vốn ảo"
-        description={d.account ? `Tiền mặt hiện tại ${fmtVnd(d.account.cashBalance)}đ, đang phong toả ${fmtVnd(d.account.cashHold)}đ.` : undefined}
-        confirmLabel={amount ? `${amount > 0 ? 'Cộng' : 'Trừ'} ${fmtVnd(Math.abs(amount))}đ` : 'Xác nhận'}
-        canConfirm={amount !== 0}
-        placeholder="Ví dụ: Thưởng giải đấu tháng 10, sửa sai sót…"
+        title="Điều chỉnh số dư"
+        description={(() => {
+          const b = d.account.balances.find((x) => x.asset === asset);
+          return `Số dư ${asset} hiện tại: khả dụng ${b ? fmtQty(b.free) : '0'}, đang khoá ${b ? fmtQty(b.locked) : '0'}. Giá trị quy USDT được cộng vào vốn đã góp để lãi/lỗ và bảng xếp hạng không bị sai lệch.`;
+        })()}
+        confirmLabel={amount ? `${sign > 0 ? 'Cộng' : 'Trừ'} ${amount} ${asset}` : 'Xác nhận'}
+        canConfirm={!!amount}
+        placeholder="Ví dụ: Thưởng giải đấu tháng 10, sửa sai sót..."
         extra={
           <div>
             <div className="grid grid-cols-2 rounded-md bg-bg-3 p-1">
               {([1, -1] as const).map((s) => (
                 <button key={s} onClick={() => setSign(s)} className={cn('h-8 rounded text-[13px] font-semibold', sign === s ? (s === 1 ? 'bg-up text-white' : 'bg-down text-white') : 'text-tx-3')}>
-                  {s === 1 ? 'Cộng tiền' : 'Trừ tiền'}
+                  {s === 1 ? 'Cộng' : 'Trừ'}
                 </button>
               ))}
             </div>
-            <input className="input num mt-2" placeholder="Số tiền (VNĐ)" value={amountText} onChange={(e) => setAmountText(e.target.value ? fmtInt(parseIntInput(e.target.value)) : '')} />
-            <div className="mt-2 flex gap-1">
-              {[10_000_000, 100_000_000, 500_000_000, 1_000_000_000].map((v) => (
-                <button key={v} className="h-7 flex-1 rounded border border-line text-[11px] text-tx-2 hover:border-brand hover:text-brand" onClick={() => setAmountText(fmtInt(v))}>
-                  {fmtCompact(v)}
-                </button>
-              ))}
+            <div className="mt-2 flex gap-2">
+              <input
+                className="input num flex-1"
+                placeholder="Số lượng"
+                inputMode="decimal"
+                value={amountText}
+                onChange={(e) => setAmountText(cleanDecimal(e.target.value))}
+              />
+              <input className="input w-24 uppercase" value={asset} onChange={(e) => setAsset(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} aria-label="Tài sản" />
             </div>
+            {asset === 'USDT' && (
+              <div className="mt-2 flex gap-1">
+                {[100, 1_000, 5_000, 10_000].map((v) => (
+                  <button key={v} className="h-7 flex-1 rounded border border-line text-[11px] text-tx-2 hover:border-brand hover:text-brand" onClick={() => setAmountText(String(v))}>
+                    {fmtInt(v)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         }
         onClose={close}
         onConfirm={async (reason) => {
-          if (await act(`${base}/adjust-cash`, 'POST', { amount, reason }, 'Đã điều chỉnh vốn ảo')) close();
+          if (amount && (await act(`${base}/adjust-balance`, 'POST', { asset, amount: sign > 0 ? amount : `-${amount}`, reason }, 'Đã điều chỉnh số dư'))) close();
         }}
       />
       <ReasonModal
         open={kind === 'reset'}
         title={`Đặt lại tài khoản ${u.email}`}
-        description="Xoá toàn bộ lệnh, khớp, danh mục, sao kê của người dùng; tiền mặt về vốn ban đầu. Không hoàn tác được."
+        description="Xoá toàn bộ lệnh, khớp lệnh, số dư coin và sổ cái của người dùng; ví về vốn ảo ban đầu (USDT). Không hoàn tác được."
         confirmLabel="Đặt lại"
         danger
         onClose={close}
@@ -203,9 +218,9 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
 
 export function UserDetailModal({ id, onClose }: { id: string | null; onClose(): void }) {
   const { data: d, isLoading } = useAdminUser(id);
-  const [tab, setTab] = useState<'holdings' | 'orders' | 'ledger' | 'audit'>('holdings');
+  const [tab, setTab] = useState<'balances' | 'orders' | 'ledger' | 'audit'>('balances');
   return (
-    <Modal open={!!id} onClose={onClose} title="Hồ sơ nhà đầu tư" width={920}>
+    <Modal open={!!id} onClose={onClose} title="Hồ sơ người dùng" width={920}>
       {isLoading || !d ? (
         <div className="flex justify-center py-16">
           <Spinner />
@@ -223,75 +238,73 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                 {d.user.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
               </div>
               <div className="text-[12px] text-tx-3">
-                {d.user.email} · tạo {fmtDateTimeVN(d.user.createdAt)} · hoạt động {fmtAgo(d.user.lastSeenAt)}
+                {d.user.email} · tạo {fmtDateTime(d.user.createdAt)} · hoạt động {fmtAgo(d.user.lastSeenAt)}
               </div>
               {d.user.lockedReason && <div className="mt-1 text-[12px] text-down">Lý do khoá: {d.user.lockedReason}</div>}
             </div>
           </div>
           <UserActions d={d} onDeleted={onClose} />
-          {d.account && (
-            <KeyValue
-              items={[
-                ['Tài sản ròng (NAV)', `${fmtVnd(d.account.nav)}đ`],
-                [
-                  'Lãi / lỗ so với vốn',
-                  <span className={toneText[signTone(d.account.nav - d.account.initialCapital)]}>
-                    {fmtPct(((d.account.nav - d.account.initialCapital) / d.account.initialCapital) * 100)}
-                  </span>,
-                ],
-                ['Tiền mặt', `${fmtVnd(d.account.cashBalance)}đ`],
-                ['Đang phong toả', `${fmtVnd(d.account.cashHold)}đ`],
-                ['Giá trị cổ phiếu', `${fmtVnd(d.account.stockValue)}đ`],
-                ['Vốn ban đầu', `${fmtVnd(d.account.initialCapital)}đ`],
-                ['Số lần khớp', fmtInt(d.stats.trades)],
-                ['Lãi / lỗ đã thực hiện', <span className={toneText[signTone(d.stats.realized)]}>{fmtVnd(d.stats.realized)}đ</span>],
-                ['Tổng phí đã trả', `${fmtVnd(d.stats.fees)}đ`],
-                ['Mã đang theo dõi', fmtInt(d.stats.watch)],
-              ]}
-            />
-          )}
+          {(() => {
+            const nav = Number(d.account.totalUsdt);
+            const base = Number(d.account.contributedUsdt);
+            const usdt = d.account.balances.find((b) => b.asset === 'USDT');
+            return (
+              <KeyValue
+                items={[
+                  ['Tổng tài sản', `${fmtUsd(nav)} USDT`],
+                  ['Lãi / lỗ so với vốn', <span className={toneText[signTone(nav - base)]}>{fmtPct(base ? ((nav - base) / base) * 100 : 0)}</span>],
+                  ['USDT khả dụng', fmtUsd(usdt?.free ?? 0)],
+                  ['USDT đang khoá', fmtUsd(usdt?.locked ?? 0)],
+                  ['Vốn đã góp', `${fmtUsd(base)} USDT`],
+                  ['Trả phí bằng BNB', d.account.payFeeWithBnb ? 'Bật' : 'Tắt'],
+                  ['Số lần khớp', fmtInt(d.stats.trades)],
+                  ['Lãi / lỗ đã thực hiện', <span className={toneText[signTone(d.stats.realized)]}>{fmtUsd(d.stats.realized)} USDT</span>],
+                  ['Tổng phí đã trả', `${fmtUsd(d.stats.fees)} USDT`],
+                  ['Cặp đang theo dõi', fmtInt(d.stats.watch)],
+                ]}
+              />
+            );
+          })()}
           <div className="rounded-lg border border-line">
             <UnderlineTabs
               value={tab}
               onChange={setTab}
               items={[
-                { value: 'holdings', label: `Danh mục (${d.holdings.length})` },
+                { value: 'balances', label: `Ví (${d.account.balances.length})` },
                 { value: 'orders', label: 'Lệnh gần đây' },
-                { value: 'ledger', label: 'Sao kê' },
+                { value: 'ledger', label: 'Sổ cái' },
                 { value: 'audit', label: 'Lịch sử quản trị' },
               ]}
             />
             <div className="max-h-[320px] overflow-auto">
-              {tab === 'holdings' &&
-                (d.holdings.length ? (
+              {tab === 'balances' &&
+                (d.account.balances.length ? (
                   <table className="tbl num w-full text-[12px]">
                     <thead>
                       <tr className="h-8 text-left">
-                        <th className="px-3">Mã</th>
-                        <th className="px-2 text-right">Tổng KL</th>
+                        <th className="px-3">Tài sản</th>
+                        <th className="px-2 text-right">Tổng</th>
                         <th className="px-2 text-right">Khả dụng</th>
-                        <th className="px-2 text-right">Chờ về</th>
-                        <th className="px-2 text-right">Giá vốn</th>
-                        <th className="px-2 text-right">Giá TT</th>
-                        <th className="px-3 text-right">Giá trị TT</th>
+                        <th className="px-2 text-right">Đang khoá</th>
+                        <th className="px-2 text-right">Giá vốn TB</th>
+                        <th className="px-3 text-right">Giá trị (USDT)</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {d.holdings.map((h) => (
-                        <tr key={h.symbol} className="h-8 border-t border-line">
-                          <td className="px-3 font-semibold">{h.symbol}</td>
-                          <td className="px-2 text-right">{fmtInt(h.qtyTotal)}</td>
-                          <td className="px-2 text-right">{fmtInt(h.qtyAvailable)}</td>
-                          <td className="px-2 text-right">{fmtInt(h.qtyPending)}</td>
-                          <td className="px-2 text-right">{fmtPrice(h.avgCost)}</td>
-                          <td className="px-2 text-right">{fmtPrice(h.marketPrice)}</td>
-                          <td className="px-3 text-right">{fmtVnd(h.marketValue)}</td>
+                      {d.account.balances.map((b) => (
+                        <tr key={b.asset} className="h-8 border-t border-line">
+                          <td className="px-3 font-semibold">{b.asset}</td>
+                          <td className="px-2 text-right">{fmtQty(b.total)}</td>
+                          <td className="px-2 text-right">{fmtQty(b.free)}</td>
+                          <td className="px-2 text-right">{fmtQty(b.locked)}</td>
+                          <td className="px-2 text-right">{b.avgCost ? fmtPrice(b.avgCost) : '--'}</td>
+                          <td className="px-3 text-right">{fmtUsd(b.usdtValue)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 ) : (
-                  <Empty title="Không nắm giữ cổ phiếu" />
+                  <Empty title="Ví trống" />
                 ))}
               {tab === 'orders' &&
                 (d.orders.length ? (
@@ -300,7 +313,7 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                       <tr className="h-8 text-left">
                         <th className="px-3">Số hiệu</th>
                         <th className="px-2">Thời gian</th>
-                        <th className="px-2">Mã</th>
+                        <th className="px-2">Cặp</th>
                         <th className="px-2">Lệnh</th>
                         <th className="px-2 text-right">Giá</th>
                         <th className="px-2 text-right">KL / khớp</th>
@@ -311,17 +324,17 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                       {d.orders.map((o) => (
                         <tr key={o.id} className="h-8 border-t border-line">
                           <td className="px-3 text-tx-3">#{o.id}</td>
-                          <td className="px-2">{fmtDateTimeVN(o.createdAt)}</td>
+                          <td className="px-2">{fmtDateTime(o.createdAt)}</td>
                           <td className="px-2 font-semibold">{o.symbol}</td>
                           <td className="px-2">
-                            <SideChip side={o.side} /> <span className="text-tx-3">{o.orderType}</span>
+                            <SideChip side={o.side} /> <span className="text-tx-3">{typeLabel(o)}</span>
                           </td>
-                          <td className="px-2 text-right">{o.price ? fmtPrice(o.price) : o.orderType}</td>
+                          <td className="px-2 text-right">{o.price ? fmtPrice(o.price) : 'Thị trường'}</td>
                           <td className="px-2 text-right">
-                            {fmtInt(o.qty)} / {fmtInt(o.filledQty)}
+                            {fmtQty(o.origQty)} / {fmtQty(o.executedQty)}
                           </td>
                           <td className="px-3">
-                            <span className={cn('chip h-5 text-[10px]', STATUS_STYLE[o.status])} title={o.rejectReason ?? undefined}>
+                            <span className={cn('chip h-5 text-[10px]', STATUS_STYLE[o.status])} title={o.reason ?? undefined}>
                               {ORDER_STATUS_LABEL[o.status]}
                             </span>
                           </td>
@@ -338,6 +351,7 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                     <thead>
                       <tr className="h-8 text-left">
                         <th className="px-3">Thời gian</th>
+                        <th className="px-2">Tài sản</th>
                         <th className="px-2">Loại</th>
                         <th className="px-2 text-right">Phát sinh</th>
                         <th className="px-2 text-right">Số dư sau</th>
@@ -347,13 +361,14 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                     <tbody>
                       {d.ledger.map((l) => (
                         <tr key={l.id} className="h-8 border-t border-line">
-                          <td className="px-3">{fmtDateTimeVN(l.createdAt)}</td>
+                          <td className="px-3">{fmtDateTime(l.createdAt)}</td>
+                          <td className="px-2 font-medium">{l.asset}</td>
                           <td className="px-2">{LEDGER_LABEL[l.type] ?? l.type}</td>
                           <td className={cn('px-2 text-right', toneText[signTone(l.amount)])}>
-                            {l.amount > 0 ? '+' : ''}
-                            {fmtVnd(l.amount)}
+                            {Number(l.amount) > 0 ? '+' : ''}
+                            {fmtQty(l.amount)}
                           </td>
-                          <td className="px-2 text-right">{fmtVnd(l.balanceAfter)}</td>
+                          <td className="px-2 text-right">{fmtQty(l.balanceAfter)}</td>
                           <td className="max-w-[280px] truncate px-3 text-tx-2">{l.note}</td>
                         </tr>
                       ))}
@@ -367,7 +382,7 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                   <ul className="divide-y divide-line">
                     {d.audit.map((a) => (
                       <li key={a.id} className="flex flex-wrap gap-x-3 px-3 py-2 text-[12px]">
-                        <span className="num text-tx-3">{fmtDateTimeVN(a.created_at)}</span>
+                        <span className="num text-tx-3">{fmtDateTime(a.created_at)}</span>
                         <Pill tone="brand">{AUDIT_LABEL[a.action] ?? a.action}</Pill>
                         <span className="text-tx-2">{auditSummary(a)}</span>
                         <span className="ml-auto text-tx-3">{a.admin_email}</span>
@@ -500,9 +515,9 @@ export function Users({ onOpenUser }: { onOpenUser(id: string): void }) {
                 <th className="px-2">Trạng thái</th>
                 <th className="px-2">Ngày tạo</th>
                 <th className="px-2">Hoạt động</th>
-                <th className="px-2 text-right">NAV</th>
+                <th className="px-2 text-right">Tổng tài sản</th>
                 <th className="px-2 text-right">Lãi / lỗ</th>
-                <th className="px-2 text-right">Tiền mặt</th>
+                <th className="px-2 text-right">USDT</th>
                 <th className="px-2 text-right">Lệnh</th>
                 <th className="px-4 text-right" />
               </tr>
@@ -521,11 +536,11 @@ export function Users({ onOpenUser }: { onOpenUser(id: string): void }) {
                     <div className="text-[11px] text-tx-3">{u.email}</div>
                   </td>
                   <td className="px-2">{u.status === 'LOCKED' ? <span title={u.lockedReason ?? ''}><Pill tone="bad">Đã khoá</Pill></span> : <Pill tone="good">Hoạt động</Pill>}</td>
-                  <td className="px-2 text-tx-2">{fmtDateTimeVN(u.createdAt).slice(0, 10)}</td>
+                  <td className="px-2 text-tx-2">{fmtDateTime(u.createdAt).slice(0, 10)}</td>
                   <td className="px-2 text-tx-2">{fmtAgo(u.lastSeenAt)}</td>
-                  <td className="px-2 text-right">{fmtCompact(u.nav)}</td>
+                  <td className="px-2 text-right">{fmtUsd(u.nav)}</td>
                   <td className={cn('px-2 text-right font-medium', toneText[signTone(u.pnl)])}>{fmtPct(u.pnlPct)}</td>
-                  <td className="px-2 text-right">{fmtCompact(u.cashBalance)}</td>
+                  <td className="px-2 text-right">{fmtUsd(u.usdt)}</td>
                   <td className="px-2 text-right">
                     {fmtInt(u.ordersCount)}
                     <span className="text-tx-3"> / {fmtInt(u.tradesCount)} khớp</span>

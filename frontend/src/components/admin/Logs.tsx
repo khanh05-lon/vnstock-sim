@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AUDIT_LABEL, auditSummary, useAdminAudit, useAdminLogs } from '../../lib/admin';
-import { cn, downloadCsv, fmtDateTimeVN, fmtTimeVN } from '../../lib/format';
+import { cn, downloadCsv, fmtDateTime, fmtTime } from '../../lib/format';
 import { Empty, Spinner, UnderlineTabs } from '../common/ui';
 import { Pill } from './adminUi';
 
@@ -26,7 +26,7 @@ function AuditLog() {
             downloadCsv(
               'nhat-ky-quan-tri.csv',
               ['Thời gian', 'Quản trị viên', 'Thao tác', 'Đối tượng', 'Chi tiết'],
-              (data ?? []).map((a) => [fmtDateTimeVN(a.created_at), a.admin_email, AUDIT_LABEL[a.action] ?? a.action, `${a.target_type ?? ''} ${a.target_id ?? ''}`.trim(), auditSummary(a)]),
+              (data ?? []).map((a) => [fmtDateTime(a.created_at), a.admin_email, AUDIT_LABEL[a.action] ?? a.action, `${a.target_type ?? ''} ${a.target_id ?? ''}`.trim(), auditSummary(a)]),
             )
           }
         >
@@ -53,7 +53,7 @@ function AuditLog() {
             <tbody>
               {data.map((a) => (
                 <tr key={a.id} className="h-10 border-t border-line">
-                  <td className="px-4 text-tx-2">{fmtDateTimeVN(a.created_at)}</td>
+                  <td className="px-4 text-tx-2">{fmtDateTime(a.created_at)}</td>
                   <td className="px-2">{a.admin_email}</td>
                   <td className="px-2">
                     <Pill tone={/LOCK$|DELETE|HALT$|CANCEL/.test(a.action) ? 'bad' : 'brand'}>{AUDIT_LABEL[a.action] ?? a.action}</Pill>
@@ -99,7 +99,7 @@ function ServerLog() {
             const warn = !bad && /warn|cảnh báo|"level":"warn"/i.test(l.text);
             return (
               <div key={`${l.time}-${i}`} className={cn('whitespace-pre-wrap break-all', bad ? 'text-down' : warn ? 'text-ref' : 'text-tx-2')}>
-                <span className="text-tx-3">{fmtTimeVN(l.time)} </span>
+                <span className="text-tx-3">{fmtTime(l.time)} </span>
                 {l.text}
               </div>
             );

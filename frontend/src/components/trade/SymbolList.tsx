@@ -1,78 +1,86 @@
-import { memo, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
-import { cn, fmtPrice, priceTone, toneText } from '../../lib/format';
+import { Search, Star } from 'lucide-react';
 import { useWatchlist } from '../../lib/queries';
-import { useMarket, useStock } from '../../store/market';
-import { Empty, Tabs, useFlash } from '../common/ui';
+import { cn, fmtPrice, signTone, toneText } from '../../lib/format';
+import { useMarket } from '../../store/market';
 
-const Row = memo(function Row({ symbol, active }: { symbol: string; active: boolean }) {
-  const r = useStock(symbol);
-  const nav = useNavigate();
-  const flash = useFlash(r?.last);
-  if (!r) return null;
-  const traded = r.volume > 0;
-  const tone = traded ? priceTone(r.last, r.ref, r.ceil, r.floor) : 'ref';
-  return (
-    <button
-      onClick={() => nav(`/trade/${symbol}`)}
-      className={cn('num grid h-8 w-full grid-cols-[1fr_auto_64px] items-center gap-2 px-3 text-left text-[12px] hover:bg-bg-3', active && 'bg-bg-3')}
-    >
-      <span className="min-w-0">
-        <span className={cn('font-semibold', active ? 'text-brand' : 'text-tx-1')}>{symbol}</span>
-        <span className="ml-1.5 text-[10px] text-tx-3">{r.exchange}</span>
-      </span>
-      <span className={cn('rounded px-1 text-right font-medium', toneText[tone], flash)}>{fmtPrice(traded ? r.last : r.ref)}</span>
-      <span className={cn('rounded px-1 py-0.5 text-center text-[11px] font-semibold', tone === 'none' ? 'text-tx-2' : toneText[tone])}>
-        {traded ? `${r.changePct > 0 ? '+' : ''}${r.changePct.toFixed(2)}%` : '0.00%'}
-      </span>
-    </button>
-  );
-});
+type Tab = 'fav' | 'usdt';
 
+/** Danh sách cặp bên phải màn giao dịch: tìm kiếm, yêu thích, giá và % 24h */
 export function SymbolList({ current }: { current: string }) {
-  const { list: watch, loggedIn } = useWatchlist();
-  const loaded = useMarket((s) => s.loaded);
-  const [tab, setTab] = useState<'WATCH' | 'VN30' | 'ALL'>(loggedIn ? 'WATCH' : 'VN30');
+  const rows = useMarket((s) => s.rows);
+  const symbols = useMarket((s) => s.symbols);
+  const { list: favs, loggedIn, toggle } = useWatchlist();
+  const [tab, setTab] = useState<Tab>('usdt');
   const [q, setQ] = useState('');
+  const nav = useNavigate();
 
-  const symbols = useMemo(() => {
-    if (!loaded) return [];
-    const rows = useMarket.getState().rows;
-    const Q = q.trim().toUpperCase();
-    let list = Object.values(rows);
-    if (Q) list = list.filter((r) => r.symbol.startsWith(Q));
-    else if (tab === 'WATCH') list = list.filter((r) => watch.includes(r.symbol));
-    else if (tab === 'VN30') list = list.filter((r) => r.isVn30);
-    return list.map((r) => r.symbol).sort();
-  }, [loaded, tab, watch, q]);
+  const items = useMemo(() => {
+    const term = q.trim().toUpperCase();
+    return symbols
+      .map((s) => rows[s]!)
+      .filter((r) => r && (tab === 'usdt' || favs.includes(r.symbol)))
+      .filter((r) => !term || r.baseAsset.includes(term) || r.name.toUpperCase().includes(term));
+  }, [rows, symbols, tab, q, favs]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 px-3 pt-2">
-        <div className="relative flex-1">
-          <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-tx-3" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm mã" className="input h-8 pl-7 text-[12px]" aria-label="Tìm mã" />
+      <div className="px-3 pt-3">
+        <label className="flex h-8 items-center gap-2 rounded-lg bg-bg-3 px-2.5">
+          <Search size={14} className="text-tx-3" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm coin" className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-tx-3" aria-label="Tìm coin" />
+        </label>
+        <div className="mt-2 flex gap-3 text-[12px]">
+          {loggedIn && (
+            <button onClick={() => setTab('fav')} className={cn('flex items-center gap-1 font-medium', tab === 'fav' ? 'text-brand' : 'text-tx-3 hover:text-tx-1')}>
+              <Star size={12} fill={tab === 'fav' ? 'currentColor' : 'none'} /> Yêu thích
+            </button>
+          )}
+          <button onClick={() => setTab('usdt')} className={cn('font-medium', tab === 'usdt' ? 'text-brand' : 'text-tx-3 hover:text-tx-1')}>
+            USDT
+          </button>
         </div>
       </div>
-      <Tabs
-        size="sm"
-        className="px-3 py-2"
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: 'WATCH', label: 'Theo dõi', disabled: !loggedIn },
-          { value: 'VN30', label: 'VN30' },
-          { value: 'ALL', label: 'Tất cả' },
-        ]}
-      />
-      <div className="grid grid-cols-[1fr_auto_64px] gap-2 px-3 pb-1 text-[11px] text-tx-3">
-        <span>Mã</span>
+      <div className="grid grid-cols-[1fr_auto_64px] gap-2 px-3 pb-1 pt-2 text-[11px] text-tx-3">
+        <span>Cặp</span>
         <span className="text-right">Giá</span>
-        <span className="text-center">+/- %</span>
+        <span className="text-right">24h</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {symbols.length ? symbols.map((s) => <Row key={s} symbol={s} active={s === current} />) : <Empty title="Danh sách trống" hint={tab === 'WATCH' ? 'Bấm ☆ cạnh mã để theo dõi' : undefined} />}
+        {items.length === 0 && <div className="px-3 py-6 text-center text-[12px] text-tx-3">{tab === 'fav' ? 'Chưa có cặp yêu thích' : 'Không tìm thấy'}</div>}
+        {items.map((r) => (
+          <div
+            key={r.symbol}
+            role="button"
+            tabIndex={0}
+            onClick={() => nav(`/trade/${r.symbol}`)}
+            onKeyDown={(e) => e.key === 'Enter' && nav(`/trade/${r.symbol}`)}
+            className={cn('num grid h-7 cursor-pointer grid-cols-[1fr_auto_64px] items-center gap-2 px-3 text-[12px] hover:bg-bg-3', r.symbol === current && 'bg-bg-2')}
+          >
+            <span className="flex min-w-0 items-center gap-1">
+              {loggedIn && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(r.symbol);
+                  }}
+                  className={favs.includes(r.symbol) ? 'text-brand' : 'text-tx-3 hover:text-tx-1'}
+                  aria-label={favs.includes(r.symbol) ? `Bỏ yêu thích ${r.symbol}` : `Yêu thích ${r.symbol}`}
+                >
+                  <Star size={11} fill={favs.includes(r.symbol) ? 'currentColor' : 'none'} />
+                </button>
+              )}
+              <b className="truncate font-medium text-tx-1">{r.baseAsset}</b>
+              <span className="text-tx-3">/{r.quoteAsset}</span>
+            </span>
+            <span className="text-right text-tx-1">{fmtPrice(r.last, r.filters.tickSize)}</span>
+            <span className={cn('text-right', toneText[signTone(r.changePct)])}>
+              {r.changePct > 0 ? '+' : ''}
+              {r.changePct.toFixed(2)}%
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

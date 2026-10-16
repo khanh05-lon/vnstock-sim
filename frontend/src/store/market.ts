@@ -1,55 +1,56 @@
 import { create } from 'zustand';
-import type { IndexSnapshot, SessionInfo, StockRow, StockSnapshot } from '@vss/shared';
+import type { MarketStatus, SymbolRow, Ticker24h } from '@vss/shared';
 
 interface MarketState {
-  rows: Record<string, StockRow>;
+  /** Cặp giao dịch kèm ticker 24h, theo mã cặp */
+  rows: Record<string, SymbolRow>;
+  /** Thứ tự hiển thị mặc định (sort_order của sàn) */
   symbols: string[];
-  indices: IndexSnapshot[];
-  session: SessionInfo | null;
+  status: MarketStatus | null;
   connected: boolean;
   loaded: boolean;
-  /** độ lệch đồng hồ server - client (ms) */
-  clockSkew: number;
-  setInitial(rows: StockRow[]): void;
-  applyBoard(list: StockSnapshot[]): void;
-  setIndices(list: IndexSnapshot[]): void;
-  setSession(s: SessionInfo): void;
+  setInitial(rows: SymbolRow[]): void;
+  applyTickers(list: Ticker24h[]): void;
+  setStatus(s: MarketStatus): void;
   setConnected(v: boolean): void;
 }
 
 export const useMarket = create<MarketState>((set) => ({
   rows: {},
   symbols: [],
-  indices: [],
-  session: null,
+  status: null,
   connected: false,
   loaded: false,
-  clockSkew: 0,
   setInitial(list) {
-    const rows: Record<string, StockRow> = {};
+    const rows: Record<string, SymbolRow> = {};
     for (const r of list) rows[r.symbol] = r;
-    set({ rows, symbols: list.map((r) => r.symbol).sort(), loaded: true });
+    const symbols = [...list].sort((a, b) => a.sortOrder - b.sortOrder || a.symbol.localeCompare(b.symbol)).map((r) => r.symbol);
+    set({ rows, symbols, loaded: true });
   },
-  applyBoard(list) {
+  applyTickers(list) {
     set((st) => {
       if (!st.loaded) return st;
       const rows = { ...st.rows };
-      for (const u of list) {
-        const old = rows[u.symbol];
-        if (old) rows[u.symbol] = { ...old, ...u };
+      for (const t of list) {
+        const old = rows[t.symbol];
+        if (old) rows[t.symbol] = { ...old, ...t };
       }
       return { rows };
     });
   },
-  setIndices(indices) {
-    set({ indices });
-  },
-  setSession(session) {
-    set({ session, clockSkew: session.serverTime - Date.now() });
+  setStatus(status) {
+    set({ status });
   },
   setConnected(connected) {
     set({ connected });
   },
 }));
 
-export const useStock = (symbol: string | undefined) => useMarket((s) => (symbol ? s.rows[symbol] : undefined));
+export const useSymbolRow = (symbol: string | undefined) => useMarket((s) => (symbol ? s.rows[symbol] : undefined));
+
+/** Giá 1 đơn vị tài sản theo USDT (null khi không có cặp XXXUSDT) */
+export function priceUsdtOf(rows: Record<string, SymbolRow>, asset: string): number | null {
+  if (asset === 'USDT') return 1;
+  const r = rows[`${asset}USDT`];
+  return r ? Number(r.last) : null;
+}

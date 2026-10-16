@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
-import { PHASE_LABEL } from '@vss/shared';
-import { cn, fmtCompact, fmtPct, signTone, toneText } from '../../lib/format';
-import { navOfAccount, usePortfolio } from '../../lib/queries';
+import { cn, fmtPct, fmtUsd, signTone, toneText } from '../../lib/format';
+import { useAccount } from '../../lib/queries';
 import { useAdminMe } from '../../lib/admin';
 import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
@@ -13,22 +12,17 @@ import { AccountSettingsModal } from './AccountSettingsModal';
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <Link to="/" className="flex items-center gap-2 shrink-0" aria-label="VNStock — trang chủ">
+    <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="VNCoin, trang chủ">
       <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
         <rect width="32" height="32" rx="8" fill="var(--brand)" />
-        <g fill="var(--brand-ink)">
-          <rect x="7" y="12" width="4" height="10" rx="1" />
-          <rect x="8.5" y="8" width="1" height="17" />
-          <rect x="14" y="7" width="4" height="12" rx="1" />
-          <rect x="15.5" y="4" width="1" height="18" />
-          <rect x="21" y="14" width="4" height="8" rx="1" />
-          <rect x="22.5" y="10" width="1" height="15" />
-        </g>
+        <circle cx="16" cy="16" r="9" fill="none" stroke="var(--brand-ink)" strokeWidth="2.5" />
+        <path d="M13 11.5h4.2a2.3 2.3 0 0 1 0 4.5H13zM13 16h4.8a2.3 2.3 0 0 1 0 4.5H13z" fill="none" stroke="var(--brand-ink)" strokeWidth="2" strokeLinejoin="round" />
+        <path d="M14.5 9.5v2M14.5 20.5v2" stroke="var(--brand-ink)" strokeWidth="2" strokeLinecap="round" />
       </svg>
       {!compact && (
         <span className="hidden items-baseline gap-1.5 sm:flex">
           <span className="text-[17px] font-extrabold tracking-tight">
-            VN<span className="text-brand">Stock</span>
+            VN<span className="text-brand">Coin</span>
           </span>
           <span className="chip h-[18px] bg-brand/15 px-1.5 text-[10px] text-brand">SIM</span>
         </span>
@@ -39,41 +33,29 @@ export function Logo({ compact = false }: { compact?: boolean }) {
 
 const NAV = [
   { to: '/trade', label: 'Giao dịch' },
-  { to: '/market', label: 'Thị trường' },
-  { to: '/bo-loc', label: 'Bộ lọc' },
   { to: '/xep-hang', label: 'Xếp hạng' },
-  { to: '/portfolio', label: 'Tài sản' },
-  { to: '/history', label: 'Lịch sử' },
+  { to: '/vi', label: 'Ví' },
+  { to: '/lich-su', label: 'Lịch sử' },
 ];
 
-function useVnClock() {
-  const skew = useMarket((s) => s.clockSkew);
-  const [now, setNow] = useState(() => Date.now() + skew);
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now() + skew), 1000);
-    return () => clearInterval(t);
-  }, [skew]);
-  return new Date(now + 7 * 3600_000).toISOString().slice(11, 19);
-}
-
-function SessionBadge() {
-  const session = useMarket((s) => s.session);
+/** Trạng thái nguồn dữ liệu: Binance (thật) hay giả lập, kèm đồng hồ UTC (sàn coin chốt ngày theo UTC) */
+function FeedBadge() {
+  const status = useMarket((s) => s.status);
   const connected = useMarket((s) => s.connected);
-  const clock = useVnClock();
-  const open = session?.phase === 'CONTINUOUS' || session?.phase === 'ATO' || session?.phase === 'ATC';
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const live = connected && status?.feed === 'LIVE';
   return (
-    <div className="hidden items-center gap-2 rounded-md bg-bg-2 px-2.5 py-1 text-xs md:flex" title={session?.mode === 'SIMULATED_24_7' ? 'Thị trường mô phỏng hoạt động 24/7' : 'Theo giờ giao dịch HOSE'}>
-      <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : open ? 'bg-up pulse-dot' : 'bg-ref')} />
-      <span className="text-tx-2">{session ? PHASE_LABEL[session.phase] : 'Đang kết nối…'}</span>
-      <span className="num font-medium text-tx-1">{clock}</span>
-      {session?.feed && (
-        <span
-          className={cn('rounded px-1.5 py-px text-[10px] font-semibold', session.feed === 'LIVE' ? 'bg-up/15 text-up' : 'bg-bg-3 text-tx-3')}
-          title={session.feed === 'LIVE' ? 'Bảng giá lấy từ dữ liệu thị trường thật' : 'Giá giả lập (chưa có dữ liệu thật hoặc ngoài giờ giao dịch)'}
-        >
-          {session.feed === 'LIVE' ? 'Giá thật' : 'Giả lập'}
-        </span>
-      )}
+    <div
+      className="hidden items-center gap-2 rounded-md bg-bg-2 px-2.5 py-1 text-xs md:flex"
+      title={live ? 'Giá realtime từ Binance' : connected ? 'Mất kết nối Binance, giá đang chạy giả lập' : 'Đang kết nối máy chủ'}
+    >
+      <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : live ? 'bg-up pulse-dot' : 'bg-ref')} />
+      <span className="text-tx-2">{!connected ? 'Đang kết nối' : live ? 'Binance' : 'Giả lập'}</span>
+      <span className="num font-medium text-tx-1">{new Date(now).toISOString().slice(11, 19)} UTC</span>
     </div>
   );
 }
@@ -86,7 +68,7 @@ function UserMenu() {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { data } = usePortfolio();
+  const { data } = useAccount();
   const rows = useMarket((s) => s.rows);
 
   useEffect(() => {
@@ -96,17 +78,13 @@ function UserMenu() {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  let nav_ = 0;
+  // Tổng tài sản theo giá realtime
+  let total = 0;
   let pnlPct = 0;
   if (data) {
-    const stock = data.holdings.reduce((a, h) => {
-      const r = rows[h.symbol];
-      const p = r ? (r.volume > 0 ? r.last : r.ref) : h.marketPrice;
-      return a + p * h.qtyTotal;
-    }, 0);
-    nav_ = navOfAccount(data.account, stock);
-    const base = data.account.contributed ?? data.account.initialCapital;
-    pnlPct = ((nav_ - base) / base) * 100;
+    for (const b of data.balances) total += Number(b.total) * (b.asset === 'USDT' ? 1 : Number(rows[`${b.asset}USDT`]?.last ?? 0));
+    const base = Number(data.contributedUsdt);
+    pnlPct = base ? ((total - base) / base) * 100 : 0;
   }
   const initials = (user?.fullName ?? '?')
     .split(' ')
@@ -119,9 +97,9 @@ function UserMenu() {
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-bg-3" aria-haspopup="menu" aria-expanded={open}>
         <span className="hidden text-right leading-tight lg:block">
-          <span className="block text-[11px] text-tx-3">Tài sản ròng</span>
+          <span className="block text-[11px] text-tx-3">Tổng tài sản</span>
           <span className="num block text-[13px] font-semibold">
-            {data ? fmtCompact(nav_) : '—'}{' '}
+            {data ? `${fmtUsd(total)} USDT` : '--'}{' '}
             {data && <span className={cn('text-[11px] font-medium', toneText[signTone(pnlPct)])}>{fmtPct(pnlPct)}</span>}
           </span>
         </span>
@@ -136,8 +114,8 @@ function UserMenu() {
           </div>
           <div className="my-1 h-px bg-line" />
           {[
-            { icon: Wallet, label: 'Tài sản & danh mục', to: '/portfolio' },
-            { icon: History, label: 'Lịch sử giao dịch', to: '/history' },
+            { icon: Wallet, label: 'Ví Spot', to: '/vi' },
+            { icon: History, label: 'Lịch sử giao dịch', to: '/lich-su' },
           ].map((it) => (
             <button
               key={it.to}
@@ -186,51 +164,28 @@ export function Header() {
   const theme = useUi((s) => s.theme);
   const toggleTheme = useUi((s) => s.toggleTheme);
   const { pathname } = useLocation();
-  const onBoard = pathname === '/' || pathname === '/bang-gia';
+  const onMarkets = pathname === '/' || pathname === '/thi-truong';
+  const item = (active: boolean) => cn('rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors', active ? 'text-brand' : 'text-tx-2 hover:text-tx-1');
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-line bg-bg-1 px-3 sm:px-4">
       <Logo />
       <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" aria-label="Điều hướng chính">
-        {/* "/" chỉ là bảng giá khi đã đăng nhập (khách thấy trang giới thiệu) → khách dùng /bang-gia */}
-        <Link
-          to={token ? '/' : '/bang-gia'}
-          aria-current={onBoard ? 'page' : undefined}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
-            onBoard ? 'text-brand' : 'text-tx-2 hover:text-tx-1',
-          )}
-        >
-          Bảng giá
+        {/* "/" chỉ là trang Thị trường khi đã đăng nhập (khách thấy trang giới thiệu) → khách dùng /thi-truong */}
+        <Link to={token ? '/' : '/thi-truong'} aria-current={onMarkets ? 'page' : undefined} className={item(onMarkets)}>
+          Thị trường
         </Link>
         {NAV.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            className={({ isActive }) =>
-              cn(
-                'rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
-                isActive ? 'text-brand' : 'text-tx-2 hover:text-tx-1',
-              )
-            }
-          >
+          <NavLink key={n.to} to={n.to} className={({ isActive }) => item(isActive)}>
             {n.label}
           </NavLink>
         ))}
         {isAdmin && (
-          <NavLink
-            to="/admin"
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors',
-                isActive ? 'text-brand' : 'text-tx-2 hover:text-tx-1',
-              )
-            }
-          >
+          <NavLink to="/admin" className={({ isActive }) => cn(item(isActive), 'flex items-center gap-1.5')}>
             <ShieldCheck size={15} /> Quản trị
           </NavLink>
         )}
       </nav>
-      <SessionBadge />
+      <FeedBadge />
       <button
         onClick={toggleTheme}
         className="rounded-md p-2 text-tx-2 hover:bg-bg-3 hover:text-tx-1"

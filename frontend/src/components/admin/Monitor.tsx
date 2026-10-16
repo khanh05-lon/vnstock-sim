@@ -1,6 +1,6 @@
 import { BellRing, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-react';
 import { fmtDuration, useAdminAction, useAdminMonitor, type MonitorSample } from '../../lib/admin';
-import { cn, fmtCompact, fmtDateTimeVN, fmtInt } from '../../lib/format';
+import { cn, fmtCompact, fmtDateTime, fmtInt } from '../../lib/format';
 import { Empty, Sparkline, Spinner } from '../common/ui';
 import { Kpi, Pill, Section } from './adminUi';
 
@@ -114,7 +114,7 @@ export function Monitor() {
             <ul className="max-h-80 divide-y divide-line overflow-y-auto">
               {data.history.map((a) => (
                 <li key={a.id} className="flex flex-wrap items-start gap-x-3 gap-y-0.5 px-4 py-2 text-[12.5px]">
-                  <span className="num w-32 shrink-0 text-tx-3">{a.started_at ? fmtDateTimeVN(a.started_at) : ''}</span>
+                  <span className="num w-32 shrink-0 text-tx-3">{a.started_at ? fmtDateTime(a.started_at) : ''}</span>
                   <Pill tone={a.resolved_at ? 'muted' : a.level === 'critical' ? 'bad' : 'warn'}>{a.resolved_at ? 'Đã hết' : a.level === 'critical' ? 'Nghiêm trọng' : 'Cảnh báo'}</Pill>
                   <span className="min-w-0 flex-1">
                     <b>{a.title}</b>

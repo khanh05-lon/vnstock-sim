@@ -3,8 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { BarChart3, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { loginSchema, registerSchema, type UserDTO } from '@vss/shared';
-import { AuthFrame, IndexMini } from '../components/auth/AuthFrame';
+import { RULES, loginSchema, registerSchema, type UserDTO } from '@vss/shared';
+import { AuthFrame, MajorsMini } from '../components/auth/AuthFrame';
 import { api, errMsg } from '../lib/api';
 import { useAuth, type LoginResult } from '../store/auth';
 
@@ -120,7 +120,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       }
       done(
         res,
-        isLogin ? `Chào mừng trở lại, ${res.user.fullName}!` : 'Tạo tài khoản thành công — bạn được cấp 1 tỷ đồng vốn ảo. Hãy kiểm tra email để xác thực tài khoản.',
+        isLogin
+          ? `Chào mừng trở lại, ${res.user.fullName}!`
+          : `Tạo tài khoản thành công, bạn được cấp ${Number(RULES.initialUsdt).toLocaleString('en-US')} USDT vốn ảo. Hãy kiểm tra email để xác thực tài khoản.`,
       );
     } catch (err) {
       toast.error(errMsg(err));
@@ -184,21 +186,21 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-4 py-10 lg:grid-cols-[1.1fr_1fr]">
         <div className="hidden lg:block">
           <div className="chip bg-brand/15 text-brand">
-            <Sparkles size={12} className="mr-1" /> Giao dịch mô phỏng — vốn ảo 1 tỷ đồng
+            <Sparkles size={12} className="mr-1" /> Giao dịch mô phỏng, vốn ảo {Number(RULES.initialUsdt).toLocaleString('en-US')} USDT
           </div>
           <h1 className="mt-4 text-[40px] font-extrabold leading-[1.1] tracking-tight">
-            Luyện đầu tư chứng khoán
+            Luyện giao dịch coin
             <br />
-            <span className="text-brand">không rủi ro, như sàn thật.</span>
+            <span className="text-brand">không rủi ro, giá thật từ Binance.</span>
           </h1>
           <p className="mt-4 max-w-lg text-[15px] text-tx-2">
-            Bảng giá realtime HOSE · HNX · UPCOM, biểu đồ nến chuyên nghiệp, khớp lệnh theo đúng quy tắc bước giá, biên độ trần/sàn, phí giao dịch và T+2.
+            Bảng giá và sổ lệnh realtime, biểu đồ nến chuyên nghiệp, khớp lệnh đúng bộ lọc giá, khối lượng và phí maker/taker như sàn thật.
           </p>
           <ul className="mt-6 space-y-3 text-[14px]">
             {[
-              [Zap, 'Giá cập nhật từng giây, sổ lệnh 3 bước giá như bảng điện'],
-              [BarChart3, 'Biểu đồ nến TradingView với MA20/MA50, 1 phút đến 1 tháng'],
-              [ShieldCheck, 'Lệnh LO / MP / ATO / ATC, lệnh điều kiện, ký quỹ, thanh toán T+2'],
+              [Zap, 'Giá và sổ lệnh 20 mức cập nhật liên tục từ Binance'],
+              [BarChart3, 'Biểu đồ nến với MA7/MA25/MA99, khung 1 phút đến 1 tháng'],
+              [ShieldCheck, 'Lệnh giới hạn, thị trường, stop-limit, OCO; trả phí bằng BNB giảm 25%'],
             ].map(([Icon, text], i) => {
               const I = Icon as typeof Zap;
               return (
@@ -212,7 +214,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             })}
           </ul>
           <div className="mt-8 max-w-md">
-            <IndexMini />
+            <MajorsMini />
           </div>
         </div>
 
@@ -233,7 +235,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           ) : (
             <>
               <h2 className="text-[24px] font-bold">{isLogin ? 'Đăng nhập' : 'Mở tài khoản miễn phí'}</h2>
-              <p className="mt-1 text-tx-3">{isLogin ? 'Chào mừng bạn quay lại VNStock' : 'Nhận ngay 1.000.000.000đ vốn ảo để giao dịch'}</p>
+              <p className="mt-1 text-tx-3">{isLogin ? 'Chào mừng bạn quay lại VNCoin' : `Nhận ngay ${Number(RULES.initialUsdt).toLocaleString('en-US')} USDT vốn ảo để giao dịch`}</p>
               <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)} noValidate>
                 {!isLogin && field('fullName', 'Họ và tên', fullName, setFullName, 'text', 'name')}
                 {field('email', 'Email', email, setEmail, 'email', 'email')}

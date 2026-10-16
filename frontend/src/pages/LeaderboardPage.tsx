@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { EyeOff, Medal, Trophy } from 'lucide-react';
 import { Empty, Spinner, Tabs } from '../components/common/ui';
-import { cn, fmtCompact, fmtInt, fmtPct, fmtTimeVN, signTone, toneText } from '../lib/format';
+import { cn, fmtPct, fmtTime, fmtUsd, signTone, toneText } from '../lib/format';
 import { useLeaderboard, type LeaderboardPeriod } from '../lib/queries';
 import { useAuth } from '../store/auth';
 
@@ -43,11 +43,11 @@ export default function LeaderboardPage() {
             </span>
           ) : (
             <span>
-              Hạng <b className="num text-[16px]">{data.me.rank}</b> / {fmtInt(data.total)}
+              Hạng <b className="num text-[16px]">{data.me.rank}</b> / {data.total.toLocaleString('en-US')}
             </span>
           )}
           <span className={cn('num font-semibold', toneText[signTone(data.me.returnPct)])}>{fmtPct(data.me.returnPct)}</span>
-          <span className="num text-tx-2">NAV {fmtCompact(data.me.nav)}</span>
+          <span className="num text-tx-2">Tổng tài sản {fmtUsd(data.me.nav)} USDT</span>
         </div>
       )}
       {!loggedIn && (
@@ -55,7 +55,7 @@ export default function LeaderboardPage() {
           <Link to="/register" className="font-semibold text-brand hover:underline">
             Mở tài khoản
           </Link>{' '}
-          để nhận 1 tỷ đồng vốn ảo và tham gia bảng xếp hạng.
+          để nhận 10.000 USDT vốn ảo và tham gia bảng xếp hạng.
         </div>
       )}
 
@@ -74,9 +74,9 @@ export default function LeaderboardPage() {
                   <th className="w-16 px-4">Hạng</th>
                   <th className="px-2">Nhà đầu tư</th>
                   <th className="px-2 text-right">Lợi nhuận</th>
-                  <th className="px-2 text-right">Tài sản ròng</th>
+                  <th className="px-2 text-right">Tổng tài sản (USDT)</th>
                   <th className="px-2 text-right">Lệnh khớp</th>
-                  <th className="px-4 text-right">Mã tỷ trọng lớn nhất</th>
+                  <th className="px-4 text-right">Coin nắm nhiều nhất</th>
                 </tr>
               </thead>
               <tbody>
@@ -95,11 +95,11 @@ export default function LeaderboardPage() {
                       {r.name} {r.isMe && <span className="chip ml-1 h-5 bg-brand/15 px-1.5 text-[10px] text-brand">Bạn</span>}
                     </td>
                     <td className={cn('px-2 text-right font-semibold', toneText[signTone(r.returnPct)])}>{fmtPct(r.returnPct)}</td>
-                    <td className="px-2 text-right">{fmtCompact(r.nav)}</td>
-                    <td className="px-2 text-right">{fmtInt(r.trades)}</td>
+                    <td className="px-2 text-right">{fmtUsd(r.nav)}</td>
+                    <td className="px-2 text-right">{r.trades.toLocaleString('en-US')}</td>
                     <td className="px-4 text-right">
                       {r.topSymbol ? (
-                        <Link to={`/trade/${r.topSymbol}`} className="font-semibold hover:text-brand">
+                        <Link to={`/trade/${r.topSymbol}USDT`} className="font-semibold hover:text-brand">
                           {r.topSymbol}
                         </Link>
                       ) : (
@@ -112,7 +112,7 @@ export default function LeaderboardPage() {
             </table>
           </div>
         )}
-        {data && <p className="border-t border-line px-4 py-2 text-[11px] text-tx-3">Cập nhật lúc {fmtTimeVN(data.updatedAt)} · {fmtInt(data.total)} nhà đầu tư · Vốn ảo, không phải khuyến nghị đầu tư.</p>}
+        {data && <p className="border-t border-line px-4 py-2 text-[11px] text-tx-3">Cập nhật lúc {fmtTime(data.updatedAt)} · {data.total.toLocaleString('en-US')} nhà đầu tư · Vốn ảo, không phải khuyến nghị đầu tư.</p>}
       </section>
     </div>
   );

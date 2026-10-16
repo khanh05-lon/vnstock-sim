@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ColorType, LineSeries, LineStyle, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-import { cn, fmtPct, fmtVnd, signTone, toneText } from '../../lib/format';
+import { cn, fmtPct, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useNavHistory, type NavHistory, type NavRange } from '../../lib/queries';
 import { useUi } from '../../store/ui';
 import { Empty, Spinner, Tabs } from '../common/ui';
@@ -9,7 +9,7 @@ const css = (n: string) => getComputedStyle(document.documentElement).getPropert
 const toTime = (d: string) => (Date.parse(`${d}T00:00:00Z`) / 1000) as UTCTimestamp;
 
 /**
- * Chuỗi tỷ suất lợi nhuận (%) của danh mục và VN-Index cùng kỳ, đều tính từ điểm đầu kỳ.
+ * Chuỗi tỷ suất lợi nhuận (%) của ví và giá BTC cùng kỳ, đều tính từ điểm đầu kỳ.
  * Danh mục: thay đổi NAV đã trừ vốn góp thêm trong kỳ (nạp/rút do quản trị viên điều chỉnh).
  */
 export function returnSeries(h: NavHistory) {
@@ -27,7 +27,7 @@ export function returnSeries(h: NavHistory) {
 }
 
 export function NavChart() {
-  const [range, setRange] = useState<NavRange>('3M');
+  const [range, setRange] = useState<NavRange>('1M');
   const { data, isLoading } = useNavHistory(range);
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -46,8 +46,8 @@ export function NavChart() {
       timeScale: { borderVisible: false },
       localization: { priceFormatter: (v: number) => `${v.toFixed(1)}%` },
     });
-    mine.current = c.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, title: 'Danh mục' });
-    bench.current = c.addSeries(LineSeries, { lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, title: 'VN-Index' });
+    mine.current = c.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, title: 'Ví của bạn' });
+    bench.current = c.addSeries(LineSeries, { lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, title: 'BTC' });
     chart.current = c;
     return () => {
       c.remove();
@@ -83,16 +83,16 @@ export function NavChart() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
         <div>
           <h2 className="font-semibold">Hiệu quả đầu tư</h2>
-          <p className="text-[11px] text-tx-3">Tỷ suất lợi nhuận danh mục so với VN-Index cùng kỳ (đã trừ vốn góp thêm)</p>
+          <p className="text-[11px] text-tx-3">Tỷ suất lợi nhuận của ví so với giá BTC cùng kỳ (đã trừ vốn góp thêm), chốt ngày theo UTC</p>
         </div>
         <Tabs
           size="sm"
           value={range}
           onChange={setRange}
           items={[
-            { value: '1M', label: '1 tháng' },
+            { value: '7D', label: '7 ngày' },
+            { value: '1M', label: '30 ngày' },
             { value: '3M', label: '3 tháng' },
-            { value: '6M', label: '6 tháng' },
             { value: '1Y', label: '1 năm' },
             { value: 'ALL', label: 'Tất cả' },
           ]}
@@ -100,21 +100,21 @@ export function NavChart() {
       </div>
       <div className="grid grid-cols-2 gap-3 border-b border-line px-4 py-3 sm:grid-cols-4">
         <div>
-          <div className="label">Danh mục trong kỳ</div>
+          <div className="label">Ví của bạn trong kỳ</div>
           <div className={cn('num text-[16px] font-bold', toneText[signTone(last)])}>{fmtPct(last)}</div>
         </div>
         <div>
-          <div className="label">VN-Index cùng kỳ</div>
+          <div className="label">BTC cùng kỳ</div>
           <div className={cn('num text-[16px] font-bold', toneText[signTone(lastIdx)])}>{fmtPct(lastIdx)}</div>
         </div>
         <div>
-          <div className="label">Vượt / kém thị trường</div>
+          <div className="label">Vượt / kém BTC</div>
           <div className={cn('num text-[16px] font-bold', toneText[signTone(last - lastIdx)])}>{fmtPct(last - lastIdx)}</div>
         </div>
         <div>
           <div className="label">Sụt giảm lớn nhất từ đỉnh</div>
           <div className={cn('num text-[16px] font-bold', dd < 0 ? 'text-down' : 'text-tx-2')}>{fmtPct(dd * 100)}</div>
-          <div className="num text-[11px] text-tx-3">Đỉnh NAV {fmtVnd(peak)}đ · hiện {fmtVnd(nav)}đ</div>
+          <div className="num text-[11px] text-tx-3">Đỉnh {fmtUsd(peak)} · hiện {fmtUsd(nav)} USDT</div>
         </div>
       </div>
       <div className="relative h-[260px]">
@@ -126,7 +126,7 @@ export function NavChart() {
         )}
         {!isLoading && pts.length < 2 && (
           <div className="absolute inset-0 flex items-center justify-center bg-bg-1/80">
-            <Empty title="Chưa đủ dữ liệu" hint="Biểu đồ có điểm mới mỗi ngày giao dịch — quay lại sau vài phiên." />
+            <Empty title="Chưa đủ dữ liệu" hint="Biểu đồ có thêm 1 điểm mỗi ngày (00:00 UTC), quay lại sau vài ngày." />
           </div>
         )}
       </div>

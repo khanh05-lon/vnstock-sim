@@ -3,20 +3,19 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bell, BellRing, X } from 'lucide-react';
 import { MAX_ACTIVE_ALERTS, PRICE_ALERT_LABEL, PRICE_ALERT_STATUS_LABEL, type PriceAlertDTO, type PriceAlertKind } from '@vss/shared';
 import { errMsg } from '../../lib/api';
-import { cn, fmtInt, fmtPrice, parseIntInput, parsePriceInput } from '../../lib/format';
+import { cleanDecimal, cn, decOrNull, fmtPrice } from '../../lib/format';
 import { useAlertActions, useAlerts, useLoggedIn } from '../../lib/queries';
-import { useStock } from '../../store/market';
+import { useMarket, useSymbolRow } from '../../store/market';
 import { Empty, Modal, Spinner } from '../common/ui';
 
-const KINDS: PriceAlertKind[] = ['PRICE_ABOVE', 'PRICE_BELOW', 'CHANGE_UP', 'CHANGE_DOWN', 'VOLUME_ABOVE'];
+const KINDS: PriceAlertKind[] = ['PRICE_ABOVE', 'PRICE_BELOW', 'CHANGE_UP', 'CHANGE_DOWN'];
 
-/** "Giá khớp ≥ 98.50", "Tăng ≥ 3.5%", "Tổng KL ≥ 1,000,000" */
-export function describeAlert(a: Pick<PriceAlertDTO, 'kind' | 'value'>): string {
-  if (a.kind === 'PRICE_ABOVE') return `Giá ≥ ${fmtPrice(a.value)}`;
-  if (a.kind === 'PRICE_BELOW') return `Giá ≤ ${fmtPrice(a.value)}`;
-  if (a.kind === 'CHANGE_UP') return `Tăng ≥ ${a.value}%`;
-  if (a.kind === 'CHANGE_DOWN') return `Giảm ≥ ${a.value}%`;
-  return `Tổng KL ≥ ${fmtInt(a.value)}`;
+/** "Giá ≥ 82,000.00", "Tăng 24h ≥ 3.5%" */
+export function describeAlert(a: Pick<PriceAlertDTO, 'kind' | 'value'>, tick?: string): string {
+  if (a.kind === 'PRICE_ABOVE') return `Giá ≥ ${fmtPrice(a.value, tick)}`;
+  if (a.kind === 'PRICE_BELOW') return `Giá ≤ ${fmtPrice(a.value, tick)}`;
+  if (a.kind === 'CHANGE_UP') return `Tăng 24h ≥ ${a.value}%`;
+  return `Giảm 24h ≥ ${a.value}%`;
 }
 
 const STATUS_STYLE: Record<PriceAlertDTO['status'], string> = {
@@ -26,7 +25,7 @@ const STATUS_STYLE: Record<PriceAlertDTO['status'], string> = {
 };
 
 const fmtTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—';
+  iso ? new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '--';
 
 /** Nút chuông trên header mã: mở hộp tạo cảnh báo giá */
 export function AlertButton({ symbol }: { symbol: string }) {
@@ -52,7 +51,7 @@ export function AlertButton({ symbol }: { symbol: string }) {
 }
 
 function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
-  const r = useStock(symbol);
+  const r = useSymbolRow(symbol);
   const { data, isLoading } = useAlerts(symbol);
   const { create, cancel } = useAlertActions();
   const [kind, setKind] = useState<PriceAlertKind>('PRICE_ABOVE');
@@ -63,15 +62,13 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
   const [busy, setBusy] = useState(false);
 
   const isPrice = kind === 'PRICE_ABOVE' || kind === 'PRICE_BELOW';
-  const isPct = kind === 'CHANGE_UP' || kind === 'CHANGE_DOWN';
-  const value = isPrice ? parsePriceInput(text) : isPct ? Number(text.replace(',', '.')) : parseIntInput(text);
-  const cur = r ? (r.volume > 0 ? r.last : r.ref) : 0;
-  const pctNow = r && r.volume > 0 ? ((r.last - r.ref) / r.ref) * 100 : 0;
+  const value = decOrNull(text);
+  const tick = r?.filters.tickSize;
 
   const submit = async () => {
     setErr('');
-    if (!value || !Number.isFinite(value) || value <= 0) {
-      setErr(isPrice ? 'Nhập giá (vd 98.5 hoặc 98500)' : isPct ? 'Nhập phần trăm (vd 3.5)' : 'Nhập khối lượng');
+    if (!value) {
+      setErr(isPrice ? 'Nhập giá' : 'Nhập phần trăm (vd 3.5)');
       return;
     }
     setBusy(true);
@@ -88,18 +85,15 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
 
   const list = data ?? [];
   return (
-    <Modal open onClose={onClose} title={`Cảnh báo giá ${symbol}`} width={520}>
+    <Modal open onClose={onClose} title={`Cảnh báo giá ${r ? `${r.baseAsset}/${r.quoteAsset}` : symbol}`} width={520}>
       <div className="space-y-3">
         {r && (
           <div className="flex gap-4 rounded-md bg-bg-2 px-3 py-2 text-[12px] text-tx-2">
             <span>
-              Giá hiện tại <b className="text-tx-1">{fmtPrice(cur)}</b>
+              Giá hiện tại <b className="num text-tx-1">{fmtPrice(r.last, tick)}</b>
             </span>
             <span>
-              Thay đổi <b className={pctNow >= 0 ? 'text-up' : 'text-down'}>{pctNow.toFixed(2)}%</b>
-            </span>
-            <span>
-              Tổng KL <b className="text-tx-1">{fmtInt(r.volume)}</b>
+              Thay đổi 24h <b className={r.changePct >= 0 ? 'text-up' : 'text-down'}>{r.changePct.toFixed(2)}%</b>
             </span>
           </div>
         )}
@@ -123,13 +117,13 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
             </select>
           </label>
           <label className="block">
-            <span className="label mb-1 block">{isPrice ? 'Giá (x1.000đ)' : isPct ? 'Phần trăm (%)' : 'Khối lượng (CP)'}</span>
+            <span className="label mb-1 block">{isPrice ? `Giá (${r?.quoteAsset ?? 'USDT'})` : 'Phần trăm (%)'}</span>
             <input
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => setText(cleanDecimal(e.target.value))}
               onKeyDown={(e) => e.key === 'Enter' && void submit()}
               inputMode="decimal"
-              placeholder={isPrice ? fmtPrice(cur) : isPct ? '3.5' : '1,000,000'}
+              placeholder={isPrice ? r?.last : '3.5'}
               className="input h-9 w-full text-right"
               aria-label="Giá trị cảnh báo"
             />
@@ -149,7 +143,7 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
         </p>
 
         <div className="border-t border-line pt-3">
-          <div className="label mb-2">Cảnh báo của mã {symbol}</div>
+          <div className="label mb-2">Cảnh báo của cặp {symbol}</div>
           {isLoading ? (
             <Spinner />
           ) : !list.length ? (
@@ -158,7 +152,7 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
             <ul className="max-h-48 space-y-1 overflow-auto">
               {list.map((a) => (
                 <li key={a.id} className="flex items-center gap-2 rounded-md bg-bg-2 px-3 py-1.5 text-[12px]">
-                  <span className="font-medium">{describeAlert(a)}</span>
+                  <span className="num font-medium">{describeAlert(a, tick)}</span>
                   {a.note && <span className="truncate text-tx-3">· {a.note}</span>}
                   <span className={cn('chip ml-auto h-5 text-[10px]', STATUS_STYLE[a.status])}>{PRICE_ALERT_STATUS_LABEL[a.status]}</span>
                   {a.status === 'ACTIVE' && (
@@ -180,6 +174,7 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose(): void }) {
 export function AlertsTable() {
   const { data, isLoading } = useAlerts();
   const { cancel } = useAlertActions();
+  const rows = useMarket((s) => s.rows);
   if (isLoading) {
     return (
       <div className="flex justify-center py-8">
@@ -188,12 +183,12 @@ export function AlertsTable() {
     );
   }
   const list = data ?? [];
-  if (!list.length) return <Empty title="Chưa có cảnh báo giá" hint="Bấm biểu tượng chuông cạnh tên mã để tạo cảnh báo giá, % thay đổi hoặc khối lượng." />;
+  if (!list.length) return <Empty title="Chưa có cảnh báo giá" hint="Bấm biểu tượng chuông cạnh tên cặp để tạo cảnh báo theo giá hoặc % thay đổi 24h." />;
   return (
     <table className="tbl w-full text-[12px]">
       <thead>
         <tr className="h-8 text-left text-tx-3">
-          <th className="px-3">Mã</th>
+          <th className="px-3">Cặp</th>
           <th className="px-3">Điều kiện</th>
           <th className="px-3">Ghi chú</th>
           <th className="px-3">Email</th>
@@ -211,13 +206,13 @@ export function AlertsTable() {
                 {a.symbol}
               </Link>
             </td>
-            <td className="px-3">{describeAlert(a)}</td>
+            <td className="num px-3">{describeAlert(a, rows[a.symbol]?.filters.tickSize)}</td>
             <td className="max-w-[180px] truncate px-3 text-tx-3">{a.note ?? ''}</td>
-            <td className="px-3 text-tx-3">{a.notifyEmail ? 'Có' : '—'}</td>
+            <td className="px-3 text-tx-3">{a.notifyEmail ? 'Có' : '--'}</td>
             <td className="px-3">
               <span className={cn('chip h-5 text-[10px]', STATUS_STYLE[a.status])}>{PRICE_ALERT_STATUS_LABEL[a.status]}</span>
             </td>
-            <td className="num px-3 text-right">{a.triggeredPrice ? fmtPrice(a.triggeredPrice) : '—'}</td>
+            <td className="num px-3 text-right">{a.triggeredPrice ? fmtPrice(a.triggeredPrice, rows[a.symbol]?.filters.tickSize) : '--'}</td>
             <td className="px-3 text-tx-3">{fmtTime(a.triggeredAt ?? a.createdAt)}</td>
             <td className="px-3 text-right">
               {a.status === 'ACTIVE' && (

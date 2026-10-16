@@ -25,10 +25,9 @@ export function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 }
 
-/** 1_000_000_000 → "1 tỷ đồng" */
-export function fmtCapital(v: number): string {
-  if (v >= 1e9) return `${(v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} tỷ đồng`;
-  return `${(v / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} triệu đồng`;
+/** "10000" → "10.000 USDT" */
+export function fmtCapital(v: string | number): string {
+  return `${Number(v).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} USDT`;
 }
 
 /** 0.0015 → "0,15%" */
