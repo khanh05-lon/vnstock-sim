@@ -6,7 +6,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "--prefix",
-        "D:/VS-CODE/vnstock-sim/backend",
+        "backend",
         "run",
         "dev"
       ],
@@ -17,7 +17,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "--prefix",
-        "D:/VS-CODE/vnstock-sim/frontend",
+        "frontend",
         "run",
         "dev"
       ],
@@ -27,7 +27,7 @@
       "name": "vnstock-data",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "D:/VS-CODE/vnstock-sim/data-service/run.mjs"
+        "data-service/run.mjs"
       ],
       "port": 8001
     }
