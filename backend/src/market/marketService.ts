@@ -1,951 +1,634 @@
 import { EventEmitter } from 'node:events';
 import {
-  priceBand,
-  warrantBand,
-  stepPrice,
-  type Candle,
-  type IndexSnapshot,
-  type MarketMode,
-  type SessionInfo,
-  type SessionPhase,
-  type StockInfo,
-  type StockRow,
-  type StockSnapshot,
+  Big,
+  floorStep,
+  str,
+  type BookLevel,
+  type Dec,
+  type DepthSnapshot,
+  type FeedKind,
+  type Kline,
+  type KlineInterval,
+  type MarketStatus,
+  type Side,
+  type SymbolInfo,
+  type SymbolRow,
+  type SymbolStatus,
+  type Ticker24h,
   type TradeTick,
 } from '@vss/shared';
 import type { Database } from '../db';
-import { currentTradeDate, phaseAt, vnTimeToMs } from '../lib/calendar';
-import { INDEX_DEFS } from '../seed/stocks';
-import { loadInstrumentInfo } from './instruments';
-import type { MarketDataProvider, ProviderTrade, StockState } from './types';
+import { log } from '../lib/logger';
+import type { BinanceRest } from './binance/rest';
+import { BinanceStream, type MiniTicker } from './binance/stream';
+import { SimFeed } from './simFeed';
+import { loadSymbols, toSymbolInfo, type SymbolRowDb } from './symbols';
 
-interface IndexState {
-  code: string;
-  name: string;
-  members: StockState[];
-  prevClose: number;
-  capRef: number;
-  points: { ts: number; value: number }[];
+/*
+ * Dữ liệu thị trường Spot: nhận luồng Binance (hoặc giả lập khi mất nguồn), giữ trạng thái từng cặp,
+ * và mỗi chu kỳ (flushMs) gọi hooks.onTick để engine khớp lệnh rồi phát sự kiện cho client:
+ *   tickers  Ticker24h[] các cặp thay đổi (tối đa 1 lần / giây)
+ *   depth    DepthSnapshot của cặp có sổ lệnh thay đổi
+ *   trades   TradeTick[] giao dịch mới
+ *   klines   { symbol, kline } nến 1 phút đang chạy
+ *   feed     MarketStatus khi chuyển LIVE ⇄ SIM
+ *   symbols  danh sách cặp thay đổi (thêm / gỡ / tạm ngừng)
+ *
+ * Khớp lệnh ảo: lệnh người dùng "ăn" sổ lệnh thật (consumeBook) nhưng không gửi lên Binance; phần đã ăn
+ * được ghi nhớ tới khi có bản sổ lệnh mới để 2 lệnh liên tiếp không khớp trùng cùng một thanh khoản.
+ */
+
+export interface SymbolState {
+  info: SymbolInfo;
+  ticker: Ticker24h;
+  bids: BookLevel[];
+  asks: BookLevel[];
+  bookTs: number;
+  /** Khối lượng đã bị lệnh người dùng ăn ở từng mức giá của bản sổ lệnh hiện tại */
+  consumed: { BUY: Map<string, Big>; SELL: Map<string, Big> };
+  trades: TradeTick[];
+  /** Cửa sổ 5 phút để tính giá trung bình gia quyền (PERCENT_PRICE / NOTIONAL của lệnh MARKET) */
+  vwap: { t: number; pq: number; q: number }[];
+  /** Nến 1 phút gần nhất (tối đa 1 ngày) */
+  bars: Kline[];
 }
 
 export interface MarketHooks {
-  onTick?(symbols: Set<string>, trades: Map<string, ProviderTrade>): Promise<void>;
-  onAuction?(kind: 'ATO' | 'ATC', prices: Map<string, number>): Promise<void>;
-  onDayEnd?(tradeDate: string): Promise<void>;
-  onNewDay?(tradeDate: string): Promise<void>;
+  onTick?(changed: Set<string>, trades: Map<string, TradeTick[]>): Promise<void>;
 }
 
-export type Timeframe = '1m' | '5m' | '15m' | '1h' | '1D' | '1W' | '1M';
-export const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '1D', '1W', '1M'];
-
-export interface StockDbRow {
-  symbol: string;
-  exchange: StockInfo['exchange'];
-  type: StockInfo['type'];
-  status: 'ACTIVE' | 'DELISTED';
-  name: string;
-  industry: string;
-  listed_shares: number;
-  eps: number;
-  bvps: number;
-  is_vn30: boolean;
-  liquidity: number;
-  volatility: number;
-  margin_ratio: number;
+export interface MarketOptions {
+  feed: 'binance' | 'sim';
+  wsUrl?: string;
+  flushMs?: number;
+  /** Mất dữ liệu thật quá lâu → chuyển sang giả lập */
+  simAfterMs?: number;
 }
 
-export function stockInfoOf(r: StockDbRow): StockInfo {
-  return {
-    symbol: r.symbol,
-    exchange: r.exchange,
-    type: r.type ?? 'STOCK',
-    name: r.name,
-    industry: r.industry,
-    listedShares: Number(r.listed_shares),
-    eps: r.eps,
-    bvps: r.bvps,
-    isVn30: r.is_vn30,
-    marginRatio: Number(r.margin_ratio ?? 0),
-  };
+export interface BookFill {
+  price: Dec;
+  qty: Dec;
 }
 
-/** Thành phần chỉ số: chỉ cổ phiếu (không gồm ETF, chứng quyền, trái phiếu) */
-function indexGroups(list: StockState[]): Record<string, StockState[]> {
-  const stocks = list.filter((s) => s.info.type === 'STOCK');
-  return {
-    VNINDEX: stocks.filter((s) => s.info.exchange === 'HOSE'),
-    VN30: stocks.filter((s) => s.info.isVn30),
-    HNXINDEX: stocks.filter((s) => s.info.exchange === 'HNX'),
-    UPCOMINDEX: stocks.filter((s) => s.info.exchange === 'UPCOM'),
-  };
+const MAX_TRADES = 80;
+const MAX_BARS = 1440;
+const VWAP_MS = 5 * 60_000;
+
+const INTERVAL_SEC: Record<KlineInterval, number> = {
+  '1m': 60,
+  '3m': 180,
+  '5m': 300,
+  '15m': 900,
+  '30m': 1800,
+  '1h': 3600,
+  '4h': 14_400,
+  '1d': 86_400,
+  '1w': 604_800,
+  '1M': 2_592_000,
+};
+
+/** Thời điểm mở nến chứa time (giây UTC) theo khung — tuần bắt đầu thứ Hai, tháng bắt đầu ngày 1 (như Binance) */
+export function bucketOf(time: number, interval: KlineInterval): number {
+  if (interval === '1M') {
+    const d = new Date(time * 1000);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000;
+  }
+  if (interval === '1w') {
+    const day = Math.floor(time / 86_400);
+    // 1970-01-01 là thứ Năm → thứ Hai gần nhất phía trước
+    const monday = day - ((day + 3) % 7);
+    return monday * 86_400;
+  }
+  const s = INTERVAL_SEC[interval];
+  return Math.floor(time / s) * s;
 }
 
-interface SnapshotDbRow {
-  symbol: string;
-  trade_date: string;
-  ref: number;
-  open: number;
-  high: number;
-  low: number;
-  last: number;
-  volume: number;
-  value: number;
-  foreign_buy: number;
-  foreign_sell: number;
+export function aggregateBars(bars: Kline[], interval: KlineInterval): Kline[] {
+  if (interval === '1m') return bars.slice();
+  const out: Kline[] = [];
+  for (const b of bars) {
+    const t = bucketOf(b.time, interval);
+    const cur = out[out.length - 1];
+    if (cur && cur.time === t) {
+      cur.high = Math.max(cur.high, b.high);
+      cur.low = Math.min(cur.low, b.low);
+      cur.close = b.close;
+      cur.volume += b.volume;
+    } else out.push({ ...b, time: t });
+  }
+  return out;
 }
 
-const round2 = (v: number) => Math.round(v * 100) / 100;
+function emptyTicker(symbol: string, last: string | null): Ticker24h {
+  const p = last ?? '0';
+  return { symbol, last: p, open: p, high: p, low: p, change: '0', changePct: 0, volume: '0', quoteVolume: '0', bid: p, ask: p, updatedAt: Date.now() };
+}
 
 export class MarketService extends EventEmitter {
-  readonly states = new Map<string, StockState>();
-  private list: StockState[] = [];
-  private indices: IndexState[] = [];
-  tradeDate = '';
-  phase: SessionPhase = 'CLOSED';
+  private states = new Map<string, SymbolState>();
   hooks: MarketHooks = {};
-
-  private cur1m = new Map<string, Candle>();
-  private pendingCandles: [string, Candle][] = [];
-  private pendingIndex: [string, number, number][] = [];
-  private recent = new Map<string, TradeTick[]>();
-  private dirty = new Set<string>();
-  private tickBuffer: TradeTick[] = [];
-  private candleDirty = new Set<string>();
-  private lastIndexMinute = 0;
-  private warming = false;
-  private ticking = false;
-  private tickCount = 0;
+  private stream: BinanceStream | null = null;
+  private live = false;
+  private downSince = Date.now();
+  private readonly sim = new SimFeed();
+  private lastSimAt = Date.now();
+  private pendingTrades = new Map<string, TradeTick[]>();
+  private changedBook = new Set<string>();
+  private changedTicker = new Set<string>();
+  private changedKline = new Set<string>();
+  private lastTickerEmit = 0;
+  private lastFeed: FeedKind | null = null;
   private timer: NodeJS.Timeout | null = null;
-  /** Nguồn thật: phiên định kỳ chờ giá khớp ATO/ATC của nguồn trong một khoảng ngắn */
-  private pendingAuction: { kind: 'ATO' | 'ATC'; until: number; done: Set<string> } | null = null;
-  private lastFeed: SessionInfo['feed'] = 'SIM';
+  private persistTimer: NodeJS.Timeout | null = null;
+  private flushing = false;
+  private klineCache = new Map<string, { at: number; ttl: number; data: Kline[] }>();
 
   constructor(
     private db: Database,
-    private provider: MarketDataProvider,
-    readonly opts: { mode: MarketMode; tickIntervalMs: number },
+    private rest: BinanceRest | null,
+    readonly opts: MarketOptions,
   ) {
     super();
     this.setMaxListeners(50);
   }
 
-  /* ============================ khởi tạo ============================ */
+  /* ============================== vòng đời ============================== */
 
-  private newState(r: StockDbRow, now: number): StockState {
-    return {
-      info: stockInfoOf(r),
-      liq: r.liquidity,
-      volatility: r.volatility,
-      ref: 0,
-      ceil: 0,
-      floor: 0,
-      open: 0,
-      high: 0,
-      low: 0,
-      last: 0,
-      lastVol: 0,
-      lastSide: 'B',
-      volume: 0,
-      value: 0,
-      bids: [],
-      asks: [],
-      foreignBuy: 0,
-      foreignSell: 0,
-      updatedAt: now,
-      sim: { fair: 0, target: 0, bp: 0 },
-    };
-  }
-
-  async init(now = Date.now()): Promise<void> {
-    const rows = await this.db.many<StockDbRow>(`SELECT * FROM stocks WHERE status = 'ACTIVE' ORDER BY symbol`);
-    const instruments = await loadInstrumentInfo(this.db);
-    for (const r of rows) {
-      const s = this.newState(r, now);
-      if (r.type === 'CW') s.info.warrant = instruments.warrants.get(r.symbol);
-      if (r.type === 'BOND') s.info.bond = instruments.bonds.get(r.symbol);
-      this.states.set(r.symbol, s);
-      this.list.push(s);
-      this.recent.set(r.symbol, []);
-    }
-    this.sortList();
-    await this.provider.start?.(this.list);
-
-    const td = currentTradeDate(now, this.opts.mode);
-    const snaps = await this.db.many<SnapshotDbRow>(
-      `SELECT p.* FROM price_snapshots p JOIN stocks s ON s.symbol = p.symbol WHERE s.status = 'ACTIVE'`,
-    );
-    const snapMap = new Map(snaps.map((x) => [x.symbol, x]));
-    const snapDate = snaps.length ? snaps[0].trade_date : null;
-    const consistent = snapDate != null && snaps.every((x) => x.trade_date === snapDate) && snaps.length * 2 >= this.list.length;
-    const closes = await this.db.many<{ symbol: string; close: number }>(
-      `SELECT DISTINCT ON (symbol) symbol, close FROM ohlcv_daily WHERE trade_date < $1 ORDER BY symbol, trade_date DESC`,
-      [td],
-    );
-    const closeMap = new Map(closes.map((c) => [c.symbol, c.close]));
-
-    if (consistent && snapDate) {
-      // Khôi phục trạng thái ngày đã lưu (mã mới thêm chưa có ảnh chụp → lấy giá đóng cửa gần nhất)
-      for (const s of this.list) {
-        const x = snapMap.get(s.info.symbol);
-        if (!x) {
-          const ref = closeMap.get(s.info.symbol);
-          if (!ref) throw new Error(`Thiếu dữ liệu giá cho ${s.info.symbol}`);
-          this.setRef(s, ref);
-          s.last = ref;
-          continue;
+  async init(): Promise<void> {
+    const rows = await loadSymbols(this.db);
+    for (const r of rows) this.addState(r);
+    if (this.opts.feed === 'binance' && this.rest && rows.length) {
+      try {
+        const tickers = await this.rest.tickers(rows.map((r) => r.symbol));
+        for (const t of tickers) {
+          const s = this.states.get(t.symbol);
+          if (s) s.ticker = t;
         }
-        this.setRef(s, x.ref);
-        Object.assign(s, {
-          open: x.open,
-          high: x.high,
-          low: x.low,
-          last: x.last,
-          volume: x.volume,
-          value: x.value,
-          foreignBuy: x.foreign_buy,
-          foreignSell: x.foreign_sell,
-        });
+      } catch (err) {
+        log.warn('[market] không tải được ticker 24h từ Binance, dùng giá lưu trong CSDL', { err });
       }
-      this.tradeDate = snapDate;
-      await this.buildIndices();
-      if (snapDate === td) {
-        this.provider.resume(this.list);
-        const pts = await this.db.many<{ code: string; ts: number; value: number }>(
-          'SELECT code, ts, value FROM index_intraday WHERE ts >= $1 ORDER BY ts',
-          [Math.floor(vnTimeToMs(td, 0) / 1000)],
-        );
-        for (const p of pts) this.indices.find((i) => i.code === p.code)?.points.push({ ts: p.ts, value: p.value });
-        this.phase = phaseAt(now, this.opts.mode);
-        this.lastFeed = this.feed();
-        return;
-      }
-      await this.rollover(td, now);
-    } else {
-      // Lần chạy đầu: giá tham chiếu = giá đóng cửa phiên gần nhất trong lịch sử
-      for (const s of this.list) {
-        // Mã mới niêm yết chưa có nến ngày: lấy giá tham chiếu đã lưu
-        const ref = closeMap.get(s.info.symbol) ?? snapMap.get(s.info.symbol)?.ref;
-        if (!ref) throw new Error(`Thiếu dữ liệu lịch sử cho ${s.info.symbol}`);
-        this.setRef(s, ref);
-        s.last = ref;
-      }
-      this.tradeDate = td;
-      await this.buildIndices();
-      this.provider.onNewDay(this.list);
     }
-    await this.warmUp(now);
-    await this.persistSnapshots();
-    this.lastFeed = this.feed();
+    // Sổ lệnh ban đầu (giả lập quanh giá cuối) để có thể khớp ngay cả trước khi luồng thật kết nối
+    for (const s of this.states.values()) this.seedBook(s);
+    if (this.opts.feed === 'binance') {
+      this.stream = new BinanceStream(
+        {
+          miniTickers: (l) => this.onMiniTickers(l),
+          depth: (sym, b, a) => this.onDepth(sym, b, a),
+          trade: (t) => this.onTrade(t),
+          kline: (sym, k) => this.onKline(sym, k),
+          status: (v) => this.onStatus(v),
+        },
+        { url: this.opts.wsUrl ?? 'wss://data-stream.binance.vision' },
+      );
+    }
   }
 
   start() {
-    if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), this.opts.tickIntervalMs);
+    this.downSince = Date.now();
+    this.stream?.start([...this.states.keys()]);
+    this.timer = setInterval(() => void this.flush(), this.opts.flushMs ?? 200);
+    this.persistTimer = setInterval(() => void this.persistPrices(), 60_000);
   }
 
   async stop() {
-    this.provider.stop?.();
     if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    await this.flushPending(true);
-    await this.persistSnapshots();
+    if (this.persistTimer) clearInterval(this.persistTimer);
+    this.stream?.stop();
+    await this.persistPrices().catch(() => undefined);
   }
 
-  /* ============================ truy vấn ============================ */
+  /* ============================== trạng thái đọc ============================== */
 
-  info(symbol: string): StockInfo | undefined {
+  feed(): FeedKind {
+    return this.usingSim() ? 'SIM' : 'LIVE';
+  }
+
+  status(): MarketStatus {
+    return { feed: this.feed(), source: this.opts.feed, serverTime: Date.now() };
+  }
+
+  symbols(): string[] {
+    return [...this.states.keys()];
+  }
+
+  info(symbol: string): SymbolInfo | undefined {
     return this.states.get(symbol)?.info;
   }
 
-  quote(symbol: string): StockState | undefined {
+  state(symbol: string): SymbolState | undefined {
     return this.states.get(symbol);
   }
 
-  snapshot(s: StockState): StockSnapshot {
-    const traded = s.volume > 0;
-    const change = traded ? s.last - s.ref : 0;
-    return {
-      symbol: s.info.symbol,
-      ref: s.ref,
-      ceil: s.ceil,
-      floor: s.floor,
-      open: s.open,
-      high: s.high,
-      low: s.low,
-      last: traded ? s.last : 0,
-      lastVol: s.lastVol,
-      change,
-      changePct: traded ? round2((change / s.ref) * 100) : 0,
-      volume: s.volume,
-      value: s.value,
-      bids: s.bids.map((l) => ({ ...l })),
-      asks: s.asks.map((l) => ({ ...l })),
-      foreignBuy: s.foreignBuy,
-      foreignSell: s.foreignSell,
-      updatedAt: s.updatedAt,
-    };
+  rows(): SymbolRow[] {
+    return [...this.states.values()].map((s) => ({ ...s.info, ...s.ticker }));
   }
 
-  rows(): StockRow[] {
-    return this.list.map((s) => ({ ...s.info, ...this.snapshot(s) }));
+  tickers(): Ticker24h[] {
+    return [...this.states.values()].map((s) => s.ticker);
+  }
+
+  depth(symbol: string, limit = 20): DepthSnapshot | null {
+    const s = this.states.get(symbol);
+    if (!s) return null;
+    return { symbol, bids: this.view(s, 'SELL').slice(0, limit), asks: this.view(s, 'BUY').slice(0, limit), ts: s.bookTs };
   }
 
   recentTrades(symbol: string): TradeTick[] {
-    return this.recent.get(symbol) ?? [];
+    return this.states.get(symbol)?.trades.slice().reverse() ?? [];
   }
 
-  session(): SessionInfo {
-    return { mode: this.opts.mode, phase: this.phase, tradeDate: this.tradeDate, serverTime: Date.now(), feed: this.feed() };
+  lastPrice(symbol: string): Dec | null {
+    const p = this.states.get(symbol)?.ticker.last;
+    return p && p !== '0' ? p : null;
   }
 
-  /** LIVE = đang hiển thị dữ liệu thật từ nguồn; SIM = giả lập */
-  feed(): NonNullable<SessionInfo['feed']> {
-    return this.provider.live ? 'LIVE' : 'SIM';
-  }
-
-  indexSnapshots(): IndexSnapshot[] {
-    return this.indices.map((ix) => this.indexSnapshot(ix));
-  }
-
-  /** Giá hiện hành để định giá danh mục */
-  markPrice(symbol: string): number {
+  /** Giá trung bình gia quyền 5 phút (như avgPrice của Binance); chưa có giao dịch → giá cuối */
+  avgPrice(symbol: string): Dec | null {
     const s = this.states.get(symbol);
-    if (!s) return 0;
-    return s.volume > 0 ? s.last : s.ref;
+    if (!s) return null;
+    const cutoff = Date.now() - VWAP_MS;
+    let pq = 0;
+    let q = 0;
+    for (const w of s.vwap) {
+      if (w.t < cutoff) continue;
+      pq += w.pq;
+      q += w.q;
+    }
+    if (q > 0) return floorStep(new Big(pq / q).toFixed(12), s.info.filters.tickSize);
+    return this.lastPrice(symbol);
   }
 
-  /* ===================== tương tác từ bộ khớp lệnh ===================== */
+  /** Giá 1 đơn vị tài sản theo USDT (null khi không có cặp XXXUSDT) */
+  priceUsdt(asset: string): Dec | null {
+    if (asset === 'USDT') return '1';
+    return this.lastPrice(`${asset}USDT`);
+  }
 
-  /**
-   * Lệnh của người dùng "ăn" thanh khoản phía đối ứng trong sổ lệnh (tối đa 3 bước giá).
-   * takerSide BUY → khớp với bên bán; limit = null nghĩa là lệnh thị trường.
-   */
-  consumeBook(symbol: string, takerSide: 'BUY' | 'SELL', qty: number, limit: number | null): { price: number; qty: number }[] {
+  /** Giá tốt nhất còn lại (đã trừ phần lệnh người dùng ăn): bên bán cho lệnh mua và ngược lại */
+  best(symbol: string, takerSide: Side): Dec | null {
     const s = this.states.get(symbol);
-    if (!s || qty <= 0) return [];
-    const book = takerSide === 'BUY' ? s.asks : s.bids;
-    const fills: { price: number; qty: number }[] = [];
-    let left = qty;
-    for (const level of book) {
-      if (left <= 0) break;
-      if (limit != null && (takerSide === 'BUY' ? level.p > limit : level.p < limit)) break;
-      const take = Math.min(left, level.v);
-      if (take <= 0) continue;
-      fills.push({ price: level.p, qty: take });
-      level.v -= take;
-      left -= take;
-    }
-    if (fills.length) {
-      // Dịch sổ lệnh: bước giá cuối bị ăn hết thì giá đi tiếp 1 bước, còn dư thì bước đó thành giá tốt nhất
-      const ex = s.info;
-      const lastFill = fills[fills.length - 1];
-      const lastLevelEmpty = (book.find((l) => l.p === lastFill.price)?.v ?? 0) <= 0;
-      if (takerSide === 'BUY') {
-        s.asks = s.asks.filter((l) => l.v > 0);
-        s.sim.bp = lastLevelEmpty ? lastFill.price : stepPrice(ex, lastFill.price, -1);
-      } else {
-        s.bids = s.bids.filter((l) => l.v > 0);
-        s.sim.bp = lastLevelEmpty ? stepPrice(ex, lastFill.price, -1) : lastFill.price;
-      }
-      this.provider.rebuildBook(s);
-      this.dirty.add(symbol);
-    }
-    return fills;
+    if (!s) return null;
+    return this.view(s, takerSide)[0]?.[0] ?? null;
   }
 
-  /** Ghi nhận giao dịch phát sinh từ lệnh người dùng vào thị trường */
-  recordTrade(symbol: string, price: number, qty: number, side: 'B' | 'S') {
-    this.applyTrade(symbol, price, qty, side, Date.now(), false);
-  }
-
-  /* ============================ vòng lặp ============================ */
-
-  async tick(now = Date.now()): Promise<void> {
-    if (this.ticking) return;
-    this.ticking = true;
-    try {
-      const td = currentTradeDate(now, this.opts.mode);
-      if (td !== this.tradeDate) {
-        await this.hooks.onDayEnd?.(this.tradeDate);
-        await this.rollover(td, now);
-        await this.hooks.onNewDay?.(td);
-        this.emit('session', this.session());
+  /** Các mức giá còn lại phía đối ứng của lệnh taker */
+  private view(s: SymbolState, takerSide: Side): BookLevel[] {
+    const levels = takerSide === 'BUY' ? s.asks : s.bids;
+    const used = s.consumed[takerSide];
+    if (!used.size) return levels;
+    const out: BookLevel[] = [];
+    for (const [p, q] of levels) {
+      const u = used.get(p);
+      if (!u) out.push([p, q]);
+      else {
+        const left = new Big(q).minus(u);
+        if (left.gt(0)) out.push([p, left.toFixed()]);
       }
-      const ph = phaseAt(now, this.opts.mode);
-      if (ph !== this.phase) {
-        const prev = this.phase;
-        this.phase = ph;
-        if (prev === 'ATO') await this.runAuction('ATO', now);
-        if (prev === 'ATC') {
-          // nguồn thật: onDayEnd chạy sau khi đã có giá khớp ATC (xem resolveAuction)
-          const deferred = await this.runAuction('ATC', now);
-          if (!deferred) await this.hooks.onDayEnd?.(this.tradeDate);
-        }
-        this.emit('session', this.session());
-      }
-
-      const tradesBySym = new Map<string, ProviderTrade>();
-      // Nguồn thật vẫn được poll ngoài phiên liên tục để bảng giá luôn khớp với nguồn (bộ khớp lệnh tự bỏ qua)
-      if (ph === 'CONTINUOUS' || this.provider.live) {
-        const res = this.provider.poll(this.list, now, this.opts.tickIntervalMs);
-        for (const t of res.trades) {
-          this.applyTrade(t.symbol, t.price, t.vol, t.side, now, t.foreign);
-          tradesBySym.set(t.symbol, t);
-        }
-        for (const sym of res.touched) this.dirty.add(sym);
-      }
-      if (this.pendingAuction) await this.resolveAuction(now);
-      const feed = this.feed();
-      if (feed !== this.lastFeed) {
-        this.lastFeed = feed;
-        this.emit('session', this.session());
-      }
-      this.rollMinutes(now);
-
-      if (this.dirty.size) await this.hooks.onTick?.(new Set(this.dirty), tradesBySym);
-
-      if (this.dirty.size) {
-        const out: StockSnapshot[] = [];
-        for (const sym of this.dirty) out.push(this.snapshot(this.states.get(sym)!));
-        this.dirty.clear();
-        this.emit('board', out);
-      }
-      if (this.tickBuffer.length) this.emit('trades', this.tickBuffer.splice(0));
-      if (this.candleDirty.size) {
-        const out: { symbol: string; candle: Candle }[] = [];
-        for (const sym of this.candleDirty) {
-          const c = this.cur1m.get(sym);
-          if (c) out.push({ symbol: sym, candle: { ...c } });
-        }
-        this.candleDirty.clear();
-        this.emit('candles', out);
-      }
-      this.emit('indices', this.indexSnapshots());
-      await this.flushPending();
-      if (++this.tickCount % 10 === 0) await this.persistSnapshots();
-    } catch (err) {
-      console.error('[market] lỗi tick', err);
-    } finally {
-      this.ticking = false;
     }
-  }
-
-  /* ============================ nến & lịch sử ============================ */
-
-  async candles(symbol: string, tf: Timeframe): Promise<Candle[]> {
-    const s = this.states.get(symbol);
-    if (!s) return [];
-    if (tf === '1m' || tf === '5m' || tf === '15m' || tf === '1h') {
-      const since = Math.floor(Date.now() / 1000) - 6 * 86400;
-      const rows = await this.db.many<Candle & { ts: number }>(
-        'SELECT ts, open, high, low, close, volume FROM ohlcv_intraday WHERE symbol = $1 AND ts >= $2 ORDER BY ts',
-        [symbol, since],
-      );
-      const list: Candle[] = rows.map((r) => ({ time: r.ts, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
-      for (const [sym, c] of this.pendingCandles) if (sym === symbol) list.push({ ...c });
-      const cur = this.cur1m.get(symbol);
-      if (cur) list.push({ ...cur });
-      list.sort((a, b) => a.time - b.time);
-      const dedup = list.filter((c, i) => i === 0 || c.time !== list[i - 1].time);
-      if (tf === '1m') return dedup;
-      const period = tf === '5m' ? 300 : tf === '15m' ? 900 : 3600;
-      return aggregate(dedup, (t) => Math.floor(t / period) * period);
-    }
-    const rows = await this.db.many<{ trade_date: string; open: number; high: number; low: number; close: number; volume: number }>(
-      'SELECT trade_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = $1 AND trade_date < $2 ORDER BY trade_date',
-      [symbol, this.tradeDate],
-    );
-    const daily: Candle[] = rows.map((r) => ({
-      time: Date.parse(`${r.trade_date}T00:00:00Z`) / 1000,
-      open: r.open,
-      high: r.high,
-      low: r.low,
-      close: r.close,
-      volume: r.volume,
-    }));
-    if (s.volume > 0) {
-      daily.push({
-        time: Date.parse(`${this.tradeDate}T00:00:00Z`) / 1000,
-        open: s.open,
-        high: s.high,
-        low: s.low,
-        close: s.last,
-        volume: s.volume,
-      });
-    }
-    if (tf === '1D') return daily;
-    if (tf === '1W') {
-      return aggregate(daily, (t) => {
-        const dow = (new Date(t * 1000).getUTCDay() + 6) % 7;
-        return t - dow * 86400;
-      });
-    }
-    return aggregate(daily, (t) => {
-      const d = new Date(t * 1000);
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000;
-    });
-  }
-
-  async indexHistory(code: string, tf: '1m' | '1D'): Promise<{ time: number; value: number }[]> {
-    const ix = this.indices.find((i) => i.code === code);
-    if (!ix) return [];
-    if (tf === '1m') return ix.points.map((p) => ({ time: p.ts, value: round2(p.value) }));
-    const rows = await this.db.many<{ trade_date: string; close: number }>(
-      'SELECT trade_date, close FROM index_daily WHERE code = $1 AND trade_date < $2 ORDER BY trade_date',
-      [code, this.tradeDate],
-    );
-    const out = rows.map((r) => ({ time: Date.parse(`${r.trade_date}T00:00:00Z`) / 1000, value: round2(r.close) }));
-    out.push({ time: Date.parse(`${this.tradeDate}T00:00:00Z`) / 1000, value: round2(this.indexValue(ix)) });
     return out;
   }
 
-  /* ============================ nội bộ ============================ */
-
-  /** Chứng quyền xếp cuối: biên độ chứng quyền tính theo giá cổ phiếu cơ sở (phải cập nhật trước) */
-  private sortList() {
-    const rank = (s: StockState) => (s.info.type === 'CW' ? 1 : 0);
-    this.list.sort((a, b) => rank(a) - rank(b) || a.info.symbol.localeCompare(b.info.symbol));
-  }
-
-  private setRef(s: StockState, ref: number) {
-    const w = s.info.warrant;
-    const u = w ? this.states.get(w.underlying) : undefined;
-    const band = w && u && u.ref > 0 ? warrantBand(ref, u, w.ratio) : priceBand(s.info, ref);
-    s.ref = ref;
-    s.ceil = band.ceil;
-    s.floor = band.floor;
-  }
-
-  /* ===================== niêm yết / huỷ niêm yết lúc đang chạy ===================== */
-
   /**
-   * Đổi thành phần rổ chỉ số mà giá trị chỉ số không nhảy: tính lại vốn hoá gốc (capRef)
-   * sao cho chỉ số ngay sau thay đổi bằng chỉ số ngay trước (cách các Sở GDCK điều chỉnh hệ số chia).
+   * Lệnh taker ăn sổ lệnh: theo khối lượng (qty) hoặc theo số tiền (quote), dừng ở giá giới hạn (limit).
+   * dryRun = true chỉ tính (dùng cho FOK / LIMIT_MAKER), không ghi nhận phần đã ăn.
    */
-  private rebaseIndices(mutate: () => void) {
-    const before = new Map(this.indices.map((ix) => [ix.code, this.indexValue(ix)]));
-    mutate();
-    const groups = indexGroups(this.list);
-    for (const ix of this.indices) {
-      ix.members = groups[ix.code] ?? [];
-      const v = before.get(ix.code) ?? ix.prevClose;
-      const cap = capOf(ix.members, false);
-      ix.capRef = cap > 0 && v > 0 ? (ix.prevClose * cap) / v : capOf(ix.members, true);
+  consumeBook(
+    symbol: string,
+    takerSide: Side,
+    want: { qty?: Dec; quote?: Dec },
+    limit: Dec | null,
+    dryRun = false,
+  ): BookFill[] {
+    const s = this.states.get(symbol);
+    if (!s) return [];
+    const step = s.info.filters.stepSize;
+    let leftQty = want.qty ? new Big(want.qty) : null;
+    let leftQuote = want.quote ? new Big(want.quote) : null;
+    const fills: BookFill[] = [];
+    for (const [p, q] of this.view(s, takerSide)) {
+      if (limit && (takerSide === 'BUY' ? new Big(p).gt(limit) : new Big(p).lt(limit))) break;
+      let take = new Big(q);
+      if (leftQty) take = take.lt(leftQty) ? take : leftQty;
+      if (leftQuote) {
+        const byQuote = new Big(floorStep(leftQuote.div(p), step));
+        if (byQuote.lt(take)) take = byQuote;
+      }
+      if (take.lte(0)) break;
+      fills.push({ price: p, qty: take.toFixed() });
+      if (!dryRun) {
+        const used = s.consumed[takerSide];
+        used.set(p, (used.get(p) ?? new Big(0)).plus(take));
+      }
+      if (leftQty) {
+        leftQty = leftQty.minus(take);
+        if (leftQty.lte(0)) break;
+      }
+      if (leftQuote) {
+        leftQuote = leftQuote.minus(take.times(p));
+        if (leftQuote.lte(0)) break;
+      }
+    }
+    if (!dryRun && fills.length) this.changedBook.add(symbol);
+    return fills;
+  }
+
+  /* ============================== nến ============================== */
+
+  async candles(symbol: string, interval: KlineInterval, limit = 500, endTime?: number): Promise<Kline[]> {
+    const s = this.states.get(symbol);
+    if (!s) return [];
+    if (this.rest && this.opts.feed === 'binance') {
+      const key = `${symbol}:${interval}:${limit}:${endTime ?? ''}`;
+      const hit = this.klineCache.get(key);
+      if (hit && Date.now() - hit.at < hit.ttl) return this.mergeLive(s, hit.data, interval, !endTime);
+      try {
+        const data = await this.rest.klines(symbol, interval, limit, endTime);
+        this.klineCache.set(key, { at: Date.now(), ttl: endTime ? 600_000 : 15_000, data });
+        if (this.klineCache.size > 500) this.klineCache.delete(this.klineCache.keys().next().value!);
+        return this.mergeLive(s, data, interval, !endTime);
+      } catch (err) {
+        log.warn(`[market] không tải được nến ${symbol} ${interval} từ Binance, dùng nến trong bộ nhớ`, { err });
+      }
+    }
+    const bars = aggregateBars(s.bars, interval);
+    const filtered = endTime ? bars.filter((b) => b.time * 1000 <= endTime) : bars;
+    return filtered.slice(-limit);
+  }
+
+  /** Nến cuối từ REST có thể cũ tới 15s: cập nhật bằng nến 1 phút trong bộ nhớ */
+  private mergeLive(s: SymbolState, data: Kline[], interval: KlineInterval, latest: boolean): Kline[] {
+    const out = data.map((k) => ({ ...k }));
+    if (!latest || !out.length || !s.bars.length) return out;
+    const lastBar = out[out.length - 1]!;
+    for (const b of s.bars) {
+      const t = bucketOf(b.time, interval);
+      if (t < lastBar.time) continue;
+      if (t === lastBar.time) {
+        if (b.time >= lastBar.time) {
+          lastBar.high = Math.max(lastBar.high, b.high);
+          lastBar.low = Math.min(lastBar.low, b.low);
+          lastBar.close = b.close;
+        }
+      } else out.push({ ...b, time: t });
+    }
+    return out;
+  }
+
+  /* ============================== quản trị ============================== */
+
+  async addSymbolRow(row: SymbolRowDb) {
+    const s = this.addState(row);
+    this.seedBook(s);
+    if (this.rest && this.opts.feed === 'binance') {
+      try {
+        const [t] = await this.rest.tickers([row.symbol]);
+        if (t) s.ticker = t;
+      } catch {
+        /* dùng giá lưu trong CSDL */
+      }
+    }
+    this.stream?.setSymbols([...this.states.keys()]);
+    this.emit('symbols');
+  }
+
+  removeSymbol(symbol: string) {
+    if (!this.states.delete(symbol)) return;
+    this.stream?.setSymbols([...this.states.keys()]);
+    this.emit('symbols');
+  }
+
+  setStatus(symbol: string, status: SymbolStatus) {
+    const s = this.states.get(symbol);
+    if (!s) return;
+    s.info = { ...s.info, status };
+    this.emit('symbols');
+  }
+
+  /** Giả lập: ép giá của cặp ở bước kế tiếp (test, minh hoạ lệnh dừng) */
+  forcePrice(symbol: string, price: Dec) {
+    this.sim.forced.set(symbol, price);
+  }
+
+  async persistPrices() {
+    for (const s of this.states.values()) {
+      if (s.ticker.last === '0') continue;
+      await this.db.many('UPDATE symbols SET last_price = $2 WHERE symbol = $1', [s.info.symbol, s.ticker.last]);
     }
   }
 
-  /** Thêm mã mới vào thị trường đang chạy (giá tham chiếu phiên đầu = ref) */
-  async addStock(row: StockDbRow, ref: number): Promise<StockState> {
-    if (this.states.has(row.symbol)) throw new Error(`Mã ${row.symbol} đã có trên bảng giá`);
-    const s = this.newState(row, Date.now());
-    this.rebaseIndices(() => {
-      this.setRef(s, ref);
-      s.last = ref;
-      this.states.set(row.symbol, s);
-      this.list.push(s);
-      this.sortList();
-      this.recent.set(row.symbol, []);
-    });
-    if (this.provider.addSymbol) this.provider.addSymbol(s);
-    else this.provider.onNewDay([s]);
-    this.dirty.add(row.symbol);
-    await this.persistSnapshots();
-    this.emit('symbols');
+  /** Chạy 1 chu kỳ ngay (test) */
+  async flushNow() {
+    await this.flush();
+  }
+
+  /* ============================== xử lý luồng ============================== */
+
+  private addState(r: SymbolRowDb): SymbolState {
+    const s: SymbolState = {
+      info: toSymbolInfo(r),
+      ticker: emptyTicker(r.symbol, r.last_price),
+      bids: [],
+      asks: [],
+      bookTs: 0,
+      consumed: { BUY: new Map(), SELL: new Map() },
+      trades: [],
+      vwap: [],
+      bars: [],
+    };
+    this.states.set(r.symbol, s);
     return s;
   }
 
-  /** Gỡ mã khỏi bảng giá (huỷ niêm yết) — dữ liệu lịch sử vẫn giữ trong CSDL */
-  removeStock(symbol: string) {
+  private seedBook(s: SymbolState) {
+    const last = Number(s.ticker.last);
+    if (!(last > 0)) return;
+    const b = this.sim.book(s.info.filters, last);
+    this.setBook(s, b.bids, b.asks);
+  }
+
+  private setBook(s: SymbolState, bids: BookLevel[], asks: BookLevel[]) {
+    s.bids = bids;
+    s.asks = asks;
+    s.bookTs = Date.now();
+    s.consumed.BUY.clear();
+    s.consumed.SELL.clear();
+    if (bids[0]) s.ticker.bid = bids[0][0];
+    if (asks[0]) s.ticker.ask = asks[0][0];
+    this.changedBook.add(s.info.symbol);
+  }
+
+  private onStatus(live: boolean) {
+    this.live = live;
+    if (!live) this.downSince = Date.now();
+  }
+
+  private onMiniTickers(list: MiniTicker[]) {
+    for (const m of list) {
+      const s = this.states.get(m.symbol);
+      if (!s) continue;
+      const open = new Big(m.open);
+      const change = new Big(m.close).minus(open);
+      s.ticker = {
+        ...s.ticker,
+        last: str(m.close),
+        open: str(m.open),
+        high: str(m.high),
+        low: str(m.low),
+        volume: str(m.volume),
+        quoteVolume: str(m.quoteVolume),
+        change: change.toFixed(),
+        changePct: open.gt(0) ? Number(change.div(open).times(100).toFixed(2)) : 0,
+        updatedAt: m.time,
+      };
+      this.changedTicker.add(m.symbol);
+    }
+  }
+
+  private onDepth(symbol: string, bids: BookLevel[], asks: BookLevel[]) {
     const s = this.states.get(symbol);
+    if (s && !this.usingSim()) this.setBook(s, bids, asks);
+  }
+
+  private onTrade(t: TradeTick) {
+    if (this.usingSim()) return;
+    this.recordTrade(t, false);
+  }
+
+  private onKline(symbol: string, k: Kline) {
+    const s = this.states.get(symbol);
+    if (!s || this.usingSim()) return;
+    const lastBar = s.bars[s.bars.length - 1];
+    if (lastBar && lastBar.time === k.time) s.bars[s.bars.length - 1] = k;
+    else {
+      s.bars.push(k);
+      if (s.bars.length > MAX_BARS) s.bars.shift();
+    }
+    this.changedKline.add(symbol);
+  }
+
+  /** Ghi nhận 1 giao dịch thị trường (thật hoặc giả lập) */
+  private recordTrade(t: TradeTick, sim: boolean) {
+    const s = this.states.get(t.symbol);
     if (!s) return;
-    this.rebaseIndices(() => {
-      this.states.delete(symbol);
-      this.list = this.list.filter((x) => x !== s);
-      this.recent.delete(symbol);
-      this.cur1m.delete(symbol);
-      this.dirty.delete(symbol);
-      this.candleDirty.delete(symbol);
-    });
-    this.provider.removeSymbol?.(symbol);
-    this.emit('symbols');
-  }
-
-  /**
-   * Sự kiện quyền ngày GDKHQ (trước phiên): đặt giá tham chiếu điều chỉnh, KL niêm yết mới (cổ tức CP / chia tách),
-   * khởi tạo lại mô phỏng quanh giá mới; biên độ chứng quyền trên mã này được tính lại.
-   */
-  applyCorporateAdjustment(symbol: string, newRef: number, listedShares?: number) {
-    const s = this.states.get(symbol);
-    if (!s) return;
-    if (listedShares) s.info.listedShares = listedShares;
-    this.setRef(s, newRef);
-    Object.assign(s, { last: newRef, open: 0, high: 0, low: 0, volume: 0, value: 0, lastVol: 0 });
-    this.provider.onNewDay([s]);
-    for (const cw of this.list) if (cw.info.warrant?.underlying === symbol) this.setRef(cw, cw.ref);
-    this.dirty.add(symbol);
-  }
-
-  /** Cập nhật thông tin mã (tên, ngành, rổ VN30, KL niêm yết, tỷ lệ ký quỹ, thanh khoản...) */
-  updateStock(symbol: string, patch: Partial<Pick<StockState['info'], 'name' | 'industry' | 'isVn30' | 'listedShares' | 'marginRatio' | 'eps' | 'bvps'>> & { liq?: number; volatility?: number }) {
-    const s = this.states.get(symbol);
-    if (!s) return;
-    const { liq, volatility, ...info } = patch;
-    const affectsIndex = (info.isVn30 !== undefined && info.isVn30 !== s.info.isVn30) || (info.listedShares !== undefined && info.listedShares !== s.info.listedShares);
-    const apply = () => {
-      Object.assign(s.info, info);
-      if (liq !== undefined) s.liq = liq;
-      if (volatility !== undefined) s.volatility = volatility;
-    };
-    if (affectsIndex) this.rebaseIndices(apply);
-    else apply();
-    this.emit('symbols');
-  }
-
-  private applyTrade(symbol: string, price: number, vol: number, side: 'B' | 'S', timeMs: number, foreign: boolean) {
-    const s = this.states.get(symbol);
-    if (!s || vol <= 0) return;
-    s.last = price;
-    s.lastVol = vol;
-    s.lastSide = side;
-    if (!s.open) s.open = price;
-    s.high = s.high ? Math.max(s.high, price) : price;
-    s.low = s.low ? Math.min(s.low, price) : price;
-    s.volume += vol;
-    s.value += price * vol;
-    if (foreign) {
-      if (side === 'B') s.foreignBuy += vol;
-      else s.foreignSell += vol;
-    }
-    s.updatedAt = timeMs;
-
-    const minute = Math.floor(timeMs / 60_000) * 60;
-    let c = this.cur1m.get(symbol);
-    if (!c || c.time !== minute) {
-      if (c) this.pendingCandles.push([symbol, c]);
-      c = { time: minute, open: price, high: price, low: price, close: price, volume: 0 };
-      this.cur1m.set(symbol, c);
-    }
-    c.high = Math.max(c.high, price);
-    c.low = Math.min(c.low, price);
-    c.close = price;
-    c.volume += vol;
-
-    const tick: TradeTick = { symbol, time: timeMs, price, vol, side };
-    const tape = this.recent.get(symbol)!;
-    tape.unshift(tick);
-    if (tape.length > 60) tape.pop();
-    if (!this.warming) {
-      this.tickBuffer.push(tick);
-      this.candleDirty.add(symbol);
-    }
-    this.dirty.add(symbol);
-  }
-
-  private rollMinutes(nowMs: number) {
-    const minute = Math.floor(nowMs / 60_000) * 60;
-    for (const [sym, c] of this.cur1m) {
-      if (c.time < minute) {
-        this.pendingCandles.push([sym, c]);
-        this.cur1m.delete(sym);
-      }
-    }
-    if (minute !== this.lastIndexMinute) {
-      this.lastIndexMinute = minute;
-      for (const ix of this.indices) {
-        const value = this.indexValue(ix);
-        ix.points.push({ ts: minute, value });
-        this.pendingIndex.push([ix.code, minute, value]);
-      }
+    s.trades.push(t);
+    if (s.trades.length > MAX_TRADES) s.trades.shift();
+    const p = Number(t.price);
+    const q = Number(t.qty);
+    s.vwap.push({ t: t.time, pq: p * q, q });
+    const cutoff = Date.now() - VWAP_MS;
+    while (s.vwap.length && s.vwap[0]!.t < cutoff) s.vwap.shift();
+    s.ticker.last = t.price;
+    const list = this.pendingTrades.get(t.symbol);
+    if (list) list.push(t);
+    else this.pendingTrades.set(t.symbol, [t]);
+    this.changedBook.add(t.symbol);
+    if (sim) {
+      this.updateBar(s, p, q, t.time);
+      const tk = s.ticker;
+      if (new Big(t.price).gt(tk.high)) tk.high = t.price;
+      if (new Big(t.price).lt(tk.low) || tk.low === '0') tk.low = t.price;
+      tk.volume = new Big(tk.volume).plus(t.qty).toFixed();
+      tk.quoteVolume = new Big(tk.quoteVolume).plus(new Big(t.qty).times(t.price)).toFixed();
     }
   }
 
-  /** Trả true nếu phiên định kỳ được hoãn tới khi nguồn thật có giá khớp */
-  private async runAuction(kind: 'ATO' | 'ATC', nowMs: number): Promise<boolean> {
-    if (this.provider.live) {
-      // Nguồn thật: KL khớp ATO/ATC đã nằm trong KL luỹ kế của nguồn — chỉ chờ giá khớp thật để khớp lệnh người dùng
-      this.pendingAuction = { kind, until: nowMs + 30_000, done: new Set() };
-      await this.resolveAuction(nowMs);
-      return true;
-    }
-    const prices = new Map<string, number>();
-    for (const s of this.list) {
-      const price = this.provider.auctionPrice(s, kind);
-      const vol = Math.max(1, Math.round((5 + s.liq * 80) * (0.5 + Math.random()))) * 100;
-      this.applyTrade(s.info.symbol, price, vol, price >= (s.last || s.ref) ? 'B' : 'S', nowMs, false);
-      prices.set(s.info.symbol, price);
-    }
-    if (!this.warming) await this.hooks.onAuction?.(kind, prices);
-    return false;
-  }
-
-  private async resolveAuction(nowMs: number) {
-    const pa = this.pendingAuction!;
-    const prices = new Map<string, number>();
-    for (const s of this.list) {
-      const sym = s.info.symbol;
-      if (pa.done.has(sym)) continue;
-      const price = this.provider.auctionPrice(s, pa.kind);
-      if (price > 0) {
-        prices.set(sym, price);
-        pa.done.add(sym);
-      }
-    }
-    if (prices.size) await this.hooks.onAuction?.(pa.kind, prices);
-    if (pa.done.size < this.list.length && nowMs < pa.until) return;
-    this.pendingAuction = null;
-    if (pa.kind === 'ATC') await this.hooks.onDayEnd?.(this.tradeDate);
-  }
-
-  /** Mô phỏng nhanh khoảng thời gian đã qua trong phiên để bảng giá/biểu đồ có dữ liệu ngay khi mở */
-  private async warmUp(now: number) {
-    if (this.provider.live) {
-      // Nguồn thật: không mô phỏng phần phiên đã qua, chỉ đồng bộ trạng thái hiện tại của nguồn
-      this.warming = true;
-      const res = this.provider.poll(this.list, now, 0);
-      for (const tr of res.trades) this.applyTrade(tr.symbol, tr.price, tr.vol, tr.side, now, tr.foreign);
-      this.warming = false;
-      this.dirty.clear();
-      this.phase = phaseAt(now, this.opts.mode);
-      return;
-    }
-    const td = this.tradeDate;
-    let start: number;
-    let end: number;
-    if (this.opts.mode === 'SIMULATED_24_7') {
-      start = Math.max(now - 4 * 3600_000, vnTimeToMs(td, 0));
-      end = now;
+  private updateBar(s: SymbolState, price: number, qty: number, timeMs: number) {
+    const t = Math.floor(timeMs / 60_000) * 60;
+    const b = s.bars[s.bars.length - 1];
+    if (b && b.time === t) {
+      b.high = Math.max(b.high, price);
+      b.low = Math.min(b.low, price);
+      b.close = price;
+      b.volume += qty;
     } else {
-      start = vnTimeToMs(td, 9 * 60);
-      end = Math.min(now, vnTimeToMs(td, 15 * 60));
+      s.bars.push({ time: t, open: b?.close ?? price, high: Math.max(price, b?.close ?? price), low: Math.min(price, b?.close ?? price), close: price, volume: qty });
+      if (s.bars.length > MAX_BARS) s.bars.shift();
     }
-    this.warming = true;
-    const step = 5000;
-    let prev = phaseAt(start, this.opts.mode);
-    for (let t = start; t < end; t += step) {
-      const ph = phaseAt(t, this.opts.mode);
-      if (prev === 'ATO' && ph !== 'ATO') await this.runAuction('ATO', t);
-      if (prev === 'ATC' && ph !== 'ATC') await this.runAuction('ATC', t);
-      prev = ph;
-      if (ph === 'CONTINUOUS') {
-        const res = this.provider.poll(this.list, t, step);
-        for (const tr of res.trades) this.applyTrade(tr.symbol, tr.price, tr.vol, tr.side, t, tr.foreign);
+    this.changedKline.add(s.info.symbol);
+  }
+
+  private usingSim(): boolean {
+    if (this.opts.feed === 'sim') return true;
+    if (this.live) return false;
+    return Date.now() - this.downSince >= (this.opts.simAfterMs ?? 5_000);
+  }
+
+  private simStep(now: number) {
+    const dt = Math.min(now - this.lastSimAt, 5_000);
+    this.lastSimAt = now;
+    for (const s of this.states.values()) {
+      if (s.info.status !== 'TRADING') continue;
+      const last = s.ticker.last !== '0' ? s.ticker.last : null;
+      if (!last) continue;
+      const r = this.sim.step({ symbol: s.info.symbol, filters: s.info.filters, last }, dt, now);
+      this.setBook(s, r.bids, r.asks);
+      s.ticker.last = r.last;
+      for (const t of r.trades) this.recordTrade(t, true);
+      if (!r.trades.length) this.updateBar(s, Number(r.last), 0, now);
+      const open = new Big(s.ticker.open);
+      if (open.gt(0)) {
+        const change = new Big(s.ticker.last).minus(open);
+        s.ticker.change = change.toFixed();
+        s.ticker.changePct = Number(change.div(open).times(100).toFixed(2));
       }
-      this.rollMinutes(t);
-    }
-    this.warming = false;
-    this.dirty.clear();
-    this.phase = phaseAt(now, this.opts.mode);
-    await this.flushPending(true);
-  }
-
-  private async rollover(newDate: string, now: number) {
-    this.pendingAuction = null;
-    await this.finalizeDay();
-    for (const s of this.list) {
-      this.setRef(s, s.volume > 0 ? s.last : s.ref);
-      s.open = s.high = s.low = 0;
-      s.last = s.ref;
-      s.lastVol = 0;
-      s.volume = s.value = 0;
-      s.foreignBuy = s.foreignSell = 0;
-      s.updatedAt = now;
-      this.recent.set(s.info.symbol, []);
-    }
-    for (const [sym, c] of this.cur1m) this.pendingCandles.push([sym, c]);
-    this.cur1m.clear();
-    for (const ix of this.indices) {
-      ix.prevClose = this.indexValue(ix);
-      ix.points = [];
-    }
-    this.tradeDate = newDate;
-    this.provider.onNewDay(this.list);
-    for (const ix of this.indices) ix.capRef = capOf(ix.members, true);
-    await this.flushPending(true);
-    const cutoff = Math.floor(now / 1000) - 7 * 86400;
-    await this.db.many('DELETE FROM ohlcv_intraday WHERE ts < $1', [cutoff]);
-    await this.db.many('DELETE FROM index_intraday WHERE ts < $1', [cutoff]);
-    await this.persistSnapshots();
-    for (const s of this.list) this.dirty.add(s.info.symbol);
-    console.log(`[market] sang ngày giao dịch mới ${newDate}`);
-  }
-
-  /** Chốt nến ngày và chỉ số của ngày giao dịch hiện tại */
-  private async finalizeDay() {
-    const date = this.tradeDate;
-    const traded = this.list.filter((s) => s.volume > 0);
-    for (let i = 0; i < traded.length; i += 200) {
-      const chunk = traded.slice(i, i + 200);
-      const params: unknown[] = [];
-      const values = chunk.map((s, j) => {
-        params.push(s.info.symbol, date, s.open, s.high, s.low, s.last, s.volume, s.value);
-        const b = j * 8;
-        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8})`;
-      });
-      await this.db.many(
-        `INSERT INTO ohlcv_daily (symbol, trade_date, open, high, low, close, volume, value) VALUES ${values.join(',')}
-         ON CONFLICT (symbol, trade_date) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
-         close = EXCLUDED.close, volume = EXCLUDED.volume, value = EXCLUDED.value`,
-        params,
-      );
-    }
-    for (const ix of this.indices) {
-      const close = this.indexValue(ix);
-      const vals = ix.points.map((p) => p.value);
-      const open = vals[0] ?? ix.prevClose;
-      const high = Math.max(close, ...vals);
-      const low = Math.min(close, ...vals);
-      const volume = ix.members.reduce((a, s) => a + s.volume, 0);
-      const value = ix.members.reduce((a, s) => a + s.value, 0);
-      await this.db.many(
-        `INSERT INTO index_daily (code, trade_date, open, high, low, close, volume, value) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (code, trade_date) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
-         close = EXCLUDED.close, volume = EXCLUDED.volume, value = EXCLUDED.value`,
-        [ix.code, date, open, high, low, close, volume, value],
-      );
+      if (new Big(r.last).gt(s.ticker.high)) s.ticker.high = r.last;
+      if (new Big(r.last).lt(s.ticker.low)) s.ticker.low = r.last;
+      s.ticker.updatedAt = now;
+      this.changedTicker.add(s.info.symbol);
     }
   }
 
-  private async buildIndices() {
-    const groups = indexGroups(this.list);
-    const prev = await this.db.many<{ code: string; close: number }>(
-      `SELECT DISTINCT ON (code) code, close FROM index_daily WHERE trade_date < $1 ORDER BY code, trade_date DESC`,
-      [this.tradeDate],
-    );
-    const prevMap = new Map(prev.map((p) => [p.code, p.close]));
-    this.indices = INDEX_DEFS.map((d) => ({
-      code: d.code,
-      name: d.name,
-      members: groups[d.code],
-      prevClose: prevMap.get(d.code) ?? d.base,
-      capRef: capOf(groups[d.code], true),
-      points: [],
-    }));
-  }
-
-  private indexValue(ix: IndexState): number {
-    const real = this.provider.indexValue?.(ix.code, this.tradeDate);
-    if (real) return real;
-    if (!ix.capRef) return ix.prevClose;
-    return (ix.prevClose * capOf(ix.members, false)) / ix.capRef;
-  }
-
-  private indexSnapshot(ix: IndexState): IndexSnapshot {
-    const value = this.indexValue(ix);
-    let advances = 0;
-    let declines = 0;
-    let unchanged = 0;
-    let ceilings = 0;
-    let floors = 0;
-    let volume = 0;
-    let totalValue = 0;
-    for (const s of ix.members) {
-      volume += s.volume;
-      totalValue += s.value;
-      if (s.volume === 0 || s.last === s.ref) unchanged++;
-      else if (s.last > s.ref) {
-        advances++;
-        if (s.last >= s.ceil) ceilings++;
-      } else {
-        declines++;
-        if (s.last <= s.floor) floors++;
+  private async flush() {
+    if (this.flushing) return;
+    this.flushing = true;
+    try {
+      const now = Date.now();
+      const sim = this.usingSim();
+      const feed: FeedKind = sim ? 'SIM' : 'LIVE';
+      if (feed !== this.lastFeed) {
+        if (this.lastFeed) log.warn(`[market] nguồn dữ liệu chuyển sang ${feed === 'LIVE' ? 'Binance (thật)' : 'giả lập'}`);
+        this.lastFeed = feed;
+        this.lastSimAt = now;
+        this.emit('feed', this.status());
       }
-    }
-    const pts = ix.points;
-    const stepN = Math.max(1, Math.ceil(pts.length / 120));
-    const spark: number[] = [];
-    for (let i = 0; i < pts.length; i += stepN) spark.push(round2(pts[i].value));
-    spark.push(round2(value));
-    return {
-      code: ix.code,
-      name: ix.name,
-      value: round2(value),
-      prevClose: round2(ix.prevClose),
-      change: round2(value - ix.prevClose),
-      changePct: round2(((value - ix.prevClose) / ix.prevClose) * 100),
-      volume,
-      totalValue,
-      advances,
-      declines,
-      unchanged,
-      ceilings,
-      floors,
-      spark,
-    };
-  }
+      if (sim) this.simStep(now);
 
-  private async flushPending(all = false) {
-    if (!all && this.pendingCandles.length < 1 && this.pendingIndex.length < 1) return;
-    const candles = this.pendingCandles.splice(0);
-    for (let i = 0; i < candles.length; i += 500) {
-      const chunk = candles.slice(i, i + 500);
-      const params: unknown[] = [];
-      const values = chunk.map(([sym, c], j) => {
-        params.push(sym, c.time, c.open, c.high, c.low, c.close, c.volume);
-        const b = j * 7;
-        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7})`;
-      });
-      await this.db.many(
-        `INSERT INTO ohlcv_intraday (symbol, ts, open, high, low, close, volume) VALUES ${values.join(',')}
-         ON CONFLICT (symbol, ts) DO UPDATE SET high = GREATEST(ohlcv_intraday.high, EXCLUDED.high),
-         low = LEAST(ohlcv_intraday.low, EXCLUDED.low), close = EXCLUDED.close, volume = ohlcv_intraday.volume + EXCLUDED.volume`,
-        params,
-      );
-    }
-    const pts = this.pendingIndex.splice(0);
-    for (let i = 0; i < pts.length; i += 1000) {
-      const chunk = pts.slice(i, i + 1000);
-      const params: unknown[] = [];
-      const values = chunk.map(([code, ts, v], j) => {
-        params.push(code, ts, v);
-        return `($${j * 3 + 1},$${j * 3 + 2},$${j * 3 + 3})`;
-      });
-      await this.db.many(
-        `INSERT INTO index_intraday (code, ts, value) VALUES ${values.join(',')} ON CONFLICT (code, ts) DO UPDATE SET value = EXCLUDED.value`,
-        params,
-      );
+      const trades = this.pendingTrades;
+      const changed = this.changedBook;
+      this.pendingTrades = new Map();
+      this.changedBook = new Set();
+      if (changed.size || trades.size) {
+        try {
+          await this.hooks.onTick?.(changed, trades);
+        } catch (err) {
+          log.error('[market] lỗi xử lý khớp lệnh trong chu kỳ', { err });
+        }
+      }
+      for (const sym of changed) {
+        const d = this.depth(sym);
+        if (d) this.emit('depth', d);
+      }
+      if (trades.size) this.emit('trades', [...trades.values()].flat());
+      if (this.changedKline.size) {
+        const items = [...this.changedKline].flatMap((sym) => {
+          const b = this.states.get(sym)?.bars.at(-1);
+          return b ? [{ symbol: sym, kline: b }] : [];
+        });
+        this.changedKline.clear();
+        this.emit('klines', items);
+      }
+      if (this.changedTicker.size && now - this.lastTickerEmit >= 1_000) {
+        const list = [...this.changedTicker].flatMap((sym) => {
+          const s = this.states.get(sym);
+          return s ? [s.ticker] : [];
+        });
+        this.changedTicker.clear();
+        this.lastTickerEmit = now;
+        this.emit('tickers', list);
+      }
+    } finally {
+      this.flushing = false;
     }
   }
-
-  async persistSnapshots() {
-    const params: unknown[] = [];
-    const values = this.list.map((s, j) => {
-      params.push(s.info.symbol, this.tradeDate, s.ref, s.open, s.high, s.low, s.last, s.volume, s.value, s.foreignBuy, s.foreignSell);
-      const b = j * 11;
-      return `(${Array.from({ length: 11 }, (_, k) => `$${b + k + 1}`).join(',')}, now())`;
-    });
-    await this.db.many(
-      `INSERT INTO price_snapshots (symbol, trade_date, ref, open, high, low, last, volume, value, foreign_buy, foreign_sell, updated_at)
-       VALUES ${values.join(',')}
-       ON CONFLICT (symbol) DO UPDATE SET trade_date = EXCLUDED.trade_date, ref = EXCLUDED.ref, open = EXCLUDED.open,
-       high = EXCLUDED.high, low = EXCLUDED.low, last = EXCLUDED.last, volume = EXCLUDED.volume, value = EXCLUDED.value,
-       foreign_buy = EXCLUDED.foreign_buy, foreign_sell = EXCLUDED.foreign_sell, updated_at = now()`,
-      params,
-    );
-  }
-}
-
-function capOf(members: StockState[], atRef: boolean): number {
-  let cap = 0;
-  for (const s of members) {
-    const p = atRef || s.volume === 0 ? s.ref : s.last;
-    cap += p * s.info.listedShares;
-  }
-  return cap;
-}
-
-function aggregate(candles: Candle[], keyOf: (t: number) => number): Candle[] {
-  const out: Candle[] = [];
-  for (const c of candles) {
-    const k = keyOf(c.time);
-    const last = out[out.length - 1];
-    if (last && last.time === k) {
-      last.high = Math.max(last.high, c.high);
-      last.low = Math.min(last.low, c.low);
-      last.close = c.close;
-      last.volume += c.volume;
-    } else {
-      out.push({ ...c, time: k });
-    }
-  }
-  return out;
 }

@@ -17,7 +17,7 @@ const LOCKED_MESSAGE = 'Tài khoản của bạn đã bị khoá. Vui lòng liê
  */
 async function seedAdminUser(db: Database) {
   const prod = process.env.NODE_ENV === 'production';
-  const email = (process.env.ADMIN_EMAIL || (prod ? '' : 'admin@vnstock.local')).trim().toLowerCase();
+  const email = (process.env.ADMIN_EMAIL || (prod ? '' : 'admin@vncoin.local')).trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD || (prod ? '' : 'admin12345');
   if (!email || !password) {
     console.warn('[admin] chưa đặt ADMIN_EMAIL / ADMIN_PASSWORD — không tạo tài khoản quản trị');

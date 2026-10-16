@@ -2,9 +2,9 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { Database } from '../db';
 import { verifyToken } from '../lib/auth';
-import { addDays } from '../lib/calendar';
 import { ah } from '../lib/errors';
-import { publicName, type NavService, type PriceSource } from '../portfolio/nav';
+import { addDays, publicName, utcDay, type NavService } from '../portfolio/nav';
+import type { UsdtPricer } from '../trading/account';
 
 export const LEADERBOARD_PERIODS = { '1W': 7, '1M': 30, '3M': 90, ALL: 0 } as const;
 type Period = keyof typeof LEADERBOARD_PERIODS;
@@ -24,8 +24,9 @@ interface Entry {
  * - ALL: (NAV − vốn đã góp) / vốn đã góp.
  * - Theo kỳ: so với NAV cuối ngày đầu kỳ, trừ phần vốn góp thêm trong kỳ (Modified Dietz đơn giản).
  * Chỉ gồm nhà đầu tư đang hoạt động, đã có ít nhất 1 lệnh khớp và không chọn ẩn; tên hiển thị không lộ email.
+ * Mốc ngày theo UTC; topSymbol = coin chiếm tỷ trọng lớn nhất (không tính USDT).
  */
-export function communityRoutes(db: Database, nav: NavService, market: PriceSource) {
+export function communityRoutes(db: Database, nav: NavService, market: UsdtPricer) {
   const r = Router();
   const cache = new Map<Period, { at: number; rows: Entry[] }>();
 
@@ -33,30 +34,31 @@ export function communityRoutes(db: Database, nav: NavService, market: PriceSour
     const hit = cache.get(period);
     if (hit && Date.now() - hit.at < 30_000) return hit.rows;
     const days = LEADERBOARD_PERIODS[period];
-    const since = days ? addDays(market.tradeDate, -days) : null;
+    const since = days ? addDays(utcDay(), -days) : null;
     const users = await db.many<{ id: string; full_name: string; display_name: string | null; show_on_leaderboard: boolean; trades: number; period_trades: number }>(
       `SELECT u.id, u.full_name, u.display_name, u.show_on_leaderboard,
-              (SELECT count(*)::int FROM trades t WHERE t.user_id = u.id) AS trades,
-              (SELECT count(*)::int FROM trades t WHERE t.user_id = u.id AND ($1::date IS NULL OR (t.executed_at AT TIME ZONE 'UTC' + INTERVAL '7 hours')::date > $1::date)) AS period_trades
+              (SELECT count(*)::int FROM fills t WHERE t.user_id = u.id) AS trades,
+              (SELECT count(*)::int FROM fills t WHERE t.user_id = u.id AND ($1::date IS NULL OR (t.executed_at AT TIME ZONE 'UTC')::date > $1::date)) AS period_trades
        FROM users u WHERE u.role = 'USER' AND u.status = 'ACTIVE'`,
       [since],
     );
     const navs = await nav.current(null);
     const base = new Map<string, { nav: number; contributed: number }>();
     if (since) {
-      const rows = await db.many<{ user_id: string; nav: number; contributed: number }>(
-        `SELECT DISTINCT ON (user_id) user_id, nav, contributed FROM nav_daily WHERE trade_date <= $1 ORDER BY user_id, trade_date DESC`,
+      const rows = await db.many<{ user_id: string; nav_usdt: string; contributed_usdt: string }>(
+        `SELECT DISTINCT ON (user_id) user_id, nav_usdt, contributed_usdt FROM nav_daily WHERE day <= $1 ORDER BY user_id, day DESC`,
         [since],
       );
-      for (const b of rows) base.set(b.user_id, { nav: Number(b.nav), contributed: Number(b.contributed) });
+      for (const b of rows) base.set(b.user_id, { nav: Number(b.nav_usdt), contributed: Number(b.contributed_usdt) });
     }
-    const tops = await db.many<{ user_id: string; symbol: string; qty_total: number }>('SELECT user_id, symbol, qty_total FROM holdings');
+    const bals = await db.many<{ user_id: string; asset: string; total: string }>(
+      `SELECT user_id, asset, (free + locked)::text AS total FROM balances WHERE asset <> 'USDT' AND free + locked > 0`,
+    );
     const top = new Map<string, { symbol: string; value: number }>();
-    // mã chiếm tỷ trọng lớn nhất trong danh mục (theo giá hiện hành)
-    for (const h of tops) {
-      const v = h.qty_total * market.markPrice(h.symbol);
+    for (const h of bals) {
+      const v = Number(h.total) * Number(market.priceUsdt(h.asset) ?? 0);
       const cur = top.get(h.user_id);
-      if (!cur || v > cur.value) top.set(h.user_id, { symbol: h.symbol, value: v });
+      if (!cur || v > cur.value) top.set(h.user_id, { symbol: h.asset, value: v });
     }
 
     const out: Entry[] = [];

@@ -1,153 +1,165 @@
-import type { AccountDTO, HoldingDTO, LedgerDTO, OrderDTO, TradeDTO } from '@vss/shared';
+import {
+  Big,
+  str,
+  type FillDTO,
+  type LedgerDTO,
+  type LedgerType,
+  type OrderDTO,
+  type OrderListDTO,
+  type OrderListStatus,
+  type OrderStatus,
+  type OrderType,
+  type Side,
+  type TimeInForce,
+} from '@vss/shared';
+
+/* Bản ghi CSDL (NUMERIC → chuỗi, TIMESTAMPTZ → Date) và chuyển đổi sang DTO trả cho client */
 
 export interface OrderRow {
   id: number;
+  client_order_id: string;
   user_id: string;
   symbol: string;
-  side: OrderDTO['side'];
-  order_type: OrderDTO['orderType'];
-  price: number | null;
-  hold_price: number;
-  qty: number;
-  filled_qty: number;
-  avg_fill_price: number;
-  status: OrderDTO['status'];
-  hold_amount: number;
-  reject_reason: string | null;
-  trade_date: string;
-  created_at: Date;
-  updated_at: Date;
-  fee_rate: number | null;
-  tax_rate: number | null;
-  valid_until: string | null;
-  source: OrderDTO['source'];
-  conditional_id: number | null;
-  loan_hold: number;
+  side: Side;
+  type: OrderType;
+  time_in_force: TimeInForce | null;
+  price: string | null;
+  stop_price: string | null;
+  orig_qty: string;
+  executed_qty: string;
+  cumm_quote_qty: string;
+  quote_order_qty: string | null;
+  status: OrderStatus;
+  is_working: boolean;
+  order_list_id: number | null;
+  maker_fee: string;
+  taker_fee: string;
+  locked_asset: string;
+  locked_amount: string;
+  reason: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 }
 
-export interface TradeRow {
+export interface FillRow {
   id: number;
   order_id: number;
   user_id: string;
   symbol: string;
-  side: TradeDTO['side'];
-  price: number;
-  qty: number;
-  value: number;
-  fee: number;
-  tax: number;
-  realized_pnl: number | null;
-  executed_at: Date;
+  side: Side;
+  price: string;
+  qty: string;
+  quote_qty: string;
+  commission: string;
+  commission_asset: string;
+  commission_usdt: string;
+  is_maker: boolean;
+  realized_pnl: string | null;
+  executed_at: Date | string;
+}
+
+export interface OrderListRow {
+  id: number;
+  user_id: string;
+  symbol: string;
+  side: Side;
+  status: OrderListStatus;
+  created_at: Date | string;
+}
+
+export interface BalanceRow {
+  user_id: string;
+  asset: string;
+  free: string;
+  locked: string;
+  cost_usdt: string;
 }
 
 export interface AccountRow {
   user_id: string;
-  cash_balance: number;
-  cash_hold: number;
-  initial_capital: number;
-  contributed?: number;
-  cash_pending?: number;
-  loan_balance?: number;
-  loan_interest?: number;
-  loan_hold?: number;
-  credit_limit?: number;
-  margin_enabled?: boolean;
-  auto_advance?: boolean;
-  margin_status?: 'NORMAL' | 'CALL' | 'FORCE';
-  deposit_interest_accrued?: number;
-}
-
-export interface HoldingRow {
-  user_id: string;
-  symbol: string;
-  qty_total: number;
-  qty_available: number;
-  qty_hold: number;
-  qty_pending: number;
-  total_cost: number;
+  initial_usdt: string;
+  contributed_usdt: string;
+  pay_fee_with_bnb: boolean;
 }
 
 export interface LedgerRow {
   id: number;
-  type: LedgerDTO['type'];
-  amount: number;
-  balance_after: number;
+  user_id: string;
+  asset: string;
+  type: LedgerType;
+  amount: string;
+  balance_after: string;
   order_id: number | null;
   note: string | null;
-  created_at: Date;
+  created_at: Date | string;
 }
 
-const iso = (d: Date | string) => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
+export const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
+const s = (v: string | null): string | null => (v == null ? null : str(v));
 
-/** Cột DATE → 'YYYY-MM-DD' (PGlite trong bộ nhớ trả về Date, các nơi khác trả chuỗi) */
-export const dateOnly = (d: Date | string): string => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+export function toOrderDTO(r: OrderRow): OrderDTO {
+  const executed = new Big(r.executed_qty);
+  const quote = new Big(r.cumm_quote_qty);
+  return {
+    id: Number(r.id),
+    clientOrderId: r.client_order_id,
+    symbol: r.symbol,
+    side: r.side,
+    type: r.type,
+    timeInForce: r.time_in_force,
+    price: s(r.price),
+    stopPrice: s(r.stop_price),
+    origQty: str(r.orig_qty),
+    executedQty: executed.toFixed(),
+    cummulativeQuoteQty: quote.toFixed(),
+    origQuoteOrderQty: s(r.quote_order_qty),
+    avgPrice: executed.gt(0) ? quote.div(executed).round(12).toFixed() : '0',
+    status: r.status,
+    isWorking: r.is_working,
+    orderListId: r.order_list_id == null ? null : Number(r.order_list_id),
+    reason: r.reason,
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+  };
+}
 
-export const toOrderDTO = (r: OrderRow): OrderDTO => ({
-  id: r.id,
-  symbol: r.symbol,
-  side: r.side,
-  orderType: r.order_type,
-  price: r.price,
-  qty: r.qty,
-  filledQty: r.filled_qty,
-  avgFillPrice: r.avg_fill_price,
-  status: r.status,
-  holdAmount: r.hold_amount,
-  rejectReason: r.reject_reason,
-  tradeDate: dateOnly(r.trade_date),
-  validUntil: r.valid_until ? dateOnly(r.valid_until) : null,
-  source: r.source ?? 'USER',
-  createdAt: iso(r.created_at),
-  updatedAt: iso(r.updated_at),
-});
+export function toFillDTO(r: FillRow): FillDTO {
+  return {
+    id: Number(r.id),
+    orderId: Number(r.order_id),
+    symbol: r.symbol,
+    side: r.side,
+    price: str(r.price),
+    qty: str(r.qty),
+    quoteQty: str(r.quote_qty),
+    commission: str(r.commission),
+    commissionAsset: r.commission_asset,
+    isMaker: r.is_maker,
+    realizedPnl: s(r.realized_pnl),
+    time: iso(r.executed_at),
+  };
+}
 
-export const toTradeDTO = (r: TradeRow): TradeDTO => ({
-  id: r.id,
-  orderId: r.order_id,
-  symbol: r.symbol,
-  side: r.side,
-  price: r.price,
-  qty: r.qty,
-  value: r.value,
-  fee: r.fee,
-  tax: r.tax,
-  realizedPnl: r.realized_pnl,
-  executedAt: iso(r.executed_at),
-});
+export function toOrderListDTO(r: OrderListRow, orders: OrderRow[]): OrderListDTO {
+  return {
+    id: Number(r.id),
+    symbol: r.symbol,
+    side: r.side,
+    status: r.status,
+    orders: orders.map(toOrderDTO),
+    createdAt: iso(r.created_at),
+  };
+}
 
-export const toAccountDTO = (r: AccountRow): AccountDTO => ({
-  cashBalance: r.cash_balance,
-  cashHold: r.cash_hold,
-  cashAvailable: r.cash_balance - r.cash_hold,
-  initialCapital: r.initial_capital,
-  contributed: r.contributed ?? r.initial_capital,
-  cashPending: r.cash_pending ?? 0,
-  autoAdvance: r.auto_advance ?? true,
-  marginEnabled: r.margin_enabled ?? false,
-  creditLimit: r.credit_limit ?? 0,
-  loanBalance: r.loan_balance ?? 0,
-  loanInterest: r.loan_interest ?? 0,
-  loanHold: r.loan_hold ?? 0,
-  marginStatus: r.margin_status ?? 'NORMAL',
-  depositInterestAccrued: r.deposit_interest_accrued ?? 0,
-});
-
-export const toHoldingDTO = (r: HoldingRow): HoldingDTO => ({
-  symbol: r.symbol,
-  qtyTotal: r.qty_total,
-  qtyAvailable: r.qty_available,
-  qtyHold: r.qty_hold,
-  qtyPending: r.qty_pending,
-  totalCost: r.total_cost,
-  avgCost: r.qty_total > 0 ? Math.round(r.total_cost / r.qty_total) : 0,
-});
-
-export const toLedgerDTO = (r: LedgerRow): LedgerDTO => ({
-  id: r.id,
-  type: r.type,
-  amount: r.amount,
-  balanceAfter: r.balance_after,
-  orderId: r.order_id,
-  note: r.note,
-  createdAt: iso(r.created_at),
-});
+export function toLedgerDTO(r: LedgerRow): LedgerDTO {
+  return {
+    id: Number(r.id),
+    asset: r.asset,
+    type: r.type,
+    amount: str(r.amount),
+    balanceAfter: str(r.balance_after),
+    orderId: r.order_id == null ? null : Number(r.order_id),
+    note: r.note,
+    createdAt: iso(r.created_at),
+  };
+}

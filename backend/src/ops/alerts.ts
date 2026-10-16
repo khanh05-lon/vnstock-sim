@@ -106,8 +106,8 @@ export class AlertMonitor {
       {
         key: 'feed_lost',
         level: 'warning',
-        title: 'Mất nguồn giá thật (đang chạy giả lập)',
-        check: () => ({ firing: !!opts.feedLost?.(), detail: 'Trong giờ giao dịch nhưng data-service không trả dữ liệu — bảng giá đang dùng giá giả lập' }),
+        title: 'Mất nguồn giá Binance (đang chạy giả lập)',
+        check: () => ({ firing: !!opts.feedLost?.(), detail: 'Không nhận được dữ liệu từ luồng Binance, bảng giá và khớp lệnh đang dùng giá giả lập' }),
       },
     ];
   }

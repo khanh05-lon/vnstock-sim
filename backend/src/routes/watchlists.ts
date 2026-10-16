@@ -31,11 +31,11 @@ async function ownList(q: Queryable, userId: string, id: number) {
 }
 
 async function addSymbol(q: Queryable, userId: string, listId: number, symbol: string) {
-  const s = await q.one<{ status: string }>('SELECT status FROM stocks WHERE symbol = $1', [symbol]);
-  if (!s) throw badRequest('SYMBOL', `Mã ${symbol} không tồn tại`);
-  if (s.status !== 'ACTIVE') throw badRequest('SYMBOL', `Mã ${symbol} đã ngừng giao dịch`);
+  const s = await q.one<{ enabled: boolean }>('SELECT enabled FROM symbols WHERE symbol = $1', [symbol]);
+  if (!s) throw badRequest('SYMBOL', `Cặp ${symbol} không tồn tại`);
+  if (!s.enabled) throw badRequest('SYMBOL', `Cặp ${symbol} đã gỡ khỏi sàn`);
   const n = await q.one<{ n: number }>('SELECT count(*)::int AS n FROM watchlists WHERE list_id = $1', [listId]);
-  if ((n?.n ?? 0) >= MAX_WATCHLIST_SYMBOLS) throw badRequest('LIMIT', `Mỗi danh sách tối đa ${MAX_WATCHLIST_SYMBOLS} mã`);
+  if ((n?.n ?? 0) >= MAX_WATCHLIST_SYMBOLS) throw badRequest('LIMIT', `Mỗi danh sách tối đa ${MAX_WATCHLIST_SYMBOLS} cặp`);
   await q.many('INSERT INTO watchlists (user_id, list_id, symbol) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [userId, listId, symbol]);
 }
 

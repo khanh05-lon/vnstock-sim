@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import type { MarketMode } from '@vss/shared';
+
 import { log } from './lib/logger';
 
 function int(name: string, fallback: number): number {
@@ -31,7 +31,7 @@ if (!jwtSecret || jwtSecret.startsWith('change-me')) {
 
 /** Địa chỉ công khai của web, dùng để tạo link trong email (đặt lại mật khẩu) */
 const publicUrl = (process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
-if (isProd && !publicUrl) throw new Error('NODE_ENV=production bắt buộc đặt PUBLIC_URL (vd. https://vnstock.example.com)');
+if (isProd && !publicUrl) throw new Error('NODE_ENV=production bắt buộc đặt PUBLIC_URL (vd. https://vncoin.example.com)');
 
 /** TRUST_PROXY: số proxy tin cậy đứng trước app (1 khi chạy sau Caddy/Nginx) để lấy đúng IP người dùng */
 function trustProxy(): boolean | number | string {
@@ -41,17 +41,10 @@ function trustProxy(): boolean | number | string {
   return /^\d+$/.test(raw) ? Number(raw) : raw;
 }
 
-const mode = (process.env.MARKET_MODE ?? 'SIMULATED_24_7') as MarketMode;
-if (mode !== 'SIMULATED_24_7' && mode !== 'REAL_HOURS') {
-  throw new Error(`MARKET_MODE không hợp lệ: ${mode}`);
-}
-
-const provider = process.env.MARKET_PROVIDER || 'mock';
-if (provider !== 'mock' && provider !== 'vnstock') {
-  throw new Error(`MARKET_PROVIDER không hợp lệ: ${provider} (mock | vnstock)`);
-}
-if (provider === 'vnstock' && mode !== 'REAL_HOURS') {
-  log.warn('[config] MARKET_PROVIDER=vnstock nên đi cùng MARKET_MODE=REAL_HOURS — với SIMULATED_24_7, ngoài giờ giao dịch sẽ chạy giả lập.');
+/** binance: dữ liệu thật từ Binance (tự chuyển giả lập khi mất kết nối); sim: chỉ giả lập (offline / test) */
+const feed = process.env.MARKET_FEED || 'binance';
+if (feed !== 'binance' && feed !== 'sim') {
+  throw new Error(`MARKET_FEED không hợp lệ: ${feed} (binance | sim)`);
 }
 
 const smtpHost = process.env.SMTP_HOST ?? '';
@@ -97,7 +90,7 @@ export const config = {
         pass: process.env.SMTP_PASS ?? '',
       }
     : null,
-  mailFrom: process.env.MAIL_FROM || 'VNStock Sim <no-reply@localhost>',
+  mailFrom: process.env.MAIL_FROM || 'VNCoin <no-reply@localhost>',
   /** Token đọc /api/metrics (Prometheus). Trống: dev mở tự do, production tắt endpoint */
   metricsToken: process.env.METRICS_TOKEN ?? '',
   /** Cảnh báo vận hành: email nhận (phân tách dấu phẩy) và webhook (Slack / Discord / Telegram) */
@@ -116,18 +109,19 @@ export const config = {
   /** Bắt buộc xác thực email trước khi được đặt lệnh */
   requireEmailVerification: bool('REQUIRE_EMAIL_VERIFICATION', false),
   dataEncryptionKey,
-  marketMode: mode,
-  /** mock: giá giả lập; vnstock: giá thật qua data-service (tự về giả lập khi nguồn lỗi) */
-  marketProvider: provider as 'mock' | 'vnstock',
-  vnstock: {
-    url: process.env.VNSTOCK_URL || 'http://127.0.0.1:8001',
-    pollMs: int('VNSTOCK_POLL_MS', 3000),
-    staleMs: int('VNSTOCK_STALE_MS', 20_000),
-    historyDays: int('VNSTOCK_HISTORY_DAYS', 500),
-    maxRequestsPerMinute: int('VNSTOCK_MAX_RPM', 120),
+  marketFeed: feed as 'binance' | 'sim',
+  binance: {
+    /** REST công khai (thử lần lượt, cách nhau dấu phẩy) */
+    restUrls: (process.env.BINANCE_REST_URLS || 'https://data-api.binance.vision,https://api.binance.com')
+      .split(',')
+      .map((s) => s.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+    wsUrl: process.env.BINANCE_WS_URL || 'wss://data-stream.binance.vision',
+    /** Mất dữ liệu thật quá lâu thì chuyển sang giả lập */
+    simAfterMs: int('BINANCE_SIM_AFTER_MS', 5000),
   },
-  settlementDays: int('SETTLEMENT_DAYS', 2),
-  tickIntervalMs: int('TICK_INTERVAL_MS', 1000),
+  /** Chu kỳ khớp lệnh và phát dữ liệu cho client */
+  flushMs: int('MARKET_FLUSH_MS', 200),
   demoEmail: process.env.DEMO_EMAIL ?? '',
   demoPassword: process.env.DEMO_PASSWORD ?? '',
 };

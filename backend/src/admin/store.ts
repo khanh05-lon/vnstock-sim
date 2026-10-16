@@ -1,7 +1,6 @@
 import { RULES, applyRules, type RulesPatch, type TradingRules } from '@vss/shared';
 import type { Queryable } from '../db';
-import { setHolidays } from '../lib/calendar';
-import type { TradingEngine } from '../trading/engine';
+import type { SpotEngine } from '../trading/engine';
 
 /** Thông báo hệ thống hiển thị cho mọi người dùng */
 export interface Announcement {
@@ -18,7 +17,7 @@ export interface SystemStatus {
   haltedSymbols: string[];
   /** Đang bảo trì (vd. khôi phục dữ liệu): API tạm từ chối mọi thao tác */
   maintenance: string | null;
-  /** Quy tắc giao dịch đang áp dụng (phí, thuế, biên độ...) — giao diện dùng để tính trước */
+  /** Biểu phí và tham số sàn đang áp dụng — giao diện dùng để tính trước */
   rules: TradingRules;
 }
 
@@ -26,17 +25,6 @@ const KEY_HALT = 'admin.halt';
 const KEY_SYMBOLS = 'admin.halted_symbols';
 const KEY_ANNOUNCEMENT = 'admin.announcement';
 const KEY_RULES = 'admin.rules';
-
-/** Ghép 2 bản chỉnh quy tắc (các nhóm con như biên độ theo sàn được ghép từng khoá) */
-export function mergeRulesPatch(a: RulesPatch, b: RulesPatch): RulesPatch {
-  return {
-    ...a,
-    ...b,
-    ...(a.priceLimitPct || b.priceLimitPct ? { priceLimitPct: { ...a.priceLimitPct, ...b.priceLimitPct } } : {}),
-    ...(a.maxOrderQty || b.maxOrderQty ? { maxOrderQty: { ...a.maxOrderQty, ...b.maxOrderQty } } : {}),
-    ...(a.margin || b.margin ? { margin: { ...a.margin, ...b.margin } } : {}),
-  };
-}
 
 /**
  * Cấu hình vận hành do quản trị viên đặt, lưu trong bảng market_meta (key → JSON)
@@ -53,7 +41,7 @@ export class AdminStore {
 
   constructor(
     private db: Queryable,
-    private engine: TradingEngine,
+    private engine: SpotEngine,
   ) {}
 
   async load() {
@@ -66,22 +54,10 @@ export class AdminStore {
     for (const s of (get(KEY_SYMBOLS) as string[] | undefined) ?? []) this.engine.control.haltedSymbols.add(s);
     this.announcement = (get(KEY_ANNOUNCEMENT) as Announcement | undefined) ?? null;
     this.rulesPatch = (get(KEY_RULES) as RulesPatch | undefined) ?? {};
-    try {
-      applyRules(this.rulesPatch);
-    } catch (err) {
-      console.error('[admin] tham số giao dịch đã lưu không hợp lệ — dùng mặc định', err);
-      this.rulesPatch = {};
-      applyRules({});
-    }
+    applyRules(this.rulesPatch);
 
     this.locked.clear();
     for (const r of await this.db.many<{ id: string }>(`SELECT id FROM users WHERE status = 'LOCKED'`)) this.locked.add(r.id);
-    await this.reloadHolidays();
-  }
-
-  async reloadHolidays() {
-    const rows = await this.db.many<{ d: string }>('SELECT holiday_date::text AS d FROM market_holidays');
-    setHolidays(rows.map((r) => r.d));
   }
 
   status(): SystemStatus {
@@ -119,9 +95,9 @@ export class AdminStore {
     await this.save(KEY_ANNOUNCEMENT, a);
   }
 
-  /** Chỉnh tham số giao dịch (ném lỗi nếu kết quả không hợp lệ — khi đó giữ nguyên tham số cũ) */
+  /** Chỉnh biểu phí / vốn ban đầu (null = khôi phục mặc định) */
   async setRules(patch: RulesPatch | null) {
-    const next = patch == null ? {} : mergeRulesPatch(this.rulesPatch, patch);
+    const next = patch == null ? {} : { ...this.rulesPatch, ...patch };
     applyRules(next);
     this.rulesPatch = next;
     await this.save(KEY_RULES, next);

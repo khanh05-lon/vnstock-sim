@@ -1,4 +1,4 @@
-import type { TradeDTO } from '@vss/shared';
+import type { FillDTO } from '@vss/shared';
 import type { Database } from '../db';
 import { fillDigestEmail, type FillLine } from '../lib/emails';
 import { log } from '../lib/logger';
@@ -20,7 +20,7 @@ export class FillDigest {
     private windowMs = 60_000,
   ) {}
 
-  push(userId: string, t: TradeDTO) {
+  push(userId: string, t: FillDTO) {
     let list = this.buf.get(userId);
     if (!list) this.buf.set(userId, (list = []));
     list.push({ symbol: t.symbol, side: t.side, qty: t.qty, price: t.price, orderId: t.orderId });

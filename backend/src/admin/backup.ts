@@ -5,13 +5,15 @@ import bcrypt from 'bcryptjs';
 import type { Database, Queryable } from '../db';
 
 /**
- * Sao lưu / khôi phục dữ liệu nghiệp vụ dạng JSON (người dùng, tài khoản, lệnh, khớp, danh mục, sao kê...).
- * Dữ liệu giá (nến, chỉ số) không nằm trong bản sao lưu vì sinh lại / tải lại được.
+ * Sao lưu / khôi phục dữ liệu nghiệp vụ dạng JSON (người dùng, ví, lệnh, khớp lệnh, sổ cái...).
+ * Dữ liệu giá không nằm trong bản sao lưu vì tải lại từ Binance.
  *
- * Định dạng: { app: 'vnstock-sim', version: 2, exportedAt, exportedBy, tradeDate, migrations: [...], counts, data: { bảng: [dòng...] } }
+ * Định dạng: { app: 'vncoin-sim', version: 3, exportedAt, exportedBy, tradeDate (ngày UTC), migrations: [...], counts, data: { bảng: [dòng...] } }
+ * Bản sao lưu của sàn chứng khoán cũ (app 'vnstock-sim') không khôi phục được vì khác hoàn toàn cấu trúc dữ liệu.
  */
 
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
+const APP = 'vncoin-sim';
 
 interface TableSpec {
   name: string;
@@ -23,27 +25,19 @@ interface TableSpec {
 
 /** Thứ tự = thứ tự khôi phục (bảng được tham chiếu đứng trước) */
 export const BACKUP_TABLES: TableSpec[] = [
-  { name: 'stocks', sql: 'SELECT * FROM stocks ORDER BY symbol', replace: false },
-  { name: 'price_snapshots', sql: 'SELECT * FROM price_snapshots ORDER BY symbol', replace: false },
-  { name: 'warrants', sql: 'SELECT * FROM warrants ORDER BY symbol', replace: false },
-  { name: 'bonds', sql: 'SELECT * FROM bonds ORDER BY symbol', replace: false },
+  { name: 'symbols', sql: 'SELECT * FROM symbols ORDER BY sort_order, symbol', replace: false },
   { name: 'users', sql: 'SELECT * FROM users ORDER BY created_at', replace: true },
   { name: 'accounts', sql: 'SELECT * FROM accounts', replace: true },
+  { name: 'balances', sql: 'SELECT * FROM balances ORDER BY user_id, asset', replace: true },
   { name: 'recovery_codes', sql: 'SELECT * FROM recovery_codes ORDER BY id', replace: true },
   { name: 'watchlist_lists', sql: 'SELECT * FROM watchlist_lists ORDER BY id', replace: true },
   { name: 'watchlists', sql: 'SELECT * FROM watchlists', replace: true },
   { name: 'price_alerts', sql: 'SELECT * FROM price_alerts ORDER BY id', replace: true },
+  { name: 'order_lists', sql: 'SELECT * FROM order_lists ORDER BY id', replace: true },
   { name: 'orders', sql: 'SELECT * FROM orders ORDER BY id', replace: true },
-  { name: 'trades', sql: 'SELECT * FROM trades ORDER BY id', replace: true },
-  { name: 'conditional_orders', sql: 'SELECT * FROM conditional_orders ORDER BY id', replace: true },
-  { name: 'corporate_actions', sql: 'SELECT * FROM corporate_actions ORDER BY id', replace: true },
-  { name: 'ca_entitlements', sql: 'SELECT * FROM ca_entitlements ORDER BY id', replace: true },
-  { name: 'holdings', sql: 'SELECT * FROM holdings', replace: true },
-  { name: 'settlement_lots', sql: 'SELECT * FROM settlement_lots ORDER BY id', replace: true },
-  { name: 'transactions_ledger', sql: 'SELECT * FROM transactions_ledger ORDER BY id', replace: true },
-  { name: 'nav_daily', sql: 'SELECT * FROM nav_daily ORDER BY trade_date, user_id', replace: true },
-  { name: 'cash_settlements', sql: 'SELECT * FROM cash_settlements ORDER BY id', replace: true },
-  { name: 'market_holidays', sql: 'SELECT * FROM market_holidays ORDER BY holiday_date', replace: true },
+  { name: 'fills', sql: 'SELECT * FROM fills ORDER BY id', replace: true },
+  { name: 'ledger', sql: 'SELECT * FROM ledger ORDER BY id', replace: true },
+  { name: 'nav_daily', sql: 'SELECT * FROM nav_daily ORDER BY day, user_id', replace: true },
   { name: 'market_meta', sql: `SELECT * FROM market_meta WHERE key LIKE 'admin.%'`, replace: true },
   { name: 'admin_audit_log', sql: 'SELECT * FROM admin_audit_log ORDER BY id', replace: true },
 ];
@@ -60,7 +54,7 @@ export function registerBackupTable(spec: TableSpec, after?: string) {
 }
 
 export interface BackupFile {
-  app: 'vnstock-sim';
+  app: 'vncoin-sim';
   version: number;
   exportedAt: string;
   exportedBy: string;
@@ -77,10 +71,10 @@ export async function exportBackup(db: Queryable, meta: { exportedBy: string; tr
   const counts: Record<string, number> = {};
   for (const t of BACKUP_TABLES) {
     data[t.name] = await db.many(t.sql);
-    counts[t.name] = data[t.name].length;
+    counts[t.name] = data[t.name]!.length;
   }
   const migrations = (await db.many<{ name: string }>('SELECT name FROM schema_migrations ORDER BY name')).map((r) => r.name);
-  return { app: 'vnstock-sim', version: BACKUP_VERSION, exportedAt: new Date().toISOString(), exportedBy: meta.exportedBy, tradeDate: meta.tradeDate, migrations, counts, data };
+  return { app: APP, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), exportedBy: meta.exportedBy, tradeDate: meta.tradeDate, migrations, counts, data };
 }
 
 export const serializeBackup = (b: BackupFile) => JSON.stringify(b, bigintSafe);
@@ -88,7 +82,7 @@ export const serializeBackup = (b: BackupFile) => JSON.stringify(b, bigintSafe);
 /** Ghi bản sao lưu ra thư mục (vd. tự sao lưu trước khi khôi phục); trả về đường dẫn file */
 export function writeBackupFile(dir: string, prefix: string, b: BackupFile): string {
   fs.mkdirSync(dir, { recursive: true });
-  const stamp = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 19).replace(/[-:T]/g, '');
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
   const file = path.join(dir, `${prefix}-${stamp}.json`);
   fs.writeFileSync(file, serializeBackup(b));
   return file;
@@ -98,7 +92,7 @@ export interface RestoreReport {
   dryRun: boolean;
   meta: { version: number; exportedAt: string; exportedBy: string; tradeDate: string };
   tables: { name: string; rows: number; ignoredColumns: string[] }[];
-  stocksAdded: string[];
+  symbolsAdded: string[];
   warnings: string[];
 }
 
@@ -151,9 +145,12 @@ export function parseBackup(raw: string | Buffer): BackupFile {
   } catch {
     throw new RestoreError('File không phải JSON hợp lệ');
   }
-  if (!b || b.app !== 'vnstock-sim' || typeof b.data !== 'object' || !b.data) throw new RestoreError('File không phải bản sao lưu VNStock Sim');
-  if (!Number.isInteger(b.version) || b.version < 1 || b.version > BACKUP_VERSION) {
-    throw new RestoreError(`Phiên bản bản sao lưu ${b.version} không được hỗ trợ (hỗ trợ 1–${BACKUP_VERSION})`);
+  if ((b as { app?: string } | null)?.app === 'vnstock-sim') {
+    throw new RestoreError('Đây là bản sao lưu của sàn chứng khoán VNStock cũ, không dùng được cho sàn coin VNCoin');
+  }
+  if (!b || b.app !== APP || typeof b.data !== 'object' || !b.data) throw new RestoreError('File không phải bản sao lưu VNCoin');
+  if (!Number.isInteger(b.version) || b.version < 3 || b.version > BACKUP_VERSION) {
+    throw new RestoreError(`Phiên bản bản sao lưu ${b.version} không được hỗ trợ (hỗ trợ ${BACKUP_VERSION})`);
   }
   for (const [k, v] of Object.entries(b.data)) {
     if (!Array.isArray(v) || v.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) throw new RestoreError(`Bảng ${k} trong file không hợp lệ`);
@@ -170,7 +167,7 @@ export async function restoreBackup(db: Database, b: BackupFile, opts: { dryRun:
     dryRun: opts.dryRun,
     meta: { version: b.version, exportedAt: b.exportedAt, exportedBy: b.exportedBy, tradeDate: b.tradeDate },
     tables: [],
-    stocksAdded: [],
+    symbolsAdded: [],
     warnings: [],
   };
 
@@ -180,42 +177,29 @@ export async function restoreBackup(db: Database, b: BackupFile, opts: { dryRun:
   const unknownTables = Object.keys(b.data).filter((t) => !BACKUP_TABLES.some((s) => s.name === t));
   if (unknownTables.length) report.warnings.push(`Bỏ qua bảng không nhận diện được: ${unknownTables.join(', ')}`);
 
-  // Bản sao lưu trước khi có nhiều danh sách theo dõi: mỗi người 1 danh sách mặc định
-  if (!b.data.watchlist_lists && b.data.watchlists?.length) {
-    const ids = new Map<string, number>();
-    const lists: Record<string, unknown>[] = [];
-    for (const w of b.data.watchlists) {
-      const u = String(w.user_id);
-      if (!ids.has(u)) {
-        ids.set(u, ids.size + 1);
-        lists.push({ id: ids.size, user_id: u, name: 'Theo dõi' });
-      }
-    }
-    b.data.watchlist_lists = lists;
-    b.data.watchlists = b.data.watchlists.map((w) => ({ ...w, list_id: w.list_id ?? ids.get(String(w.user_id)) }));
-  }
-
-  // Bản v1 không có mật khẩu đã băm → đặt mật khẩu ngẫu nhiên, người dùng phải dùng "Quên mật khẩu"
+  // Người dùng không có mật khẩu đã băm trong file → đặt mật khẩu ngẫu nhiên, phải dùng "Quên mật khẩu"
   const users = b.data.users ?? [];
   const missingHash = users.filter((u) => typeof u.password_hash !== 'string' || !u.password_hash);
   let placeholderHash: string | null = null;
   if (missingHash.length) {
     placeholderHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
-    report.warnings.push(`${missingHash.length} người dùng không có mật khẩu trong file (bản sao lưu cũ) — họ cần dùng "Quên mật khẩu" để đặt lại`);
+    report.warnings.push(`${missingHash.length} người dùng không có mật khẩu trong file — họ cần dùng "Quên mật khẩu" để đặt lại`);
   }
 
   try {
     await db.tx(async (tx) => {
-      // Mã chứng khoán: chỉ thêm mã còn thiếu (không ghi đè dữ liệu thị trường hiện tại)
-      const existing = new Set((await tx.many<{ symbol: string }>('SELECT symbol FROM stocks')).map((r) => r.symbol));
-      const backupStocks = (b.data.stocks ?? []).filter((s) => typeof s.symbol === 'string');
+      // Cặp giao dịch: chỉ thêm cặp còn thiếu (không ghi đè bộ lọc / trạng thái hiện tại)
+      const existing = new Set((await tx.many<{ symbol: string }>('SELECT symbol FROM symbols')).map((r) => r.symbol));
+      const backupSymbols = (b.data.symbols ?? []).filter((s) => typeof s.symbol === 'string');
       const referenced = new Set<string>();
-      for (const t of ['watchlists', 'price_alerts', 'orders', 'trades', 'holdings', 'settlement_lots']) for (const r of b.data[t] ?? []) if (typeof r.symbol === 'string') referenced.add(r.symbol);
-      const missing = [...referenced].filter((s) => !existing.has(s) && !backupStocks.some((x) => x.symbol === s));
-      if (missing.length) throw new RestoreError(`Bản sao lưu tham chiếu mã chứng khoán không có trên hệ thống: ${missing.slice(0, 20).join(', ')}`);
-      const toAdd = backupStocks.filter((s) => !existing.has(String(s.symbol)));
-      report.stocksAdded = toAdd.map((s) => String(s.symbol));
-      if (toAdd.length) report.warnings.push(`Sẽ thêm ${toAdd.length} mã chứng khoán có trong bản sao lưu: ${report.stocksAdded.join(', ')}`);
+      for (const t of ['watchlists', 'price_alerts', 'order_lists', 'orders', 'fills']) {
+        for (const r of b.data[t] ?? []) if (typeof r.symbol === 'string') referenced.add(r.symbol);
+      }
+      const missing = [...referenced].filter((s) => !existing.has(s) && !backupSymbols.some((x) => x.symbol === s));
+      if (missing.length) throw new RestoreError(`Bản sao lưu tham chiếu cặp giao dịch không có trên hệ thống: ${missing.slice(0, 20).join(', ')}`);
+      const toAdd = backupSymbols.filter((s) => !existing.has(String(s.symbol)));
+      report.symbolsAdded = toAdd.map((s) => String(s.symbol));
+      if (toAdd.length) report.warnings.push(`Sẽ thêm ${toAdd.length} cặp giao dịch có trong bản sao lưu: ${report.symbolsAdded.join(', ')}`);
 
       // Xoá dữ liệu nghiệp vụ hiện tại
       const replaceTables = BACKUP_TABLES.filter((t) => t.replace && t.name !== 'market_meta').map((t) => t.name);
@@ -228,8 +212,7 @@ export async function restoreBackup(db: Database, b: BackupFile, opts: { dryRun:
           if (spec.replace) report.tables.push({ name: spec.name, rows: 0, ignoredColumns: [] });
           continue;
         }
-        if (spec.name === 'stocks') rows = toAdd;
-        if (spec.name === 'price_snapshots') rows = rows.filter((r) => report.stocksAdded.includes(String(r.symbol)));
+        if (spec.name === 'symbols') rows = toAdd;
         if (spec.name === 'market_meta') rows = rows.filter((r) => typeof r.key === 'string' && r.key.startsWith('admin.'));
         if (spec.name === 'users' && placeholderHash) rows = rows.map((u) => (u.password_hash ? u : { ...u, password_hash: placeholderHash }));
 

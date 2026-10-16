@@ -1,16 +1,14 @@
 import type { Server } from 'socket.io';
-import type { Candle, IndexSnapshot, SessionInfo, StockSnapshot, TradeDTO, TradeTick } from '@vss/shared';
+import type { DepthSnapshot, FillDTO, Kline, MarketStatus, OrderDTO, Ticker24h, TradeTick } from '@vss/shared';
 import { isTokenCurrent, verifyToken } from './lib/auth';
 import type { MarketService } from './market/marketService';
-import type { Notifier } from './trading/engine';
 
 /**
  * Sự kiện realtime:
- *  - board    : StockSnapshot[] các mã thay đổi (gửi tất cả client)
- *  - indices  : IndexSnapshot[]
- *  - session  : SessionInfo
- *  - trades   : TradeTick[] của mã đang theo dõi (room sym:XXX)
- *  - candles  : { symbol, candle } nến 1 phút đang chạy (room sym:XXX)
+ *  - tickers : Ticker24h[] các cặp thay đổi (mọi client, tối đa 1 lần / giây)
+ *  - feed    : MarketStatus (LIVE ⇄ SIM)
+ *  - symbols : danh sách cặp thay đổi → client tải lại
+ *  - depth / trades / kline : của cặp đang xem (room sym:XXX, client gửi 'symbol:subscribe')
  *  - order / fill / account : sự kiện riêng của người dùng (room user:ID)
  */
 export function attachSocket(io: Server, market: MarketService) {
@@ -31,23 +29,25 @@ export function attachSocket(io: Server, market: MarketService) {
   io.on('connection', (socket) => {
     const user = socket.data.user as { id: string } | undefined;
     if (user) void socket.join(`user:${user.id}`);
-    socket.emit('session', market.session());
+    socket.emit('feed', market.status());
 
     socket.on('symbol:subscribe', (sym: unknown) => {
       if (typeof sym !== 'string') return;
       const s = sym.toUpperCase();
-      if (market.quote(s)) void socket.join(`sym:${s}`);
+      if (!market.info(s)) return;
+      void socket.join(`sym:${s}`);
+      const d = market.depth(s);
+      if (d) socket.emit('depth', d);
     });
     socket.on('symbol:unsubscribe', (sym: unknown) => {
       if (typeof sym === 'string') void socket.leave(`sym:${sym.toUpperCase()}`);
     });
   });
 
-  market.on('board', (rows: StockSnapshot[]) => io.emit('board', rows));
-  market.on('indices', (rows: IndexSnapshot[]) => io.emit('indices', rows));
-  market.on('session', (s: SessionInfo) => io.emit('session', s));
-  // Danh mục mã thay đổi (niêm yết mới, huỷ niêm yết, đổi rổ VN30...) → client tải lại bảng giá
+  market.on('tickers', (list: Ticker24h[]) => io.emit('tickers', list));
+  market.on('feed', (s: MarketStatus) => io.emit('feed', s));
   market.on('symbols', () => io.emit('symbols'));
+  market.on('depth', (d: DepthSnapshot) => io.to(`sym:${d.symbol}`).emit('depth', d));
   market.on('trades', (ticks: TradeTick[]) => {
     const by = new Map<string, TradeTick[]>();
     for (const t of ticks) {
@@ -57,17 +57,25 @@ export function attachSocket(io: Server, market: MarketService) {
     }
     for (const [sym, list] of by) io.to(`sym:${sym}`).emit('trades', list);
   });
-  market.on('candles', (items: { symbol: string; candle: Candle }[]) => {
-    for (const it of items) io.to(`sym:${it.symbol}`).emit('candle', it);
+  market.on('klines', (items: { symbol: string; kline: Kline }[]) => {
+    for (const it of items) io.to(`sym:${it.symbol}`).emit('kline', it);
   });
 }
 
-export function socketNotifier(io: Server, onFill?: (userId: string, trade: TradeDTO) => void): Notifier {
+export interface Notifier {
+  order(userId: string, order: OrderDTO): void;
+  fill(userId: string, fill: FillDTO): void;
+  account(userId: string): void;
+}
+
+export const noopNotifier: Notifier = { order() {}, fill() {}, account() {} };
+
+export function socketNotifier(io: Server, onFill?: (userId: string, fill: FillDTO) => void): Notifier {
   return {
     order: (userId, order) => io.to(`user:${userId}`).emit('order', order),
-    trade: (userId, trade) => {
-      io.to(`user:${userId}`).emit('fill', trade);
-      onFill?.(userId, trade);
+    fill: (userId, fill) => {
+      io.to(`user:${userId}`).emit('fill', fill);
+      onFill?.(userId, fill);
     },
     account: (userId) => io.to(`user:${userId}`).emit('account'),
   };

@@ -4,29 +4,24 @@ import { z } from 'zod';
 import type { Database, Queryable } from '../db';
 import { AppError } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
+import type { BinanceRest } from '../market/binance/rest';
 import type { MarketService } from '../market/marketService';
 import type { AlertMonitor } from '../ops/alerts';
-import type { CorporateService } from '../corporate/service';
-import type { MarginService } from '../trading/margin';
-import type { TradingEngine } from '../trading/engine';
+import type { SpotEngine } from '../trading/engine';
 import type { AdminStore } from './store';
 
 export interface AdminDeps {
   db: Database;
   io: Server;
   market: MarketService;
-  engine: TradingEngine;
+  engine: SpotEngine;
   store: AdminStore;
   mailer: Mailer;
+  /** Client Binance để lấy bộ lọc khi thêm cặp mới (null khi chạy giả lập) */
+  rest?: BinanceRest | null;
   /** Giám sát & cảnh báo (không có trong test) */
   alerts?: AlertMonitor;
-  /** Sự kiện quyền */
-  corp?: CorporateService;
-  /** Ký quỹ */
-  margin?: MarginService;
-  providerName: string;
-  settlementDays: number;
-  /** Dọn dữ liệu của các tính năng khác khi 1 mã bị huỷ niêm yết (lệnh điều kiện, sự kiện quyền...) */
+  /** Dọn dữ liệu của các tính năng khác khi 1 cặp bị gỡ khỏi sàn */
   onDelist?(symbol: string, reason: string): Promise<void>;
   /** Nạp lại trạng thái trong bộ nhớ của các tính năng khác sau khi khôi phục dữ liệu */
   onRestored?(): Promise<void>;
@@ -46,7 +41,12 @@ export const symbolParam = z
   .string()
   .trim()
   .toUpperCase()
-  .regex(/^[A-Z0-9]{3,10}$/, 'Mã chứng khoán không hợp lệ');
+  .regex(/^[A-Z0-9]{5,20}$/, 'Cặp giao dịch không hợp lệ');
+export const assetParam = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{2,15}$/, 'Mã tài sản không hợp lệ');
 
 /** Mọi thao tác quản trị đều ghi nhật ký (không sửa / xoá được qua ứng dụng) */
 export async function audit(

@@ -86,16 +86,29 @@ describe('Email tổng hợp lệnh khớp', () => {
     const off = (await db.tx((tx) => createUserAccount(tx, 'tat@example.test', 'x', 'Người Tắt'))).id;
     await db.many('UPDATE users SET notify_fills = true WHERE id = $1', [on]);
     const digest = new FillDigest(db, mailer, 60_000);
-    const fill = (id: number, qty: number) => ({ id, orderId: 7, symbol: 'FPT', side: 'BUY' as const, price: 98_500, qty, value: 98_500 * qty, fee: 0, tax: 0, realizedPnl: null, executedAt: '' });
-    digest.push(on, fill(1, 100));
-    digest.push(on, fill(2, 300));
-    digest.push(off, fill(3, 100));
+    const fill = (id: number, qty: string) => ({
+      id,
+      orderId: 7,
+      symbol: 'BTCUSDT',
+      side: 'BUY' as const,
+      price: '82000.5',
+      qty,
+      quoteQty: '0',
+      commission: '0',
+      commissionAsset: 'BTC',
+      isMaker: false,
+      realizedPnl: null,
+      time: '',
+    });
+    digest.push(on, fill(1, '0.1'));
+    digest.push(on, fill(2, '0.3'));
+    digest.push(off, fill(3, '0.1'));
     const before = sent.length;
     expect(await digest.flush()).toBe(1);
     const mail = sent.slice(before);
     expect(mail).toHaveLength(1);
     expect(mail[0].to).toBe('bat@example.test');
     expect(mail[0].subject).toContain('2 giao dịch');
-    expect(mail[0].text).toContain('MUA 300 FPT giá 98,500');
+    expect(mail[0].text).toContain('MUA 0.3 BTCUSDT giá 82000.5');
   });
 });
