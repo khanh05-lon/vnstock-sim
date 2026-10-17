@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { PRICE_ACTION_LABEL } from '@vss/shared';
+import { PRICE_ACTION_LABEL, can as roleCan, type ApprovalDTO, type Permission } from '@vss/shared';
 import type { AccountDTO, AdminPriceRow, AuthEventDTO, LedgerDTO, OrderDTO, PriceHistoryItem, RulesPatch, SymbolFilters, TradingRules, UserRole } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
@@ -196,7 +196,17 @@ export interface LogLine {
 }
 
 /** Người đang đăng nhập có phải quản trị viên? (403 → không) */
-export function useAdminMe() {
+export interface AdminMe {
+  /** Được vào khu quản trị */
+  isAdmin: boolean;
+  loading: boolean;
+  /** Vai trò mới nhất theo máy chủ (thu quyền có hiệu lực ngay) */
+  role: UserRole | null;
+  /** Có quyền chi tiết này không (ẩn / hiện nút) — máy chủ vẫn kiểm tra lại mọi thao tác */
+  can(p: Permission): boolean;
+}
+
+export function useAdminMe(): AdminMe {
   const token = useAuth((s) => s.token);
   // Máy chủ đã báo vai trò USER → không cần gọi /admin/me (tránh lỗi 403 vô ích); quyền vẫn do máy chủ kiểm tra
   const knownUser = useAuth((s) => s.user?.role === 'USER');
@@ -204,19 +214,28 @@ export function useAdminMe() {
     queryKey: ['admin', 'me', token],
     queryFn: async () => {
       try {
-        await api('/admin/me');
-        return true;
+        return await api<{ admin: { role: UserRole } }>('/admin/me');
       } catch (e) {
-        if (e instanceof ApiError && (e.status === 403 || e.status === 401)) return false;
+        if (e instanceof ApiError && (e.status === 403 || e.status === 401)) return null;
         throw e;
       }
     },
     enabled: !!token && !knownUser,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
     retry: false,
   });
-  return { isAdmin: !!token && !knownUser && q.data === true, loading: !!token && !knownUser && q.isLoading };
+  const role = token && !knownUser ? (q.data?.admin.role ?? null) : null;
+  return {
+    isAdmin: !!role,
+    loading: !!token && !knownUser && q.isLoading,
+    role,
+    can: (p) => roleCan(role, p),
+  };
 }
+
+/** Đề xuất thao tác lớn chờ người thứ hai duyệt */
+export const useApprovals = (status: 'PENDING' | 'ALL') =>
+  useQuery({ queryKey: ['admin', 'approvals', status], queryFn: () => api<ApprovalDTO[]>(`/admin/approvals?status=${status}`), refetchInterval: 15_000 });
 
 export function useSystemStatus() {
   return useQuery({
@@ -255,17 +274,21 @@ export const useAdminSymbols = () =>
 
 export const useAdminRules = () => useQuery({ queryKey: ['admin', 'rules'], queryFn: () => api<RulesResponse>('/admin/rules') });
 
-/** Gửi file sao lưu lên để khôi phục (dryRun = chỉ chạy thử, không ghi) */
-export async function uploadRestore(file: File, dryRun: boolean): Promise<RestoreReport> {
+/**
+ * Gửi file sao lưu lên: dryRun = chỉ chạy thử, không ghi; không dryRun = tạo đề xuất khôi phục
+ * (Quản trị hệ thống khác duyệt mới ghi đè).
+ */
+export async function uploadRestore(file: File, dryRun: boolean, reason?: string): Promise<RestoreReport & { pending?: boolean; request?: ApprovalDTO }> {
   const token = useAuth.getState().token;
-  const res = await fetch(`/api/admin/data/restore${dryRun ? '?dryRun=1' : ''}`, {
+  const qs = dryRun ? '?dryRun=1' : reason ? `?reason=${encodeURIComponent(reason)}` : '';
+  const res = await fetch(`/api/admin/data/restore${qs}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: file,
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error?.message ?? `Lỗi ${res.status}`);
-  return data as RestoreReport;
+  return data.pending ? { ...data.report, pending: true, request: data.request } : data;
 }
 
 export const useAdminAudit = (action?: string) =>
@@ -297,7 +320,10 @@ export function useAdminAction() {
   return async <T = unknown>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body: unknown, success: string): Promise<T | null> => {
     try {
       const res = await api<T>(path, { method, body });
-      toast.success(success);
+      // 202: thao tác lớn đã thành đề xuất, chờ người khác duyệt
+      const pending = res as { pending?: boolean; request?: { id: number } } | null;
+      if (pending?.pending) toast.info(`Đã gửi đề xuất #${pending.request?.id ?? ''} — chờ người có thẩm quyền khác duyệt ở mục "Hàng chờ duyệt"`, { duration: 8_000 });
+      else toast.success(success);
       await qc.invalidateQueries({ queryKey: ['admin'] });
       void qc.invalidateQueries({ queryKey: ['system'] });
       return res;
@@ -329,6 +355,11 @@ export async function downloadBackup() {
 
 export const AUDIT_LABEL: Record<string, string> = {
   ...PRICE_ACTION_LABEL,
+  APPROVAL_REQUEST: 'Tạo đề xuất cần duyệt',
+  APPROVAL_APPROVE: 'Duyệt đề xuất',
+  APPROVAL_REJECT: 'Từ chối đề xuất',
+  APPROVAL_CANCEL: 'Rút đề xuất',
+  APPROVAL_FAILED: 'Đề xuất đã duyệt nhưng thực hiện lỗi',
   USER_LOCK: 'Khoá tài khoản',
   USER_UNLOCK: 'Mở khoá tài khoản',
   USER_DELETE: 'Xoá tài khoản',

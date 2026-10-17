@@ -99,8 +99,9 @@ function Terms() {
         </ul>
         <p>
           Mọi thao tác quản trị đều được ghi vào nhật ký kèm thời điểm, người thực hiện và lý do; nhật ký <b className="text-tx-1">chỉ được ghi thêm</b>, không ai sửa hay
-          xoá được, kể cả khi khôi phục sao lưu. Điều chỉnh số dư có giá trị lớn và mọi khoản bồi hoàn do nhân viên chăm sóc khách hàng đề xuất phải được một quản trị viên
-          khác duyệt; không ai được tự điều chỉnh số dư của chính mình.
+          xoá được, kể cả khi khôi phục sao lưu. Nhân viên được phân quyền theo chức năng (vận hành thị trường, tài chính, rủi ro & giám sát, kiểm toán, chăm sóc khách
+          hàng, quản trị hệ thống). Điều chỉnh số dư lớn, bồi hoàn, chỉnh giá lớn, niêm yết / huỷ niêm yết, tạm ngừng toàn sàn và khôi phục dữ liệu phải được một người
+          có thẩm quyền khác người đề xuất duyệt; không ai được tự điều chỉnh số dư của chính mình.
         </p>
       </Block>
       <Block n={9} title="Hỗ trợ khách hàng và khiếu nại">

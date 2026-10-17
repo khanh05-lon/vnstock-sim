@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { Big, RULES, registerSchema, type UserRole } from '@vss/shared';
+import { Big, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
 import { config } from '../config';
 import { markEmailVerified, markPasswordChanged } from '../lib/auth';
 import { listAuthEvents } from '../lib/authEvents';
@@ -17,7 +17,8 @@ import { createUserAccount } from '../seed/seed';
 import { accountView, navOf } from '../trading/account';
 import { toLedgerDTO, toOrderDTO, type BalanceRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { exportBackup, serializeBackup } from './backup';
-import { assetParam, audit, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
+import { Approvals, mountApprovals } from './approvals';
+import { assetParam, audit, need, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
 import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
 import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
@@ -44,7 +45,8 @@ export const TABLES: { name: string; group: string; desc: string }[] = [
   { name: 'nav_daily', group: 'Giao dịch', desc: 'Tổng tài sản (USDT) cuối ngày UTC (biểu đồ hiệu quả, bảng xếp hạng)' },
   { name: 'symbols', group: 'Thị trường', desc: 'Cặp giao dịch và bộ lọc (cả cặp đã gỡ)' },
   { name: 'market_meta', group: 'Vận hành', desc: 'Cấu hình vận hành (ngừng giao dịch, thông báo, biểu phí)' },
-  { name: 'admin_audit_log', group: 'Vận hành', desc: 'Nhật ký thao tác quản trị' },
+  { name: 'admin_audit_log', group: 'Vận hành', desc: 'Nhật ký thao tác quản trị (chỉ ghi thêm)' },
+  { name: 'approval_requests', group: 'Vận hành', desc: 'Đề xuất thao tác lớn chờ người thứ hai duyệt' },
   { name: 'system_alerts', group: 'Vận hành', desc: 'Lịch sử cảnh báo vận hành (giám sát tự động)' },
 ];
 
@@ -92,14 +94,20 @@ export function adminRoutes(deps: AdminDeps) {
   const { db, io, market, engine, store, mailer } = deps;
   const r = Router();
 
-  /** Chỉ quản trị viên đang hoạt động (bắt buộc 2FA nếu REQUIRE_STAFF_2FA); nhân viên CSKH dùng /api/support-desk */
-  r.use(...staffGuard(db, ['ADMIN']));
+  /**
+   * Nhân viên có quyền vào khu quản trị (bắt buộc 2FA nếu REQUIRE_STAFF_2FA); từng route kiểm thêm quyền chi tiết
+   * theo vai trò bằng need(). Nhân viên CSKH dùng /api/support-desk.
+   */
+  r.use(...staffGuard(db, 'admin.view'));
 
   const broadcast = () => io.emit('system', store.status());
+  // Thao tác lớn: người thứ hai có thẩm quyền duyệt rồi mới thực hiện
+  const approvals = new Approvals(db);
+  mountApprovals(r, approvals);
 
   // Tham số giao dịch, danh mục mã, khôi phục dữ liệu
-  mountMarketAdmin(r, deps, broadcast);
-  mountPriceControl(r, deps);
+  mountMarketAdmin(r, deps, broadcast, approvals);
+  mountPriceControl(r, deps, approvals);
 
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();
@@ -143,7 +151,8 @@ export function adminRoutes(deps: AdminDeps) {
   /* ------------------------------ tổng quan ------------------------------ */
 
   r.get('/me', (req, res) => {
-    res.json({ ok: true, admin: (req as AdminRequest).admin });
+    const { admin } = req as AdminRequest;
+    res.json({ ok: true, admin, permissions: admin.role ? ROLE_PERMISSIONS[admin.role] : [] });
   });
 
   r.get(
@@ -211,6 +220,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/users',
+    need('users.view'),
     ah(async (req, res) => {
       const q = z
         .object({ q: z.string().trim().max(100).optional(), status: z.enum(['ACTIVE', 'LOCKED']).optional(), role: z.enum(['USER', 'ADMIN']).optional() })
@@ -271,6 +281,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/users/:id',
+    need('users.view'),
     ah(async (req, res) => {
       const id = uuid.parse(req.params.id);
       const u = await db.one<UserRow>(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = $1`, [id]);
@@ -319,6 +330,7 @@ export function adminRoutes(deps: AdminDeps) {
   /** Quản trị viên tạo tài khoản nhà đầu tư (vd. cho một lớp học / giải đấu) — không qua giới hạn đăng ký theo IP */
   r.post(
     '/users',
+    need('users.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const input = registerSchema.parse(req.body);
@@ -345,6 +357,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/users/:id/verify-email',
+    need('users.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -362,6 +375,7 @@ export function adminRoutes(deps: AdminDeps) {
   /** Người dùng mất điện thoại và hết mã khôi phục: quản trị viên tắt 2FA sau khi xác minh danh tính */
   r.post(
     '/users/:id/reset-2fa',
+    need('users.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -384,6 +398,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/users/:id/lock',
+    need('users.lock'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -395,6 +410,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/users/:id/unlock',
+    need('users.lock'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -410,10 +426,11 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/users/:id/role',
+    need('staff.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
-      const { role } = z.object({ role: z.enum(['USER', 'SUPPORT', 'ADMIN']) }).parse(req.body);
+      const { role } = z.object({ role: z.enum(USER_ROLES as [UserRole, ...UserRole[]]) }).parse(req.body);
       if (id === admin.id) throw badRequest('SELF', 'Không thể tự thay đổi quyền của chính mình');
       const u = await loadTarget(id);
       if (u.role === role) throw badRequest('NO_CHANGE', 'Vai trò không đổi');
@@ -426,6 +443,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/users/:id/reset',
+    need('finance.adjust'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -444,6 +462,7 @@ export function adminRoutes(deps: AdminDeps) {
    */
   r.post(
     '/users/:id/adjust-balance',
+    need('finance.adjust'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -478,6 +497,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.delete(
     '/users/:id',
+    need('users.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -566,6 +586,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/orders/:id/cancel',
+    need('orders.cancel'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = Number(req.params.id);
@@ -603,6 +624,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/adjust-requests/:id/:decision',
+    need('finance.approve'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = Number(req.params.id);
@@ -618,7 +640,7 @@ export function adminRoutes(deps: AdminDeps) {
         if (!r) throw notFound('Không tìm thấy yêu cầu');
         if (r.status !== 'PENDING') throw badRequest('DECIDED', 'Yêu cầu đã được xử lý');
         // Nguyên tắc 2 người: người đề xuất không tự duyệt / từ chối yêu cầu của mình
-        if (r.requested_by === admin.id) throw badRequest('SELF', 'Không được tự duyệt yêu cầu do chính mình tạo — cần quản trị viên khác');
+        if (r.requested_by === admin.id) throw badRequest('SELF', 'Không được tự duyệt yêu cầu do chính mình tạo — cần một người khác thuộc bộ phận Tài chính');
         if (r.user_id === admin.id) throw badRequest('SELF', 'Không được duyệt điều chỉnh số dư của chính mình');
         let balanceAfter: string | null = null;
         if (decision === 'approve') {
@@ -671,19 +693,40 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/market/halt',
+    need('market.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const body = z.object({ halted: z.boolean(), reason: z.string().trim().max(200).optional() }).parse(req.body);
-      if (body.halted && (!body.reason || body.reason.length < 3)) throw badRequest('REASON', 'Nhập lý do tạm ngừng (tối thiểu 3 ký tự)');
-      await store.setHalt(body.halted, body.reason ?? '');
-      await audit(db, admin, body.halted ? 'TRADING_HALT' : 'TRADING_RESUME', 'market', null, { reason: body.reason ?? '' });
+      if (body.halted) {
+        // Tạm ngừng toàn sàn: đề xuất, người thứ hai duyệt (sự cố 1 cặp → tạm ngừng riêng cặp đó, có hiệu lực ngay)
+        if (!body.reason || body.reason.length < 3) throw badRequest('REASON', 'Nhập lý do tạm ngừng (tối thiểu 3 ký tự)');
+        if (engine.control.haltAll) throw badRequest('ALREADY_HALTED', 'Sàn đang tạm ngừng nhận lệnh');
+        const request = await approvals.create(admin, {
+          kind: 'MARKET_HALT',
+          target: null,
+          payload: {},
+          summary: 'Tạm ngừng nhận lệnh và khớp lệnh trên toàn sàn',
+          reason: body.reason,
+        });
+        res.status(202).json({ ok: true, pending: true, request });
+        return;
+      }
+      await store.setHalt(false, '');
+      await audit(db, admin, 'TRADING_RESUME', 'market', null, { reason: body.reason ?? '' });
       broadcast();
       res.json(store.status());
     }),
   );
+  approvals.register('MARKET_HALT', async (admin, req) => {
+    await store.setHalt(true, req.reason);
+    await audit(db, admin, 'TRADING_HALT', 'market', null, { reason: req.reason, approvalId: req.id, requestedBy: req.requestedByEmail });
+    broadcast();
+    return { halted: true };
+  });
 
   r.post(
     '/market/symbols/:symbol/halt',
+    need('market.halt'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const symbol = String(req.params.symbol).toUpperCase();
@@ -700,6 +743,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.put(
     '/announcement',
+    need('system.announce'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const body = z
@@ -717,6 +761,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.delete(
     '/announcement',
+    need('system.announce'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       await store.setAnnouncement(null);
@@ -730,6 +775,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/data',
+    need('system.view'),
     ah(async (_req, res) => {
       const tables = [];
       for (const t of TABLES) {
@@ -756,6 +802,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/data/export',
+    need('data.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const backup = await exportBackup(db, { exportedBy: admin.email, tradeDate: utcDay() });
@@ -771,6 +818,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/monitor',
+    need('system.view'),
     ah(async (_req, res) => {
       const w = metrics.window();
       const mem = process.memoryUsage();
@@ -807,6 +855,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.post(
     '/monitor/test',
+    need('system.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       if (!deps.alerts) throw badRequest('NO_MONITOR', 'Chưa bật giám sát');
@@ -820,6 +869,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/audit',
+    need('audit.view'),
     ah(async (req, res) => {
       const { limit, action } = z
         .object({ limit: z.coerce.number().int().min(1).max(1000).default(200), action: z.string().trim().max(40).optional() })
@@ -831,7 +881,7 @@ export function adminRoutes(deps: AdminDeps) {
     }),
   );
 
-  r.get('/logs', (req, res) => {
+  r.get('/logs', need('system.view'), (req, res) => {
     const limit = Math.min(400, Math.max(1, Number(req.query.limit) || 200));
     res.json(recentLogs(limit));
   });

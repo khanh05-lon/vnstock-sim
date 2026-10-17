@@ -8,7 +8,13 @@ Hướng dẫn cho đội vận hành VNCoin: cách nhận và xử lý yêu c�
 | --- | --- | --- |
 | Nhà đầu tư | Gửi yêu cầu hỗ trợ (gắn lệnh liên quan), trao đổi, đánh giá; xem nhật ký lệnh và lịch sử đăng nhập của mình | — |
 | Nhân viên CSKH | Khu `/cskh`: nhận và trả lời yêu cầu, ghi chú nội bộ, xem hồ sơ khách **qua yêu cầu**, huỷ hộ lệnh, khoá khẩn tài khoản, đề xuất bồi hoàn | Vào khu quản trị, mở khoá tài khoản, tự cộng / trừ số dư, duyệt bồi hoàn |
-| Quản trị viên | Mọi việc của CSKH + khu `/admin`: giao việc, duyệt điều chỉnh số dư, quản lý người dùng, vận hành sàn | Tự điều chỉnh số dư của mình, tự duyệt đề xuất do chính mình tạo, sửa / xoá nhật ký |
+| Quản trị hệ thống | Phân quyền nhân viên, tài khoản người dùng (tạo, khoá, xác thực email, tắt 2FA, xoá), sao lưu / đề xuất khôi phục, giám sát, nhật ký; khu CSKH + giao việc | Chỉnh số dư, chỉnh giá, niêm yết, huỷ hộ lệnh; tự duyệt đề xuất của mình |
+| Vận hành thị trường | Cặp giao dịch, giá, biểu phí, thông báo, tạm ngừng cặp, huỷ hộ lệnh; đề xuất niêm yết / huỷ niêm yết / chỉnh giá lớn / tạm ngừng toàn sàn; duyệt đề xuất thị trường của người khác | Xem hồ sơ người dùng, chạm vào số dư |
+| Tài chính | Điều chỉnh / đặt lại số dư (lớn thì thành đề xuất), duyệt bồi hoàn của CSKH và điều chỉnh của người khác | Thay đổi thị trường, khoá tài khoản |
+| Rủi ro & giám sát | Khoá / mở khoá, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký, khu CSKH; duyệt đề xuất thị trường của người khác | Chạm vào số dư, tự thay đổi cấu hình thị trường |
+| Kiểm toán | Chỉ đọc: tổng quan, người dùng, lệnh, hàng chờ duyệt, nhật ký, giám sát | Mọi thao tác ghi |
+
+Mọi vai trò: không tự điều chỉnh số dư của mình, không tự duyệt đề xuất do chính mình tạo, không sửa / xoá được nhật ký.
 
 Đổi vai trò: Quản trị → Người dùng → hồ sơ → **Đổi vai trò**. Ở môi trường thật (`REQUIRE_STAFF_2FA`), nhân viên phải bật xác thực 2 lớp mới vào được khu nhân viên.
 

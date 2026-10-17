@@ -4,7 +4,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import { Server } from 'socket.io';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Big, type TicketDetailDTO } from '@vss/shared';
+import { Big, type TicketDetailDTO, type UserRole } from '@vss/shared';
 import { exportBackup, parseBackup, restoreBackup, serializeBackup } from '../src/admin/backup';
 import { adminRoutes } from '../src/admin/routes';
 import { AdminStore } from '../src/admin/store';
@@ -38,6 +38,10 @@ const BTC = 'BTCUSDT';
 type U = { id: string; email: string; token: string };
 let admin1: U;
 let admin2: U;
+/** Tài chính (điều chỉnh / duyệt số dư) và rủi ro (huỷ hộ lệnh) — Quản trị hệ thống không làm các việc này */
+let fin1: U;
+let fin2: U;
+let risk: U;
 let agent: U;
 let alice: U;
 
@@ -50,7 +54,7 @@ async function call<T = any>(method: string, path: string, token?: string, body?
   return { status: res.status, body: (await res.json()) as T };
 }
 
-async function makeUser(email: string, role: 'USER' | 'SUPPORT' | 'ADMIN', password = 'matkhau123'): Promise<U> {
+async function makeUser(email: string, role: UserRole, password = 'matkhau123'): Promise<U> {
   const hash = await bcrypt.hash(password, 4);
   const u = await db.tx((tx) => createUserAccount(tx, email, hash, email.split('@')[0]!));
   await db.many('UPDATE users SET role = $2, email_verified_at = now() WHERE id = $1', [u.id, role]);
@@ -86,6 +90,9 @@ beforeAll(async () => {
   admin1 = await makeUser('admin1@example.test', 'ADMIN');
   admin2 = await makeUser('admin2@example.test', 'ADMIN');
   agent = await makeUser('cskh@example.test', 'SUPPORT');
+  fin1 = await makeUser('fin1@example.test', 'FINANCE');
+  fin2 = await makeUser('fin2@example.test', 'FINANCE');
+  risk = await makeUser('risk@example.test', 'RISK');
   alice = await makeUser('alice@example.test', 'USER');
 });
 
@@ -147,10 +154,12 @@ describe('Nhật ký lệnh', () => {
     const newEv = (await call<any[]>('GET', `/orders/${replaced.body.id}/events`, alice.token)).body;
     expect(newEv[0].detail).toMatchObject({ replacesOrderId: placed.body.id });
 
-    const cancel = await call('POST', `/admin/orders/${replaced.body.id}/cancel`, admin1.token, { reason: 'Kiểm tra huỷ hộ' });
+    // Quản trị hệ thống không huỷ hộ lệnh; Rủi ro & giám sát được
+    expect((await call('POST', `/admin/orders/${replaced.body.id}/cancel`, admin1.token, { reason: 'Kiểm tra huỷ hộ' })).status).toBe(403);
+    const cancel = await call('POST', `/admin/orders/${replaced.body.id}/cancel`, risk.token, { reason: 'Kiểm tra huỷ hộ' });
     expect(cancel.status).toBe(200);
     const ev = (await call<any[]>('GET', `/admin/orders/${replaced.body.id}/events`, admin1.token)).body;
-    expect(ev.at(-1)).toMatchObject({ event: 'CANCEL', actor: admin1.email });
+    expect(ev.at(-1)).toMatchObject({ event: 'CANCEL', actor: risk.email });
     // khách không xem được nhật ký lệnh của người khác
     expect((await call<any[]>('GET', `/orders/${placed.body.id}/events`, admin2.token)).body).toEqual([]);
   });
@@ -158,17 +167,22 @@ describe('Nhật ký lệnh', () => {
 
 describe('Điều chỉnh số dư: không tự điều chỉnh, từ ngưỡng phải 2 người duyệt', () => {
   it('nhỏ thì áp dụng ngay; lớn thành yêu cầu, người tạo không tự duyệt, người khác duyệt mới cộng', async () => {
-    expect((await call('POST', `/admin/users/${admin1.id}/adjust-balance`, admin1.token, { asset: 'USDT', amount: '10', reason: 'tự cộng' })).body.error.code).toBe('SELF');
-    const small = await call('POST', `/admin/users/${alice.id}/adjust-balance`, admin1.token, { asset: 'USDT', amount: '50', reason: 'Bồi hoàn nhỏ' });
+    // Quản trị hệ thống không đụng vào tiền
+    expect((await call('POST', `/admin/users/${alice.id}/adjust-balance`, admin1.token, { asset: 'USDT', amount: '10', reason: 'thử' })).status).toBe(403);
+    expect((await call('POST', `/admin/users/${fin1.id}/adjust-balance`, fin1.token, { asset: 'USDT', amount: '10', reason: 'tự cộng' })).body.error.code).toBe('SELF');
+    const small = await call('POST', `/admin/users/${alice.id}/adjust-balance`, fin1.token, { asset: 'USDT', amount: '50', reason: 'Bồi hoàn nhỏ' });
     expect(small.status).toBe(200);
-    const big = await call('POST', `/admin/users/${alice.id}/adjust-balance`, admin1.token, { asset: 'USDT', amount: '5000', reason: 'Bồi hoàn lớn' });
+    const big = await call('POST', `/admin/users/${alice.id}/adjust-balance`, fin1.token, { asset: 'USDT', amount: '5000', reason: 'Bồi hoàn lớn' });
     expect(big.status).toBe(202);
-    expect(big.body.request).toMatchObject({ status: 'PENDING', requestedByEmail: admin1.email });
+    expect(big.body.request).toMatchObject({ status: 'PENDING', requestedByEmail: fin1.email });
     const before = await db.one<{ free: string }>(`SELECT free FROM balances WHERE user_id = $1 AND asset = 'USDT'`, [alice.id]);
-    const self = await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, admin1.token, {});
+    const self = await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, fin1.token, {});
     expect(self.body.error.message).toMatch(/không được tự duyệt/i);
-    const ok = await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, admin2.token, {});
-    expect(ok.body).toMatchObject({ status: 'APPROVED', decidedByEmail: admin2.email });
+    // Quản trị hệ thống / Rủi ro không duyệt được tiền
+    expect((await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, admin2.token, {})).status).toBe(403);
+    expect((await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, risk.token, {})).status).toBe(403);
+    const ok = await call('POST', `/admin/adjust-requests/${big.body.request.id}/approve`, fin2.token, {});
+    expect(ok.body).toMatchObject({ status: 'APPROVED', decidedByEmail: fin2.email });
     const after = await db.one<{ free: string }>(`SELECT free FROM balances WHERE user_id = $1 AND asset = 'USDT'`, [alice.id]);
     expect(new Big(after!.free).minus(before!.free).toFixed()).toBe('5000');
     const audit = (await db.many<{ action: string }>(`SELECT action FROM admin_audit_log WHERE target_id = $1 ORDER BY id`, [alice.id])).map((r) => r.action);
@@ -315,7 +329,7 @@ describe('Chatbox CSKH', () => {
     expect(adj.body.request).toMatchObject({ status: 'PENDING', ticketId });
     // CSKH không tự duyệt được (không vào khu quản trị)
     expect((await call('POST', `/admin/adjust-requests/${adj.body.request.id}/approve`, agent.token, {})).status).toBe(403);
-    expect((await call('POST', `/admin/adjust-requests/${adj.body.request.id}/approve`, admin1.token, {})).body.status).toBe('APPROVED');
+    expect((await call('POST', `/admin/adjust-requests/${adj.body.request.id}/approve`, fin1.token, {})).body.status).toBe('APPROVED');
     const staffView = await call('GET', `/support-desk/tickets/${ticketId}`, agent.token);
     expect(staffView.body.messages.some((m: { body: string }) => m.body.includes(`duyệt #${adj.body.request.id}: APPROVED`))).toBe(true);
   });

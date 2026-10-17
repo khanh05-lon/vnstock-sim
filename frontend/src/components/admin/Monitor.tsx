@@ -1,5 +1,5 @@
 import { BellRing, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-react';
-import { fmtDuration, useAdminAction, useAdminMonitor, type MonitorSample } from '../../lib/admin';
+import { fmtDuration, useAdminAction, useAdminMe, useAdminMonitor, type MonitorSample } from '../../lib/admin';
 import { cn, fmtCompact, fmtDateTime, fmtInt } from '../../lib/format';
 import { Empty, Sparkline, Spinner } from '../common/ui';
 import { Kpi, Pill, Section } from './adminUi';
@@ -30,6 +30,7 @@ const pick = (s: MonitorSample[], k: keyof MonitorSample) => s.map((x) => Number
 export function Monitor() {
   const { data, isLoading } = useAdminMonitor();
   const act = useAdminAction();
+  const canTest = useAdminMe().can('system.manage');
   if (isLoading || !data) {
     return (
       <div className="flex justify-center py-20">
@@ -85,7 +86,7 @@ export function Monitor() {
         <Section
           title="Kênh nhận cảnh báo"
           actions={
-            <button className="btn btn-ghost h-8" onClick={() => void act('/admin/monitor/test', 'POST', {}, 'Đã gửi cảnh báo thử')}>
+            <button className="btn btn-ghost h-8" disabled={!canTest} onClick={() => void act('/admin/monitor/test', 'POST', {}, 'Đã gửi cảnh báo thử')}>
               <BellRing size={14} /> Gửi thử
             </button>
           }

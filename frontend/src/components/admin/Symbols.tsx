@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { useAdminAction, useAdminSymbols, type AdminSymbol } from '../../lib/admin';
+import { useAdminAction, useAdminMe, useAdminSymbols, type AdminSymbol } from '../../lib/admin';
 import { cn, fmtCompact, fmtPct, fmtPrice, signTone, toneText } from '../../lib/format';
 import { CoinIcon } from '../common/CoinIcon';
 import { Empty, Modal, Spinner } from '../common/ui';
@@ -16,7 +16,7 @@ function AddSymbolModal({ open, onClose }: { open: boolean; onClose(): void }) {
 
   const submit = async () => {
     setBusy(true);
-    const r = await act('/admin/symbols', 'POST', { symbol }, `Đã thêm cặp ${symbol}`);
+    const r = await act('/admin/symbols', 'POST', { symbol }, `Đã gửi đề xuất niêm yết ${symbol}`);
     setBusy(false);
     if (r) {
       setBase('');
@@ -28,7 +28,7 @@ function AddSymbolModal({ open, onClose }: { open: boolean; onClose(): void }) {
     <Modal
       open={open}
       onClose={() => !busy && onClose()}
-      title="Thêm cặp giao dịch"
+      title="Đề xuất niêm yết cặp mới"
       width={440}
       footer={
         <>
@@ -36,7 +36,7 @@ function AddSymbolModal({ open, onClose }: { open: boolean; onClose(): void }) {
             Huỷ
           </button>
           <button className="btn btn-brand" disabled={!ok || busy} onClick={() => void submit()}>
-            {busy ? 'Đang thêm...' : 'Thêm cặp'}
+            {busy ? 'Đang gửi...' : 'Gửi đề xuất'}
           </button>
         </>
       }
@@ -57,7 +57,7 @@ function AddSymbolModal({ open, onClose }: { open: boolean; onClose(): void }) {
       </label>
       <p className="mt-3 text-[12px] text-tx-3">
         Cặp phải đang giao dịch trên Binance. Bộ lọc (bước giá, bước khối lượng, giá trị tối thiểu, khoảng giá) được lấy thật từ Binance và cập nhật lại mỗi lần khởi động
-        máy chủ. Cặp mới xuất hiện ngay trên trang Thị trường.
+        máy chủ. Cặp lên sàn khi một người khác (Vận hành thị trường hoặc Rủi ro & giám sát) duyệt đề xuất.
       </p>
     </Modal>
   );
@@ -71,6 +71,7 @@ function StatusPill({ s }: { s: AdminSymbol }) {
 
 export function Symbols() {
   const { data, isLoading } = useAdminSymbols();
+  const { can } = useAdminMe();
   const act = useAdminAction();
   const [q, setQ] = useState('');
   const [show, setShow] = useState<'enabled' | 'all'>('enabled');
@@ -105,9 +106,11 @@ export function Symbols() {
           <option value="enabled">Đang trên sàn</option>
           <option value="all">Cả cặp đã gỡ</option>
         </select>
-        <button className="btn btn-brand h-8" onClick={() => setAdding(true)}>
-          <Plus size={14} /> Thêm cặp
-        </button>
+        {can('market.manage') && (
+          <button className="btn btn-brand h-8" onClick={() => setAdding(true)}>
+            <Plus size={14} /> Đề xuất niêm yết
+          </button>
+        )}
       </div>
       {!rows.length ? (
         <Empty title="Không có cặp phù hợp" />
@@ -163,23 +166,28 @@ export function Symbols() {
                     <div className="flex justify-end gap-3 text-[12px] font-medium">
                       {s.enabled ? (
                         <>
-                          {s.halted ? (
-                            <button className="text-up hover:underline" onClick={() => void act(`/admin/market/symbols/${s.symbol}/halt`, 'POST', { halted: false }, `Đã mở lại ${s.symbol}`)}>
-                              Mở lại
-                            </button>
-                          ) : (
-                            <button className="text-ref hover:underline" onClick={() => void act(`/admin/market/symbols/${s.symbol}/halt`, 'POST', { halted: true }, `Đã tạm ngừng ${s.symbol}`)}>
-                              Tạm ngừng
+                          {can('market.halt') &&
+                            (s.halted ? (
+                              <button className="text-up hover:underline" onClick={() => void act(`/admin/market/symbols/${s.symbol}/halt`, 'POST', { halted: false }, `Đã mở lại ${s.symbol}`)}>
+                                Mở lại
+                              </button>
+                            ) : (
+                              <button className="text-ref hover:underline" onClick={() => void act(`/admin/market/symbols/${s.symbol}/halt`, 'POST', { halted: true }, `Đã tạm ngừng ${s.symbol}`)}>
+                                Tạm ngừng
+                              </button>
+                            ))}
+                          {can('market.manage') && (
+                            <button className="text-down hover:underline" onClick={() => setDelisting(s)}>
+                              Đề xuất gỡ
                             </button>
                           )}
-                          <button className="text-down hover:underline" onClick={() => setDelisting(s)}>
-                            Gỡ khỏi sàn
-                          </button>
                         </>
                       ) : (
-                        <button className="text-brand hover:underline" onClick={() => void act('/admin/symbols', 'POST', { symbol: s.symbol }, `Đã đưa ${s.symbol} trở lại sàn`)}>
-                          Thêm lại
-                        </button>
+                        can('market.manage') && (
+                          <button className="text-brand hover:underline" onClick={() => void act('/admin/symbols', 'POST', { symbol: s.symbol }, `Đã gửi đề xuất đưa ${s.symbol} trở lại sàn`)}>
+                            Đề xuất thêm lại
+                          </button>
+                        )
                       )}
                     </div>
                   </td>
@@ -192,13 +200,13 @@ export function Symbols() {
       <AddSymbolModal open={adding} onClose={() => setAdding(false)} />
       <ReasonModal
         open={!!delisting}
-        title={`Gỡ ${delisting?.symbol ?? ''} khỏi sàn`}
-        description={`Mọi lệnh đang mở của cặp này (${delisting?.openOrders ?? 0} lệnh) sẽ bị huỷ và trả lại số dư khoá. Coin người dùng đang nắm giữ vẫn ở trong ví. Có thể thêm lại sau.`}
-        confirmLabel="Gỡ khỏi sàn"
+        title={`Đề xuất gỡ ${delisting?.symbol ?? ''} khỏi sàn`}
+        description={`Khi được người khác duyệt: mọi lệnh đang mở của cặp này (${delisting?.openOrders ?? 0} lệnh) bị huỷ và trả lại số dư khoá. Coin người dùng đang nắm giữ vẫn ở trong ví. Có thể đề xuất thêm lại sau.`}
+        confirmLabel="Gửi đề xuất"
         danger
         onClose={() => setDelisting(null)}
         onConfirm={async (reason) => {
-          if (delisting && (await act(`/admin/symbols/${delisting.symbol}/delist`, 'POST', { reason }, `Đã gỡ ${delisting.symbol}`))) setDelisting(null);
+          if (delisting && (await act(`/admin/symbols/${delisting.symbol}/delist`, 'POST', { reason }, `Đã gửi đề xuất gỡ ${delisting.symbol}`))) setDelisting(null);
         }}
       />
     </section>

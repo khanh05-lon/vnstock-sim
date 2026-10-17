@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ADJUST_STATUS_LABEL, type AdjustRequestDTO } from '@vss/shared';
-import { useAdminAction } from '../../lib/admin';
+import { useAdminAction, useAdminMe } from '../../lib/admin';
 import { cn, fmtDateTime, fmtQty, fmtUsd } from '../../lib/format';
 import { useAdjustRequests } from '../../lib/support';
 import { useAuth } from '../../store/auth';
@@ -16,6 +16,7 @@ export function AdjustRequests() {
   const { data, isLoading } = useAdjustRequests(status);
   const me = useAuth((s) => s.user);
   const act = useAdminAction();
+  const canDecide = useAdminMe().can('finance.approve');
   const [deciding, setDeciding] = useState<{ r: AdjustRequestDTO; approve: boolean } | null>(null);
 
   return (
@@ -30,7 +31,7 @@ export function AdjustRequests() {
       }
     >
       <p className="border-b border-line px-4 py-2 text-[12px] text-tx-3">
-        Điều chỉnh từ ngưỡng phê duyệt trở lên (cấu hình ADJUST_APPROVAL_USDT) và mọi đề xuất bồi hoàn của nhân viên CSKH phải được một quản trị viên KHÁC người đề xuất
+        Điều chỉnh từ ngưỡng phê duyệt trở lên (cấu hình ADJUST_APPROVAL_USDT) và mọi đề xuất bồi hoàn của nhân viên CSKH phải được một người KHÁC thuộc bộ phận Tài chính
         duyệt. Người đề xuất không tự duyệt được; quyết định được ghi vào nhật ký quản trị và sổ cái của khách.
       </p>
       {isLoading ? (
@@ -66,7 +67,7 @@ export function AdjustRequests() {
                       {fmtQty(r.amount)} {r.asset}
                     </td>
                     <td className="px-2 py-2 text-right">{fmtUsd(r.usdtValue)}</td>
-                    <td className="max-w-[260px] px-2 py-2 text-tx-2">
+                    <td className="min-w-[200px] max-w-[300px] whitespace-normal px-2 py-2 text-tx-2">
                       {r.reason}
                       {r.ticketId && (
                         <Link to={`/cskh?ticket=${r.ticketId}`} className="ml-1 text-brand hover:underline">
@@ -87,7 +88,9 @@ export function AdjustRequests() {
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {r.status === 'PENDING' &&
                         (mine ? (
-                          <span className="text-tx-3">Chờ quản trị viên khác</span>
+                          <span className="text-tx-3">Chờ Tài chính khác duyệt</span>
+                        ) : !canDecide ? (
+                          <span className="text-tx-3">Chờ Tài chính duyệt</span>
                         ) : (
                           <>
                             <button className="btn btn-up h-7 text-[12px]" onClick={() => setDeciding({ r, approve: true })}>

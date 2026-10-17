@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { downloadBackup, fmtBytes, uploadRestore, useAdminData, type RestoreReport } from '../../lib/admin';
+import { downloadBackup, fmtBytes, uploadRestore, useAdminData, useAdminMe, type RestoreReport } from '../../lib/admin';
 import { fmtDateTime, fmtInt } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
@@ -96,23 +96,29 @@ function RestorePanel() {
         title="Xác nhận khôi phục dữ liệu"
         danger
         requireReason={false}
-        confirmLabel="Khôi phục"
-        description="Toàn bộ dữ liệu nghiệp vụ hiện tại sẽ bị thay bằng dữ liệu trong file (đã được tự sao lưu trước). Gõ KHOI PHUC để xác nhận."
+        confirmLabel="Gửi đề xuất khôi phục"
+        description="Gửi đề xuất khôi phục: một Quản trị hệ thống KHÁC duyệt thì toàn bộ dữ liệu nghiệp vụ hiện tại mới bị thay bằng dữ liệu trong file (hệ thống tự sao lưu trước). Gõ KHOI PHUC để xác nhận."
         canConfirm={typed.trim().toUpperCase() === 'KHOI PHUC'}
         extra={<input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="KHOI PHUC" />}
         onClose={() => {
           setConfirm(false);
           setTyped('');
         }}
-        onConfirm={async () => {
+        onConfirm={async (reason) => {
           if (!file) return;
           setBusy(true);
           try {
-            const r = await uploadRestore(file, false);
-            setDone(r);
+            const r = await uploadRestore(file, false, reason);
             setConfirm(false);
             setTyped('');
-            toast.success('Đã khôi phục dữ liệu');
+            if (r.pending) {
+              setDry(null);
+              setFile(null);
+              toast.info(`Đã gửi đề xuất khôi phục #${r.request?.id ?? ''} — chờ một Quản trị hệ thống khác duyệt ở mục "Hàng chờ duyệt"`, { duration: 10_000 });
+            } else {
+              setDone(r);
+              toast.success('Đã khôi phục dữ liệu');
+            }
             await qc.invalidateQueries();
           } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Khôi phục thất bại');
@@ -127,6 +133,7 @@ function RestorePanel() {
 
 export function DataStorage() {
   const { data, isLoading } = useAdminData();
+  const { can } = useAdminMe();
   const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
   if (isLoading || !data) {
@@ -166,7 +173,8 @@ export function DataStorage() {
           actions={
             <button
               className="btn btn-brand h-8"
-              disabled={busy}
+              disabled={busy || !can('data.manage')}
+              title={can('data.manage') ? undefined : 'Chỉ Quản trị hệ thống được xuất sao lưu'}
               onClick={async () => {
                 setBusy(true);
                 try {

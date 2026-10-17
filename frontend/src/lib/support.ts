@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { create } from 'zustand';
-import { isStaff, type AdjustRequestDTO, type AuthEventDTO, type BalanceDTO, type FillDTO, type LedgerDTO, type OrderDTO, type OrderEventDTO, type TicketDetailDTO, type TicketDTO } from '@vss/shared';
+import { can, type AdjustRequestDTO, type AuthEventDTO, type BalanceDTO, type FillDTO, type LedgerDTO, type OrderDTO, type OrderEventDTO, type TicketDetailDTO, type TicketDTO } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
 
@@ -72,7 +72,8 @@ const dropPassOn401 = (e: unknown, pass: string | null) => {
 
 /* ------------------------------ khách hàng ------------------------------ */
 
-export const useIsStaff = () => useAuth((s) => isStaff(s.user?.role));
+/** Được vào khu CSKH (nhân viên CSKH, Rủi ro & giám sát, Quản trị hệ thống) */
+export const useIsStaff = () => useAuth((s) => can(s.user?.role, 'support.desk'));
 
 export function useMyTickets() {
   const token = useAuth((s) => s.token);

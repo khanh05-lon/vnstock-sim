@@ -110,7 +110,12 @@ describe('Trang quản trị: chỉnh giá', () => {
   let base: string;
   let market: MarketService;
   let engine: SpotEngine;
+  /** Vận hành thị trường (đặt giá / đề xuất) */
   let admin: { id: string; token: string };
+  /** Rủi ro & giám sát (duyệt đề xuất thị trường) */
+  let risk: { id: string; token: string };
+  /** Quản trị hệ thống (không được chỉnh giá) */
+  let sysadmin: { id: string; token: string };
   let user: { id: string; token: string };
   const mailer: Mailer = { kind: 'smtp', send: async () => undefined };
 
@@ -123,7 +128,7 @@ describe('Trang quản trị: chỉnh giá', () => {
     return { status: res.status, body: (await res.json()) as T };
   }
 
-  async function makeUser(email: string, role: 'USER' | 'ADMIN') {
+  async function makeUser(email: string, role: 'USER' | 'ADMIN' | 'MARKET_OPS' | 'RISK') {
     const u = await db.tx(async (tx) => createUserAccount(tx, email, await bcrypt.hash('matkhau123', 4), email.split('@')[0]!));
     await db.many('UPDATE users SET role = $2, email_verified_at = now() WHERE id = $1', [u.id, role]);
     return { id: u.id, token: signToken({ id: u.id, email }) };
@@ -146,7 +151,9 @@ describe('Trang quản trị: chỉnh giá', () => {
     server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/admin`;
-    admin = await makeUser('admin@example.test', 'ADMIN');
+    admin = await makeUser('admin@example.test', 'MARKET_OPS');
+    risk = await makeUser('risk@example.test', 'RISK');
+    sysadmin = await makeUser('sysadmin@example.test', 'ADMIN');
     user = await makeUser('nhadautu@example.test', 'USER');
     await market.flushNow();
   });
@@ -166,12 +173,25 @@ describe('Trang quản trị: chỉnh giá', () => {
     expect(rows.find((r) => r.symbol === BTC)).toMatchObject({ mode: 'LIVE', control: null });
   });
 
-  it('đặt giá → lệnh của nhà đầu tư khớp theo giá điều chỉnh; ghi nhật ký; giữ nguyên sau khi khởi động lại; về giá thực tế', async () => {
+  it('chỉnh giá lớn thành đề xuất: người đề xuất không tự duyệt, Quản trị hệ thống không duyệt được, Rủi ro duyệt mới thực hiện', async () => {
+    expect((await call('POST', `/prices/${BTC}/set`, sysadmin.token, { price: '1', reason: 'thử' })).status).toBe(403);
     const before = market.lastPrice(BTC)!;
     const to = new Big(before).times(0.9).round(0).toFixed();
     const r = await call('POST', `/prices/${BTC}/set`, admin.token, { price: to, durationMin: 0, volatilityPct: 0, reason: 'Kịch bản giảm giá cho lớp học' });
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ from: before, to });
+    expect(r.status).toBe(202);
+    expect(r.body.request).toMatchObject({ kind: 'PRICE_SET', target: BTC, status: 'PENDING', requestedByEmail: 'admin@example.test' });
+    expect(r.body.request.summary).toContain('-10');
+    // chưa duyệt → giá chưa đổi; không tạo được đề xuất trùng
+    await market.flushNow();
+    expect(market.info(BTC)!.priceMode).toBe('LIVE');
+    expect((await call('POST', `/prices/${BTC}/set`, admin.token, { price: to, reason: 'Gửi lại' })).body.error.code).toBe('PENDING_EXISTS');
+    const id = r.body.request.id;
+    expect((await call('POST', `/approvals/${id}/approve`, admin.token, {})).body.error.code).toBe('SELF');
+    expect((await call('POST', `/approvals/${id}/approve`, sysadmin.token, {})).status).toBe(403);
+    expect((await call('POST', `/approvals/${id}/reject`, risk.token, {})).status).toBe(400); // từ chối phải ghi lý do
+    const ok = await call('POST', `/approvals/${id}/approve`, risk.token, { note: 'Đã đối chiếu kế hoạch lớp học' });
+    expect(ok.body).toMatchObject({ status: 'APPROVED', decidedByEmail: 'risk@example.test', result: { to } });
+    expect((await call('POST', `/approvals/${id}/approve`, risk.token, {})).body.error.code).toBe('DECIDED');
     await market.flushNow();
     expect(market.lastPrice(BTC)).toBe(to);
     expect(market.info(BTC)!.priceMode).toBe('MANUAL');
@@ -186,7 +206,8 @@ describe('Trang quản trị: chỉnh giá', () => {
 
     const row = (await call<AdminPriceRow[]>('GET', '/prices', admin.token)).body.find((x) => x.symbol === BTC)!;
     expect(row).toMatchObject({ mode: 'MANUAL', last: to });
-    expect(row.control).toMatchObject({ to, reason: 'Kịch bản giảm giá cho lớp học', by: 'admin@example.test', progress: 1 });
+    // người thực hiện = người duyệt; nhật ký ghi cả người đề xuất
+    expect(row.control).toMatchObject({ to, reason: 'Kịch bản giảm giá cho lớp học', by: 'risk@example.test', progress: 1 });
     expect((await call('POST', `/prices/${BTC}/manual`, admin.token, { reason: 'bật lại' })).status).toBe(409);
 
     // khởi động lại máy chủ: cặp vẫn ở giá điều chỉnh
@@ -195,24 +216,32 @@ describe('Trang quản trị: chỉnh giá', () => {
     expect(again.info(BTC)).toMatchObject({ priceMode: 'MANUAL' });
     expect(again.priceControl(BTC)!.control).toMatchObject({ to, volatilityPct: 0 });
 
-    // kịch bản: chạy tới giá đích trong 30 phút
-    const target = new Big(to).times(1.05).round(0).toFixed();
+    // chỉnh nhỏ (≤ PRICE_APPROVAL_PCT): thực hiện ngay — kịch bản chạy tới giá đích trong 30 phút
+    const target = new Big(to).times(1.04).round(0).toFixed();
     const s = await call('POST', `/prices/${BTC}/set`, admin.token, { price: target, durationMin: 30, volatilityPct: 0.5, reason: 'Hồi phục dần' });
+    expect(s.status).toBe(200);
     expect(s.body.endAt - Date.now()).toBeGreaterThan(29 * 60_000);
     await market.flushNow();
     expect(Math.abs(Number(market.lastPrice(BTC)) / Number(to) - 1)).toBeLessThan(0.006);
 
+    // về giá thực tế: chiều an toàn, không cần duyệt
     expect((await call('POST', `/prices/${BTC}/live`, admin.token, { reason: 'Kết thúc bài học' })).status).toBe(200);
     expect(market.info(BTC)!.priceMode).toBe('LIVE');
-    expect((await db.one<{ price_mode: string; price_control: unknown }>('SELECT price_mode, price_control FROM symbols WHERE symbol = $1', [BTC]))).toMatchObject({
+    expect(await db.one<{ price_mode: string; price_control: unknown }>('SELECT price_mode, price_control FROM symbols WHERE symbol = $1', [BTC])).toMatchObject({
       price_mode: 'LIVE',
       price_control: null,
     });
 
     const hist = (await call<{ action: string; adminEmail: string; detail: Record<string, unknown> }[]>('GET', `/prices/${BTC}/history`, admin.token)).body;
     expect(hist.map((h) => h.action)).toEqual(['PRICE_MODE_LIVE', 'PRICE_SET', 'PRICE_SET']);
-    expect(hist[2]).toMatchObject({ adminEmail: 'admin@example.test', detail: { from: before, to, enteredManual: true, reason: 'Kịch bản giảm giá cho lớp học' } });
+    expect(hist[2]).toMatchObject({
+      adminEmail: 'risk@example.test',
+      // giá xuất phát = giá trên sàn lúc DUYỆT (giá vẫn chạy trong lúc chờ), không phải lúc đề xuất
+      detail: { from: ok.body.result.from, to, enteredManual: true, reason: 'Kịch bản giảm giá cho lớp học', approvalId: id, requestedBy: 'admin@example.test' },
+    });
     expect(hist[1]!.detail).toMatchObject({ durationMin: 30, volatilityPct: 0.5, enteredManual: false });
+    const approvalAudit = (await db.many<{ action: string }>(`SELECT action FROM admin_audit_log WHERE target_type = 'approval' AND target_id = $1 ORDER BY id`, [String(id)])).map((x) => x.action);
+    expect(approvalAudit).toEqual(['APPROVAL_REQUEST', 'APPROVAL_APPROVE']);
     // nhật ký chỉ ghi thêm
     await expect(db.many(`DELETE FROM admin_audit_log WHERE action = 'PRICE_SET'`)).rejects.toThrow(/chỉ được ghi thêm/);
   });

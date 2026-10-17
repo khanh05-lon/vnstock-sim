@@ -10,7 +10,7 @@ import {
   type AdminPriceRow,
   type PriceHistoryItem,
 } from '@vss/shared';
-import { useAdminAction, useAdminPrices, usePriceHistory } from '../../lib/admin';
+import { useAdminAction, useAdminMe, useAdminPrices, usePriceHistory } from '../../lib/admin';
 import { cn, fmtDateTime, fmtPct, fmtPrice, signTone, toneText } from '../../lib/format';
 import { CoinIcon } from '../common/CoinIcon';
 import { Empty, Modal, Spinner } from '../common/ui';
@@ -190,8 +190,8 @@ function SetPriceModal({ row, onClose }: { row: AdminPriceRow | null; onClose():
           <textarea className="input mt-1 h-16 resize-none py-2" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
         </label>
         <p className="text-[12px] text-tx-3">
-          Lệnh của nhà đầu tư khớp theo giá này. Nhà đầu tư thấy nhãn "Giá điều chỉnh" trên bảng giá và trang giao dịch. Bấm "Về giá thực tế" bất cứ lúc nào để quay
-          lại giá Binance.
+          Lệnh của nhà đầu tư khớp theo giá này. Nhà đầu tư thấy nhãn "Giá điều chỉnh" trên bảng giá và trang giao dịch. Lệch nhiều so với giá hiện tại hoặc giá
+          Binance thì thành đề xuất, người thứ hai duyệt mới áp dụng. Bấm "Về giá thực tế" bất cứ lúc nào để quay lại giá Binance.
         </p>
       </div>
     </Modal>
@@ -242,6 +242,8 @@ function HistoryModal({ row, onClose }: { row: AdminPriceRow | null; onClose(): 
 /** Quản trị giá từng cặp: giá thực tế (Binance) hoặc giá điều chỉnh */
 export function PriceControl() {
   const { data, isLoading } = useAdminPrices();
+  const { can } = useAdminMe();
+  const editable = can('market.manage');
   const act = useAdminAction();
   const [q, setQ] = useState('');
   const [onlyManual, setOnlyManual] = useState(false);
@@ -328,6 +330,8 @@ export function PriceControl() {
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex justify-end gap-1.5">
+                        {editable && (
+                        <>
                         <button className="btn btn-brand h-7 px-2.5 text-[12px]" onClick={() => setSetting(r)}>
                           {r.mode === 'MANUAL' ? 'Đặt giá / kịch bản' : 'Đặt giá'}
                         </button>
@@ -339,6 +343,8 @@ export function PriceControl() {
                           <button className="btn btn-ghost h-7 px-2.5 text-[12px]" onClick={() => setMode({ r, to: 'MANUAL' })}>
                             Chuyển sang điều chỉnh
                           </button>
+                        )}
+                        </>
                         )}
                         <button className="btn btn-ghost h-7 px-2" onClick={() => setHistory(r)} aria-label={`Lịch sử chỉnh giá ${r.symbol}`} title="Lịch sử chỉnh giá">
                           <History size={14} />

@@ -1,7 +1,7 @@
-import type { Request } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import type { Server } from 'socket.io';
 import { z } from 'zod';
-import type { AdjustRequestDTO, UserRole } from '@vss/shared';
+import { PERMISSION_DENIED, can, type AdjustRequestDTO, type Permission, type UserRole } from '@vss/shared';
 import type { Database, Queryable } from '../db';
 import { AppError } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
@@ -38,6 +38,20 @@ export interface AdminCtx {
 export type AdminRequest = Request & { admin: AdminCtx };
 
 export const forbidden = (msg: string) => new AppError(403, 'FORBIDDEN', msg);
+
+/** Chặn route theo quyền chi tiết của vai trò (sau staffGuard, vai trò đã đọc lại từ CSDL ở request này) */
+export const need =
+  (perm: Permission) =>
+  (req: Request, _res: Response, next: NextFunction): void => {
+    const { admin } = req as AdminRequest;
+    if (admin && can(admin.role, perm)) return next();
+    next(forbidden(PERMISSION_DENIED[perm]));
+  };
+
+/** Kiểm tra quyền trong thân hàm (khi quyền phụ thuộc dữ liệu, vd. loại đề xuất cần duyệt) */
+export function assertCan(admin: AdminCtx, perm: Permission) {
+  if (!can(admin.role, perm)) throw forbidden(PERMISSION_DENIED[perm]);
+}
 export const uuid = z.string().uuid('Mã người dùng không hợp lệ');
 export const reasonSchema = z.string().trim().min(3, 'Lý do tối thiểu 3 ký tự').max(200, 'Lý do tối đa 200 ký tự');
 export const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày không hợp lệ (YYYY-MM-DD)');

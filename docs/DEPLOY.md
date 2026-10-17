@@ -76,8 +76,10 @@ Sau khi chạy:
 | `MARKET_PROVIDER` | | `mock` (giả lập) hoặc `vnstock` (giá thật, xem mục 7) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | nên có | Gửi email. Để trống → nội dung email chỉ ghi ra log |
 | `REQUIRE_EMAIL_VERIFICATION` | | `true` = phải xác thực email mới được đặt lệnh |
-| `REQUIRE_STAFF_2FA` | | Nhân viên (quản trị, CSKH) phải bật 2FA mới vào khu vực nhân viên — mặc định bật khi `NODE_ENV=production` |
-| `ADJUST_APPROVAL_USDT` | | Điều chỉnh số dư từ mức này (USDT, mặc định 1000) trở lên cần quản trị viên thứ hai duyệt |
+| `REQUIRE_STAFF_2FA` | | Nhân viên (mọi vai trò) phải bật 2FA mới vào khu vực nhân viên — mặc định bật khi `NODE_ENV=production` |
+| `ADJUST_APPROVAL_USDT` | | Điều chỉnh số dư từ mức này (USDT, mặc định 1000) trở lên cần người thứ hai thuộc bộ phận Tài chính duyệt |
+| `PRICE_APPROVAL_PCT` | | Chỉnh giá lệch quá mức này (%, mặc định 5) so với giá hiện tại hoặc giá Binance cần người thứ hai duyệt |
+| `DEV_STAFF_PASSWORD` | | Chỉ dev: tạo sẵn tài khoản nhân viên thử mỗi vai trò. **Không đặt ở production** (không có tác dụng khi `NODE_ENV=production`) |
 | `METRICS_TOKEN` | | Bật `/api/metrics` (Prometheus) với header `Authorization: Bearer <token>` |
 | `ALERT_EMAILS`, `ALERT_WEBHOOK_URL` | | Nơi nhận cảnh báo vận hành (mục 6); ngưỡng chỉnh bằng `ALERT_*_MS`, `ALERT_RSS_MB`, `ALERT_ERROR_RATE_PCT` |
 | `BACKUP_DIR` | | Nơi ghi bản sao lưu tự động trước mỗi lần khôi phục từ trang Quản trị (mặc định `./data/backups`, trong Docker nằm trong volume `appdata`) |
@@ -169,7 +171,10 @@ và gửi cảnh báo.
 ## 8. Danh sách kiểm tra bảo mật
 
 - [ ] `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, `POSTGRES_PASSWORD` là chuỗi ngẫu nhiên, không commit lên Git (`.env` đã nằm trong `.gitignore`)
-- [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA; có ít nhất 2 quản trị viên để duyệt điều chỉnh số dư (nguyên tắc 2 người)
+- [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA
+- [ ] Đủ người cho nguyên tắc 2 người: ≥ 2 Quản trị hệ thống (duyệt khôi phục dữ liệu), ≥ 2 Tài chính (duyệt điều chỉnh số dư lớn — đề xuất của CSKH chỉ cần 1),
+      Vận hành thị trường + Rủi ro & giám sát (đề xuất và duyệt chéo chỉnh giá lớn / niêm yết / tạm ngừng toàn sàn); mỗi người một tài khoản, không dùng chung
+- [ ] Quản trị hệ thống chỉ cấp đúng vai trò cần thiết (Quản trị → Người dùng → Đổi vai trò); định kỳ rà soát danh sách nhân viên
 - [ ] Nhân viên CSKH dùng vai trò "Nhân viên CSKH" (không cấp quyền quản trị), đã bật 2FA; có người trực khu CSKH và nhận cảnh báo "yêu cầu hỗ trợ quá hạn" qua `ALERT_EMAILS`
 - [ ] Tường lửa chỉ mở 22/80/443; SSH đăng nhập bằng khoá, tắt đăng nhập mật khẩu
 - [ ] SMTP thật đã cấu hình, `REQUIRE_EMAIL_VERIFICATION=true`

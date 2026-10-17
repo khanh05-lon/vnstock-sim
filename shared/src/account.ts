@@ -136,13 +136,25 @@ export const preferencesSchema = z
   })
   .strict();
 
-/** Vai trò: nhà đầu tư, nhân viên chăm sóc khách hàng, quản trị viên */
-export type UserRole = 'USER' | 'SUPPORT' | 'ADMIN';
+/** Vai trò nhân viên — quyền chi tiết của từng vai trò ở permissions.ts */
+export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'AUDITOR' | 'SUPPORT';
+export type UserRole = 'USER' | StaffRole;
 
-export const ROLE_LABEL: Record<UserRole, string> = { USER: 'Nhà đầu tư', SUPPORT: 'Nhân viên CSKH', ADMIN: 'Quản trị viên' };
+export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'AUDITOR', 'SUPPORT'];
+export const USER_ROLES: readonly UserRole[] = ['USER', ...STAFF_ROLES];
 
-/** Nhân viên (CSKH hoặc quản trị) — được vào khu vực hỗ trợ khách hàng */
-export const isStaff = (role: string | null | undefined): boolean => role === 'SUPPORT' || role === 'ADMIN';
+export const ROLE_LABEL: Record<UserRole, string> = {
+  USER: 'Nhà đầu tư',
+  SUPPORT: 'Nhân viên CSKH',
+  ADMIN: 'Quản trị hệ thống',
+  MARKET_OPS: 'Vận hành thị trường',
+  FINANCE: 'Tài chính',
+  RISK: 'Rủi ro & giám sát',
+  AUDITOR: 'Kiểm toán (chỉ đọc)',
+};
+
+/** Có vai trò nhân viên (bất kỳ) */
+export const isStaff = (role: string | null | undefined): role is StaffRole => !!role && (STAFF_ROLES as readonly string[]).includes(role);
 
 /** Thông tin người dùng đăng nhập */
 export interface UserDTO {

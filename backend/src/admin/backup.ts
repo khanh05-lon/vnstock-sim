@@ -45,6 +45,8 @@ export const BACKUP_TABLES: TableSpec[] = [
   { name: 'support_messages', sql: 'SELECT * FROM support_messages ORDER BY id', replace: true },
   // Nhật ký quản trị chỉ được ghi thêm: khôi phục KHÔNG xoá nhật ký hiện có, chỉ gộp thêm dòng còn thiếu
   { name: 'admin_audit_log', sql: 'SELECT * FROM admin_audit_log ORDER BY id', replace: false },
+  // Đề xuất chờ duyệt: chỉ gộp thêm (đề xuất khôi phục đang thực hiện vẫn còn để ghi kết quả)
+  { name: 'approval_requests', sql: 'SELECT * FROM approval_requests ORDER BY id', replace: false },
 ];
 
 /** Bảng xoá theo khi khôi phục nhưng không có trong bản sao lưu (token tạm thời) */

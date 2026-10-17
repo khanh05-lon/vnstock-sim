@@ -112,6 +112,8 @@ export const config = {
   requireStaff2fa: bool('REQUIRE_STAFF_2FA', isProd),
   /** Điều chỉnh số dư có giá trị từ mức này (USDT) trở lên phải có quản trị viên thứ hai duyệt */
   adjustApprovalUsdt: Number(process.env.ADJUST_APPROVAL_USDT ?? 1000),
+  /** Chỉnh giá lệch quá mức này (%, so với giá hiện tại hoặc giá Binance) phải có người thứ hai duyệt */
+  priceApprovalPct: Number(process.env.PRICE_APPROVAL_PCT ?? 5),
   dataEncryptionKey,
   marketFeed: feed as 'binance' | 'sim',
   binance: {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RotateCcw, Save } from 'lucide-react';
 import { Big, type RulesPatch, type TradingRules } from '@vss/shared';
-import { useAdminAction, useAdminRules } from '../../lib/admin';
+import { useAdminAction, useAdminMe, useAdminRules } from '../../lib/admin';
 import { cn } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { ReasonModal, Section } from './adminUi';
@@ -32,6 +32,7 @@ const fromText = (s: string, f: Field) => {
 export function RulesEditor() {
   const { data, isLoading } = useAdminRules();
   const act = useAdminAction();
+  const canEdit = useAdminMe().can('market.manage');
   const [form, setForm] = useState<Record<string, string>>({});
   const [resetOpen, setResetOpen] = useState(false);
 
@@ -71,10 +72,10 @@ export function RulesEditor() {
       className="xl:col-span-2"
       actions={
         <>
-          <button className="btn btn-ghost h-8" onClick={() => setResetOpen(true)} disabled={!Object.keys(data.overrides).length}>
+          <button className="btn btn-ghost h-8" onClick={() => setResetOpen(true)} disabled={!canEdit || !Object.keys(data.overrides).length}>
             <RotateCcw size={14} /> Mặc định
           </button>
-          <button className="btn btn-brand h-8" disabled={!changes.length || invalid} onClick={() => void save()}>
+          <button className="btn btn-brand h-8" disabled={!canEdit || !changes.length || invalid} onClick={() => void save()} title={canEdit ? undefined : 'Chỉ Vận hành thị trường được sửa biểu phí'}>
             <Save size={14} /> Lưu {changes.length ? `(${changes.length})` : ''}
           </button>
         </>

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Search, UserPlus } from 'lucide-react';
-import { toast } from 'sonner';
-import { LEDGER_LABEL, ORDER_STATUS_LABEL, ROLE_LABEL, type UserRole } from '@vss/shared';
+import { LEDGER_LABEL, ORDER_STATUS_LABEL, ROLE_DESC, ROLE_LABEL, USER_ROLES, isStaff, type UserRole } from '@vss/shared';
 import { OrderTimelineModal } from '../support/SupportUi';
-import { AUDIT_LABEL, auditSummary, useAdminAction, useAdminUser, useAdminUsers, type AdminUserDetail } from '../../lib/admin';
+import { AUDIT_LABEL, auditSummary, useAdminAction, useAdminMe, useAdminUser, useAdminUsers, type AdminUserDetail } from '../../lib/admin';
 import { cleanDecimal, cn, decOrNull, fmtDateTime, fmtInt, fmtPct, fmtPrice, fmtQty, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAuth } from '../../store/auth';
 import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
@@ -14,6 +13,7 @@ type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'role' | 'delete' | '
 
 function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }) {
   const me = useAuth((s) => s.user);
+  const { can } = useAdminMe();
   const act = useAdminAction();
   const [kind, setKind] = useState<ActionKind>(null);
   const [amountText, setAmountText] = useState('');
@@ -34,44 +34,56 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        {u.status === 'ACTIVE' ? (
-          <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('lock')} title={u.role !== 'USER' ? 'Thu quyền nhân viên trước' : undefined}>
-            Khoá tài khoản
-          </button>
-        ) : (
-          <button className="btn btn-ghost h-8 text-up" onClick={() => setKind('unlock')}>
-            Mở khoá
+        {can('users.lock') &&
+          (u.status === 'ACTIVE' ? (
+            <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('lock')} title={u.role !== 'USER' ? 'Thu quyền nhân viên trước' : undefined}>
+              Khoá tài khoản
+            </button>
+          ) : (
+            <button className="btn btn-ghost h-8 text-up" onClick={() => setKind('unlock')}>
+              Mở khoá
+            </button>
+          ))}
+        {can('finance.adjust') && (
+          <>
+            <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('adjust')} title={self ? 'Không tự điều chỉnh số dư của mình' : undefined}>
+              Điều chỉnh số dư
+            </button>
+            <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('reset')}>
+              Đặt lại tài khoản
+            </button>
+          </>
+        )}
+        {can('staff.manage') && (
+          <button
+            className="btn btn-ghost h-8"
+            disabled={self}
+            onClick={() => {
+              setRole(u.role);
+              setKind('role');
+            }}
+          >
+            Đổi vai trò ({ROLE_LABEL[u.role]})
           </button>
         )}
-        <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('adjust')} title={self ? 'Không tự điều chỉnh số dư của mình' : undefined}>
-          Điều chỉnh số dư
-        </button>
-        <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('reset')}>
-          Đặt lại tài khoản
-        </button>
-        <button
-          className="btn btn-ghost h-8"
-          disabled={self}
-          onClick={() => {
-            setRole(u.role);
-            setKind('role');
-          }}
-        >
-          Đổi vai trò ({ROLE_LABEL[u.role]})
-        </button>
-        {!u.emailVerified && (
+        {can('users.manage') && !u.emailVerified && (
           <button className="btn btn-ghost h-8" onClick={() => setKind('verify')}>
             Xác thực email hộ
           </button>
         )}
-        {u.twoFactorEnabled && (
+        {can('users.manage') && u.twoFactorEnabled && (
           <button className="btn btn-ghost h-8" onClick={() => setKind('reset2fa')}>
             Tắt 2FA hộ
           </button>
         )}
-        <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('delete')}>
-          Xoá tài khoản
-        </button>
+        {can('users.manage') && (
+          <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('delete')}>
+            Xoá tài khoản
+          </button>
+        )}
+        {!can('users.lock') && !can('finance.adjust') && !can('staff.manage') && !can('users.manage') && (
+          <span className="text-[12px] text-tx-3">Vai trò của bạn chỉ được xem hồ sơ này.</span>
+        )}
       </div>
 
       <ReasonModal
@@ -170,7 +182,6 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
             { asset, amount: sign > 0 ? amount : `-${amount}`, reason },
             'Đã gửi điều chỉnh',
           );
-          if (r?.pending) toast.info(`Giá trị lớn: đã tạo yêu cầu #${r.request?.id}, chờ quản trị viên khác duyệt (mục Duyệt điều chỉnh)`, { duration: 10_000 });
           if (r) close();
         }}
       />
@@ -188,13 +199,13 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
       <ReasonModal
         open={kind === 'role'}
         title={`Đổi vai trò của ${u.email}`}
-        description="Nhân viên CSKH: trả lời khách, xem hồ sơ khách qua yêu cầu hỗ trợ, huỷ hộ lệnh, khoá khẩn, đề xuất điều chỉnh (cần quản trị viên duyệt). Quản trị viên: toàn quyền. Ở môi trường thật nhân viên phải bật 2FA."
+        description={<>{ROLE_DESC[role]} Ở môi trường thật nhân viên phải bật 2FA.</>}
         confirmLabel="Lưu vai trò"
         requireReason={false}
         canConfirm={role !== u.role}
         extra={
           <select className="input h-9 w-full" value={role} onChange={(e) => setRole(e.target.value as UserRole)} aria-label="Vai trò">
-            {(['USER', 'SUPPORT', 'ADMIN'] as UserRole[]).map((r) => (
+            {USER_ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABEL[r]}
               </option>
@@ -569,7 +580,7 @@ export function Users({ onOpenUser }: { onOpenUser(id: string): void }) {
                     <div className="flex items-center gap-1.5 font-medium">
                       <span className={cn('h-1.5 w-1.5 rounded-full', u.online ? 'bg-up' : 'bg-bg-4')} title={u.online ? 'Đang trực tuyến' : 'Ngoại tuyến'} />
                       {u.fullName}
-                      {u.role === 'ADMIN' && <Pill tone="brand">QTV</Pill>}
+                      {isStaff(u.role) && <Pill tone={u.role === 'ADMIN' ? 'brand' : 'info'}>{ROLE_LABEL[u.role]}</Pill>}
                       {u.role === 'SUPPORT' && <Pill tone="info">CSKH</Pill>}
                       {u.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
                       {!u.emailVerified && <Pill tone="warn">Chưa xác thực</Pill>}

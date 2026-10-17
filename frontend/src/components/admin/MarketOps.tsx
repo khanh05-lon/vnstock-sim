@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { useAdminAction, useAdminMarket } from '../../lib/admin';
+import { useAdminAction, useAdminMarket, useAdminMe } from '../../lib/admin';
 import { cn, fmtTime } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
@@ -14,6 +14,7 @@ const LEVELS = [
 
 export function MarketOps() {
   const { data, isLoading } = useAdminMarket();
+  const { can } = useAdminMe();
   const act = useAdminAction();
   const [haltOpen, setHaltOpen] = useState(false);
   const [symbol, setSymbol] = useState('');
@@ -56,17 +57,20 @@ export function MarketOps() {
           Tạm ngừng thì người dùng không đặt / sửa được lệnh và lệnh đang chờ không được khớp; vẫn huỷ lệnh và xem thị trường được. Mọi trình duyệt thấy banner đỏ ngay lập tức.
         </p>
         {st.tradingHalted && <p className="mt-2 text-down">Lý do: {st.haltReason}</p>}
-        <div className="mt-3">
-          {st.tradingHalted ? (
-            <button className="btn btn-up" onClick={() => void act('/admin/market/halt', 'POST', { halted: false }, 'Đã mở lại nhận lệnh')}>
-              Mở lại nhận lệnh
-            </button>
-          ) : (
-            <button className="btn btn-down" onClick={() => setHaltOpen(true)}>
-              Tạm ngừng nhận lệnh
-            </button>
-          )}
-        </div>
+        {can('market.manage') && (
+          <div className="mt-3">
+            {st.tradingHalted ? (
+              <button className="btn btn-up" onClick={() => void act('/admin/market/halt', 'POST', { halted: false }, 'Đã mở lại nhận lệnh')}>
+                Mở lại nhận lệnh
+              </button>
+            ) : (
+              <button className="btn btn-down" onClick={() => setHaltOpen(true)}>
+                Đề xuất tạm ngừng toàn sàn
+              </button>
+            )}
+            {!st.tradingHalted && <p className="mt-2 text-[12px] text-tx-3">Tạm ngừng toàn sàn cần người thứ hai duyệt. Sự cố ở 1 cặp: tạm ngừng riêng cặp đó bên dưới (có hiệu lực ngay).</p>}
+          </div>
+        )}
       </Section>
 
       <Section title="Tạm ngừng giao dịch theo cặp">
@@ -87,7 +91,7 @@ export function MarketOps() {
           </datalist>
           <button
             className="btn btn-ghost h-9"
-            disabled={!symOk || st.haltedSymbols.includes(sym)}
+            disabled={!can('market.halt') || !symOk || st.haltedSymbols.includes(sym)}
             onClick={async () => {
               if (await act(`/admin/market/symbols/${sym}/halt`, 'POST', { halted: true }, `Đã tạm ngừng ${sym}`)) setSymbol('');
             }}
@@ -102,6 +106,7 @@ export function MarketOps() {
                 {s}
                 <button
                   aria-label={`Mở lại ${s}`}
+                  disabled={!can('market.halt')}
                   className="rounded hover:bg-down/20"
                   onClick={() => void act(`/admin/market/symbols/${s}/halt`, 'POST', { halted: false }, `Đã mở lại ${s}`)}
                 >
@@ -121,14 +126,18 @@ export function MarketOps() {
             {st.announcement.text}
             <div className="mt-1 flex items-center justify-between text-[11px] opacity-80">
               <span>Đăng lúc {fmtTime(st.announcement.updatedAt)}</span>
-              <button className="underline" onClick={() => void act('/admin/announcement', 'DELETE', undefined, 'Đã gỡ thông báo')}>
-                Gỡ thông báo
-              </button>
+              {can('system.announce') && (
+                <button className="underline" onClick={() => void act('/admin/announcement', 'DELETE', undefined, 'Đã gỡ thông báo')}>
+                  Gỡ thông báo
+                </button>
+              )}
             </div>
           </div>
         ) : (
           <p className="text-[12px] text-tx-3">Hiện không có thông báo.</p>
         )}
+        {can('system.announce') && (
+        <>
         <textarea
           className="input mt-3 h-20 resize-none py-2"
           maxLength={300}
@@ -153,20 +162,22 @@ export function MarketOps() {
             Đăng thông báo
           </button>
         </div>
+        </>
+        )}
       </Section>
 
       <RulesEditor />
 
       <ReasonModal
         open={haltOpen}
-        title="Tạm ngừng nhận lệnh toàn hệ thống"
-        description="Lý do sẽ hiển thị cho mọi người dùng trên banner và trong thông báo lỗi khi đặt lệnh."
-        confirmLabel="Tạm ngừng"
+        title="Đề xuất tạm ngừng nhận lệnh toàn sàn"
+        description="Một người khác (Vận hành thị trường hoặc Rủi ro & giám sát) duyệt thì sàn mới tạm ngừng. Lý do sẽ hiển thị cho mọi người dùng trên banner và trong thông báo lỗi khi đặt lệnh."
+        confirmLabel="Gửi đề xuất"
         danger
         placeholder="Ví dụ: Bảo trì hệ thống, sự cố nguồn giá..."
         onClose={() => setHaltOpen(false)}
         onConfirm={async (reason) => {
-          if (await act('/admin/market/halt', 'POST', { halted: true, reason }, 'Đã tạm ngừng nhận lệnh')) setHaltOpen(false);
+          if (await act('/admin/market/halt', 'POST', { halted: true, reason }, 'Đã gửi đề xuất tạm ngừng')) setHaltOpen(false);
         }}
       />
     </div>

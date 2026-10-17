@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Big, ticketMessageSchema, ticketUpdateSchema } from '@vss/shared';
+import { Big, can, rolesWith, ticketMessageSchema, ticketUpdateSchema } from '@vss/shared';
 import { assetParam, audit, reasonSchema, uuid, type AdminDeps, type AdminRequest } from '../admin/common';
 import { auditView, createAdjustRequest, lockUser, staffGuard } from '../admin/staff';
 import { listAuthEvents } from '../lib/authEvents';
@@ -24,7 +24,7 @@ const idOf = (raw: string | undefined, what = 'yêu cầu') => {
 export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engine' | 'store' | 'mailer'> & { support: SupportService }) {
   const { db, market, engine, support } = deps;
   const r = Router();
-  r.use(...staffGuard(db, ['ADMIN', 'SUPPORT']));
+  r.use(...staffGuard(db, 'support.desk'));
 
   r.get(
     '/me',
@@ -45,7 +45,8 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
     '/staff',
     ah(async (_req, res) => {
       const rows = await db.many<{ id: string; email: string; full_name: string; role: string }>(
-        `SELECT id, email, full_name, role FROM users WHERE role IN ('ADMIN','SUPPORT') AND status = 'ACTIVE' ORDER BY role, email`,
+        `SELECT id, email, full_name, role FROM users WHERE role = ANY($1::text[]) AND status = 'ACTIVE' ORDER BY role, email`,
+        [rolesWith('support.desk')],
       );
       res.json(rows.map((u) => ({ id: u.id, email: u.email, fullName: u.full_name, role: u.role })));
     }),
@@ -121,9 +122,10 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
       const { assigneeId } = z.object({ assigneeId: uuid.optional() }).parse(req.body ?? {});
       let assignee = { id: staff.id, email: staff.email };
       if (assigneeId && assigneeId !== staff.id) {
-        if (staff.role !== 'ADMIN') throw badRequest('FORBIDDEN', 'Chỉ quản trị viên được giao yêu cầu cho nhân viên khác');
-        const u = await db.one<{ id: string; email: string }>(`SELECT id, email FROM users WHERE id = $1 AND role IN ('ADMIN','SUPPORT') AND status = 'ACTIVE'`, [
+        if (!can(staff.role, 'support.lead')) throw badRequest('FORBIDDEN', 'Chỉ Quản trị hệ thống được giao yêu cầu cho nhân viên khác');
+        const u = await db.one<{ id: string; email: string }>(`SELECT id, email FROM users WHERE id = $1 AND role = ANY($2::text[]) AND status = 'ACTIVE'`, [
           assigneeId,
+          rolesWith('support.desk'),
         ]);
         if (!u) throw badRequest('ASSIGNEE', 'Người được giao không phải nhân viên đang hoạt động');
         assignee = u;

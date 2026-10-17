@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ORDER_STATUS_LABEL, type OrderStatus } from '@vss/shared';
-import { useAdminAction, useAdminOrders, type AdminOrder } from '../../lib/admin';
+import { useAdminAction, useAdminMe, useAdminOrders, type AdminOrder } from '../../lib/admin';
 import { cn, fmtDateTime, fmtPrice, fmtQty } from '../../lib/format';
 import { Empty, Spinner, Tabs } from '../common/ui';
 import { STATUS_STYLE, SideChip, typeLabel } from '../trade/OrdersPanel';
@@ -14,6 +14,7 @@ export function Orders({ onOpenUser }: { onOpenUser(id: string): void }) {
   const [side, setSide] = useState('');
   const [target, setTarget] = useState<AdminOrder | null>(null);
   const act = useAdminAction();
+  const canCancel = useAdminMe().can('orders.cancel');
   const { data, isLoading } = useAdminOrders({
     scope,
     status: status || undefined,
@@ -104,7 +105,7 @@ export function Orders({ onOpenUser }: { onOpenUser(id: string): void }) {
                       </span>
                     </td>
                     <td className="px-4 text-right">
-                      {open && (
+                      {open && canCancel && (
                         <button className="text-[12px] text-down hover:underline" onClick={() => setTarget(o)}>
                           Huỷ hộ
                         </button>

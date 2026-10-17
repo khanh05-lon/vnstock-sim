@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { Big, type AdjustRequestDTO, type UserRole } from '@vss/shared';
+import { Big, PERMISSION_DENIED, can, type AdjustRequestDTO, type Permission, type UserRole } from '@vss/shared';
 import { config } from '../config';
 import type { Database, Queryable } from '../db';
 import { requireAuth, type AuthedRequest } from '../lib/auth';
@@ -11,15 +11,15 @@ import { credit, ledger as writeLedger } from '../trading/wallet';
 import { audit, forbidden, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 
 /**
- * Chỉ cho nhân viên có vai trò phù hợp, đang hoạt động; vai trò đọc lại từ CSDL ở mỗi request
+ * Chỉ cho nhân viên có quyền `perm` (theo vai trò), đang hoạt động; vai trò đọc lại từ CSDL ở mỗi request
  * (thu quyền có hiệu lực ngay). REQUIRE_STAFF_2FA: nhân viên phải bật xác thực 2 lớp.
  */
-export function staffGuard(db: Database, roles: readonly UserRole[]) {
+export function staffGuard(db: Database, perm: Permission) {
   const check = (req: Request, _res: Response, next: NextFunction) => {
     const { user } = req as AuthedRequest;
     db.one<{ role: UserRole; status: string; totp_enabled_at: Date | null }>('SELECT role, status, totp_enabled_at FROM users WHERE id = $1', [user.id]).then(
       (row) => {
-        if (!row || !roles.includes(row.role)) return next(forbidden('Bạn không có quyền truy cập khu vực này'));
+        if (!row || !can(row.role, perm)) return next(forbidden(PERMISSION_DENIED[perm]));
         if (row.status !== 'ACTIVE') return next(forbidden('Tài khoản nhân viên đang bị khoá'));
         if (config.requireStaff2fa && !row.totp_enabled_at) {
           return next(forbidden('Nhân viên phải bật xác thực 2 lớp (Cài đặt tài khoản → Bảo mật) trước khi dùng khu vực này'));

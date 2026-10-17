@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AUDIT_LABEL, auditSummary, useAdminAudit, useAdminLogs } from '../../lib/admin';
+import { AUDIT_LABEL, auditSummary, useAdminAudit, useAdminLogs, useAdminMe } from '../../lib/admin';
 import { cn, downloadCsv, fmtDateTime, fmtTime } from '../../lib/format';
 import { Empty, Spinner, UnderlineTabs } from '../common/ui';
 import { Pill } from './adminUi';
@@ -111,17 +111,16 @@ function ServerLog() {
 }
 
 export function Logs() {
-  const [tab, setTab] = useState<'audit' | 'server'>('audit');
+  const { can } = useAdminMe();
+  const items = [
+    ...(can('audit.view') ? [{ value: 'audit' as const, label: 'Nhật ký quản trị' }] : []),
+    ...(can('system.view') ? [{ value: 'server' as const, label: 'Log máy chủ' }] : []),
+  ];
+  const [picked, setTab] = useState<'audit' | 'server'>('audit');
+  const tab = items.some((i) => i.value === picked) ? picked : (items[0]?.value ?? 'audit');
   return (
     <section className="panel overflow-hidden">
-      <UnderlineTabs
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: 'audit', label: 'Nhật ký quản trị' },
-          { value: 'server', label: 'Log máy chủ' },
-        ]}
-      />
+      <UnderlineTabs value={tab} onChange={setTab} items={items} />
       {tab === 'audit' ? <AuditLog /> : <ServerLog />}
     </section>
   );

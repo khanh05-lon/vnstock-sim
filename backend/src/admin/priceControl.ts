@@ -12,16 +12,19 @@ import {
   type PriceControl,
   type PriceHistoryItem,
 } from '@vss/shared';
+import { config } from '../config';
 import type { Queryable } from '../db';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import type { StoredPriceControl } from '../market/symbols';
-import { audit, symbolParam, type AdminDeps, type AdminRequest } from './common';
+import type { Approvals } from './approvals';
+import { audit, need, symbolParam, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 
 /**
- * Quản lý giá từng cặp: giá thực tế (Binance) ⇄ giá điều chỉnh (quản trị viên đặt giá / chạy kịch bản).
+ * Quản lý giá từng cặp: giá thực tế (Binance) ⇄ giá điều chỉnh (đặt giá / chạy kịch bản) — vai trò Vận hành thị trường.
  * Mọi thao tác bắt buộc lý do, lưu CSDL (giữ sau khi khởi động lại) và ghi nhật ký quản trị chỉ-ghi-thêm.
+ * Chỉnh giá lớn (so với giá hiện tại HOẶC giá Binance quá PRICE_APPROVAL_PCT) thành đề xuất, người thứ hai duyệt.
  */
-export function mountPriceControl(r: Router, deps: AdminDeps) {
+export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approvals) {
   const { db, market } = deps;
 
   const save = (q: Queryable, symbol: string, control: StoredPriceControl | null) =>
@@ -129,6 +132,7 @@ export function mountPriceControl(r: Router, deps: AdminDeps) {
   /** Chuyển sang giá điều chỉnh, giữ nguyên giá hiện tại (sau đó đặt giá / kịch bản) */
   r.post(
     '/prices/:symbol/manual',
+    need('market.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const { symbol, pc, last } = target(req.params.symbol);
@@ -154,46 +158,83 @@ export function mountPriceControl(r: Router, deps: AdminDeps) {
     }),
   );
 
-  /** Đặt giá (durationMin = 0: nhảy ngay) hoặc chạy kịch bản tới giá đích; cặp đang ở giá thực tế thì tự chuyển sang giá điều chỉnh */
+  /** Đặt giá / chạy kịch bản — giá xuất phát là giá trên sàn ở thời điểm thực hiện (lúc duyệt, nếu là đề xuất) */
+  const applySet = async (
+    admin: AdminCtx,
+    raw: string,
+    input: { price: string; durationMin: number; volatilityPct: number; reason: string },
+    extra: Record<string, unknown> = {},
+  ) => {
+    const { symbol, pc, info, last } = target(raw);
+    const to = checkPrice(info, input.price);
+    const now = Date.now();
+    const control: StoredPriceControl = {
+      since: pc.control?.since ?? now,
+      from: last,
+      to,
+      startAt: now,
+      endAt: now + input.durationMin * 60_000,
+      volatilityPct: input.volatilityPct,
+      reason: input.reason,
+      by: admin.email,
+    };
+    await db.tx(async (tx) => {
+      await save(tx, symbol, control);
+      await audit(tx, admin, 'PRICE_SET', 'symbol', symbol, {
+        reason: input.reason,
+        from: last,
+        to,
+        changePct: pct(last, to),
+        durationMin: input.durationMin,
+        volatilityPct: input.volatilityPct,
+        binancePrice: pc.ref,
+        enteredManual: !pc.control,
+        ...extra,
+      });
+    });
+    market.setPriceControl(symbol, toControl(control));
+    return { from: last, to, endAt: control.endAt };
+  };
+
+  approvals.register('PRICE_SET', async (admin, req) => {
+    const p = req.payload as { price: string; durationMin: number; volatilityPct: number };
+    return applySet(admin, req.target!, { ...p, reason: req.reason }, { approvalId: req.id, requestedBy: req.requestedByEmail });
+  });
+
+  /**
+   * Đặt giá (durationMin = 0: nhảy ngay) hoặc chạy kịch bản tới giá đích; cặp đang ở giá thực tế thì tự chuyển sang giá điều chỉnh.
+   * Lệch quá PRICE_APPROVAL_PCT so với giá hiện tại hoặc giá Binance → đề xuất chờ người thứ hai duyệt (202).
+   */
   r.post(
     '/prices/:symbol/set',
+    need('market.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const { symbol, pc, info, last } = target(req.params.symbol);
       const input = priceSetSchema.parse(req.body);
       const to = checkPrice(info, input.price);
-      const now = Date.now();
-      const control: StoredPriceControl = {
-        since: pc.control?.since ?? now,
-        from: last,
-        to,
-        startAt: now,
-        endAt: now + input.durationMin * 60_000,
-        volatilityPct: input.volatilityPct,
-        reason: input.reason,
-        by: admin.email,
-      };
-      await db.tx(async (tx) => {
-        await save(tx, symbol, control);
-        await audit(tx, admin, 'PRICE_SET', 'symbol', symbol, {
+      const move = pct(last, to) ?? 0;
+      const vsBinance = pc.ref ? (pct(pc.ref, to) ?? 0) : null;
+      const limit = config.priceApprovalPct;
+      if (Math.abs(move) > limit || (vsBinance != null && Math.abs(vsBinance) > limit)) {
+        const request = await approvals.create(admin, {
+          kind: 'PRICE_SET',
+          target: symbol,
+          payload: { price: to, durationMin: input.durationMin, volatilityPct: input.volatilityPct, priceAtRequest: last, binancePrice: pc.ref, changePct: move, vsBinancePct: vsBinance },
+          summary: `${symbol}: ${last} → ${to} (${move > 0 ? '+' : ''}${move}%${vsBinance != null ? `, lệch giá Binance ${vsBinance > 0 ? '+' : ''}${vsBinance}%` : ''}) ${input.durationMin ? `trong ${input.durationMin} phút` : 'ngay lập tức'}, dao động ±${input.volatilityPct}%`,
           reason: input.reason,
-          from: last,
-          to,
-          changePct: pct(last, to),
-          durationMin: input.durationMin,
-          volatilityPct: input.volatilityPct,
-          binancePrice: pc.ref,
-          enteredManual: !pc.control,
         });
-      });
-      market.setPriceControl(symbol, toControl(control));
-      res.json({ ok: true, from: last, to, endAt: control.endAt });
+        res.status(202).json({ ok: true, pending: true, request });
+        return;
+      }
+      res.json({ ok: true, ...(await applySet(admin, symbol, input)) });
     }),
   );
 
   /** Về giá thực tế (Binance) */
   r.post(
     '/prices/:symbol/live',
+    need('market.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const { symbol, pc, last } = target(req.params.symbol);

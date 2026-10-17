@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Clock, Headset, History, Lock, Search, ShieldCheck, UserRound, Wallet, X } from 'lucide-react';
-import { ORDER_STATUS_LABEL, TICKET_CATEGORY_LABEL, isTicketActive, type OrderDTO, type TicketPriority } from '@vss/shared';
+import { ORDER_STATUS_LABEL, TICKET_CATEGORY_LABEL, can, isTicketActive, type OrderDTO, type TicketPriority } from '@vss/shared';
 import { Pill, ReasonModal } from '../components/admin/adminUi';
 import { Empty, Modal, Spinner } from '../components/common/ui';
 import { ChatThread, Composer, OrderTimeline, OrderTimelineModal, PriorityPill, TicketStatusPill } from '../components/support/SupportUi';
@@ -216,7 +216,8 @@ function TicketView({ id }: { id: number }) {
   const t = data.ticket;
   const active = isTicketActive(t.status);
   const base = `/support-desk/tickets/${t.id}`;
-  const isAdmin = me?.role === 'ADMIN';
+  // Trưởng nhóm (Quản trị hệ thống) giao được yêu cầu cho nhân viên khác
+  const isAdmin = can(me?.role, 'support.lead');
 
   return (
     <div className="flex min-h-0 flex-1">
