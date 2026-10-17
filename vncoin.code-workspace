@@ -1,0 +1,7 @@
+{
+  // Mở file này trong VS Code (File → Open Workspace from File…) để có sẵn lệnh chạy web:
+  //   Ctrl+Shift+B  → chạy API + giao diện
+  //   F5            → chạy rồi mở trình duyệt ở http://localhost:5173
+  "folders": [{ "name": "VNCoin", "path": "." }],
+  "settings": {}
+}

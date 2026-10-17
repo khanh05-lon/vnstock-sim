@@ -10,6 +10,7 @@ import { Database } from './db';
 import { installAdmin } from './admin';
 import { deskRoutes } from './support/desk';
 import { SupportService } from './support/service';
+import { SupportAssistant, claudeBackend } from './support/ai';
 import { supportRoutes } from './routes/support';
 import { initSessionCheck } from './lib/auth';
 import { errorHandler, notFound } from './lib/errors';
@@ -189,7 +190,9 @@ async function main() {
   app.use('/api', communityRoutes(db, nav, market));
   app.use('/api', watchlistRoutes(db));
   app.use('/api', alertRoutes(priceAlerts));
-  app.use('/api', supportRoutes(support));
+  const assistant = new SupportAssistant(db, market, config.ai.apiKey ? claudeBackend(config.ai.apiKey, config.ai.model) : null);
+  log.info(`[ai] trợ lý hỗ trợ: ${assistant.enabled ? `bật (${config.ai.model})` : 'tắt — chưa đặt ANTHROPIC_API_KEY'}`);
+  app.use('/api', supportRoutes(support, assistant));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);

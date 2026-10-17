@@ -115,6 +115,11 @@ export const config = {
   /** Chỉnh giá lệch quá mức này (%, so với giá hiện tại hoặc giá Binance) phải có người thứ hai duyệt */
   priceApprovalPct: Number(process.env.PRICE_APPROVAL_PCT ?? 5),
   dataEncryptionKey,
+  /** Trợ lý AI trong hộp chat hỗ trợ (Claude API). Không có khoá → tắt, khách chỉ gặp nhân viên */
+  ai: {
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    model: process.env.AI_MODEL || 'claude-haiku-5-5',
+  },
   marketFeed: feed as 'binance' | 'sim',
   binance: {
     /** REST công khai (thử lần lượt, cách nhau dấu phẩy) */

@@ -1,0 +1,32 @@
+{
+  // F5 = chạy web rồi tự mở Chrome/Edge ở http://localhost:5173
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chạy web + mở Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "Chạy web (API + giao diện)"
+    },
+    {
+      "name": "Chạy web + mở Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "Chạy web (API + giao diện)"
+    },
+    {
+      "name": "Debug API (backend, đặt breakpoint được)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    }
+  ]
+}

@@ -14,6 +14,7 @@
     "symbols:update": "tsx scripts/update-symbols.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.130.0",
     "@electric-sql/pglite": "^0.2.17",
     "@vss/shared": "*",
     "bcryptjs": "^2.4.3",

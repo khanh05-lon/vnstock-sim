@@ -112,6 +112,42 @@ export const ticketUpdateSchema = z
   .strict()
   .refine((o) => o.status !== 'RESOLVED' || !!o.resolution, { message: 'Đóng yêu cầu phải ghi rõ cách đã xử lý', path: ['resolution'] });
 
+/* ===================== Trợ lý AI (hộp chat) ===================== */
+
+export const AI_CHAT_LIMITS = {
+  /** Số lượt (hỏi + đáp) gần nhất gửi lên máy chủ */
+  maxTurns: 20,
+  /** Độ dài 1 câu hỏi của khách */
+  maxQuestionChars: 2000,
+  /** Số câu hỏi tối đa của 1 người dùng mỗi 10 phút / mỗi ngày */
+  per10Min: 15,
+  perDay: 80,
+};
+
+export const aiChatSchema = z
+  .object({
+    messages: z
+      .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(8000) }).strict())
+      .min(1)
+      .max(AI_CHAT_LIMITS.maxTurns * 2),
+  })
+  .strict()
+  .refine((o) => o.messages.at(-1)?.role === 'user', { message: 'Tin nhắn cuối phải là câu hỏi', path: ['messages'] })
+  .refine((o) => (o.messages.at(-1)?.content.length ?? 0) <= AI_CHAT_LIMITS.maxQuestionChars, {
+    message: `Câu hỏi tối đa ${AI_CHAT_LIMITS.maxQuestionChars} ký tự`,
+    path: ['messages'],
+  });
+
+export type AiChatTurn = z.infer<typeof aiChatSchema>['messages'][number];
+
+/** Trạng thái trợ lý AI (GET /support/ai) */
+export interface AiStatusDTO {
+  enabled: boolean;
+}
+
+/** Mỗi dòng NDJSON máy chủ stream về khi trả lời */
+export type AiStreamEvent = { t: string } | { done: true } | { error: string };
+
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type TicketUpdateInput = z.infer<typeof ticketUpdateSchema>;
 

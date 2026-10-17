@@ -7,6 +7,7 @@ import { useSystemStatus } from '../../lib/admin';
 import { cn } from '../../lib/format';
 import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
+import { ChatWidget } from '../support/ChatWidget';
 import { Header } from './Header';
 
 function StatusBar() {
@@ -120,6 +121,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <StatusBar />
+      <ChatWidget />
     </div>
   );
 }

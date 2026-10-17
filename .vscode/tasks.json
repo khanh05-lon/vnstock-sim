@@ -1,0 +1,75 @@
+{
+  // Ctrl+Shift+B = chạy web. Các lệnh khác: Ctrl+Shift+P → "Tasks: Run Task"
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Chạy web (API + giao diện)",
+      "detail": "npm run dev — API :4000, web http://localhost:5173",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "owner": "vncoin",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": true, "beginsPattern": ".", "endsPattern": "port=4000" }
+      }
+    },
+    {
+      "label": "Chạy web cho điện thoại (cùng Wi-Fi)",
+      "detail": "npm run dev:mobile — mở trên điện thoại địa chỉ Network: http://<IP máy>:5173 in ra trong terminal",
+      "type": "shell",
+      "command": "npm run dev:mobile",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "owner": "vncoin",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": true, "beginsPattern": ".", "endsPattern": "port=4000" }
+      }
+    },
+    {
+      "label": "Chuẩn bị lần đầu (cài thư viện + tạo .env)",
+      "detail": "npm install và chép backend/.env.example → backend/.env nếu chưa có",
+      "type": "shell",
+      "command": "npm install && node -e \"const f=require('fs');if(!f.existsSync('backend/.env')){f.copyFileSync('backend/.env.example','backend/.env');console.log('Đã tạo backend/.env')}else console.log('backend/.env đã có')\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mở web trên trình duyệt",
+      "type": "shell",
+      "windows": { "command": "start http://localhost:5173" },
+      "osx": { "command": "open http://localhost:5173" },
+      "linux": { "command": "xdg-open http://localhost:5173" },
+      "presentation": { "reveal": "never" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Chạy test",
+      "detail": "npm test — backend (PGlite) rồi frontend",
+      "type": "shell",
+      "command": "npm test",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Kiểm kiểu (typecheck)",
+      "type": "shell",
+      "command": "npm run typecheck",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Build giao diện",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}
