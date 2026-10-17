@@ -71,7 +71,18 @@ Người nhắn có thể là chủ tài khoản hoặc kẻ đã chiếm mật 
 Nhật ký quản trị, nhật ký đăng nhập và tin nhắn hỗ trợ **chỉ được ghi thêm**: cơ sở dữ liệu chặn sửa / xoá, kể cả khi khôi phục bản sao lưu.
 Xoá tài khoản chỉ xoá thông tin cá nhân (email, họ tên, mật khẩu, 2FA); lệnh, khớp lệnh, sổ cái và tin nhắn hỗ trợ được giữ ở dạng ẩn danh để đối soát.
 
-## 6. Chống dò mật khẩu
+## 6. Hộp chat và trợ lý AI
+
+Khách đã đăng nhập thấy nút chat tròn ở góc phải mọi trang (trừ trang hỗ trợ đầy đủ). Hộp chat có 2 tab:
+
+- **Trợ lý AI** (Claude): trả lời ngay về phí, loại lệnh, ví, bảo mật; xem được số dư và lệnh của chính khách để giải thích vì sao lệnh chưa khớp, tiền đang bị khoá ở đâu. Trợ lý **không thao tác** được gì trên tài khoản, không đưa khuyến nghị đầu tư, không hỏi mật khẩu / mã 2FA.
+- **Nhân viên**: danh sách yêu cầu hỗ trợ và khung chat với CSKH (giống trang `/ho-tro`).
+
+Khách bấm **Gặp nhân viên** → hệ thống tạo yêu cầu hỗ trợ, tin nhắn đầu tiên có đoạn *"Hội thoại trước đó với trợ lý AI"*. Nhân viên đọc đoạn đó trước, không bắt khách kể lại; câu trả lời của trợ lý chỉ để tham khảo, có thể sai.
+
+Bật trợ lý: đặt `ANTHROPIC_API_KEY` (và tuỳ chọn `AI_MODEL`) trong cấu hình máy chủ rồi khởi động lại. Không có khoá thì tab Trợ lý AI báo "chưa hoạt động" và chuyển khách sang nhắn nhân viên. Mỗi khách hỏi tối đa 15 câu / 10 phút và 80 câu / ngày; hội thoại với trợ lý không lưu trên máy chủ, log chỉ ghi số token mỗi lượt để theo dõi chi phí. Tài khoản đang bị khoá không dùng trợ lý, chỉ nhắn nhân viên.
+
+## 7. Chống dò mật khẩu
 
 Sai mật khẩu hoặc mã 2FA 5 lần trong 15 phút → tài khoản bị chặn đăng nhập 15 phút (kể cả đúng mật khẩu), chủ tài khoản nhận email cảnh báo kèm IP.
 Khách báo không đăng nhập được: kiểm tra **Đăng nhập & bảo mật** trong hồ sơ; nếu nghi bị dò mật khẩu, hướng dẫn khách đặt lại mật khẩu và bật 2FA.
