@@ -28,6 +28,7 @@ import type { BookFill } from '../market/marketService';
 import { grantInitialCapital } from '../seed/seed';
 import type { Notifier } from '../socket';
 import { toFillDTO, toOrderDTO, toOrderListDTO, type AccountRow, type FillRow, type OrderListRow, type OrderRow } from './dto';
+import { SYSTEM_ACTOR, recordOrderEvents, userActor, type OrderActor } from './orderEvents';
 import { balanceOf, credit, debitFree, debitLocked, ledger, lockFunds, planFee, unlockFunds } from './wallet';
 
 /*
@@ -111,7 +112,7 @@ export class SpotEngine {
 
   /* ============================== đặt lệnh ============================== */
 
-  async placeOrder(userId: string, input: PlaceOrderInput): Promise<OrderDTO> {
+  async placeOrder(userId: string, input: PlaceOrderInput, by: OrderActor = userActor()): Promise<OrderDTO> {
     const info = this.requireTradable(input.symbol);
     this.checkFilters(info, input);
     this.assertLimits(userId, info, isAlgoType(input.type) ? 1 : 0, 1);
@@ -119,7 +120,11 @@ export class SpotEngine {
     if (input.type === 'LIMIT_MAKER') this.assertPostOnly(info.symbol, input.side, input.price!);
     let out: Outcome;
     try {
-      out = await this.db.tx((tx) => this.placeInTx(tx, userId, info, input));
+      out = await this.db.tx(async (tx) => {
+        const placed = await this.placeInTx(tx, userId, info, input);
+        await recordOrderEvents(tx, placed.orders.slice(0, 1), 'PLACE', by);
+        return placed;
+      });
     } catch (err) {
       if (isUniqueViolation(err)) throw badRequest('DUPLICATE_CLIENT_ID', 'clientOrderId đã được dùng cho lệnh khác');
       throw err;
@@ -128,7 +133,7 @@ export class SpotEngine {
     return toOrderDTO(out.orders[0]!);
   }
 
-  async placeOco(userId: string, input: OcoOrderInput): Promise<OrderListDTO> {
+  async placeOco(userId: string, input: OcoOrderInput, by: OrderActor = userActor()): Promise<OrderListDTO> {
     const info = this.requireTradable(input.symbol);
     const last = this.market.lastPrice(info.symbol);
     if (!last) throw badRequest('NO_PRICE', `Chưa có giá của ${info.symbol}`);
@@ -170,6 +175,7 @@ export class SpotEngine {
          VALUES ($1,$2,$3,$4,'STOP_LOSS_LIMIT','GTC',$5,$6,$7,'NEW',false,$8,$9,$10,0,$11) RETURNING *`,
         [newClientId(), common[0], common[1], common[2], stopLimitPrice, stopPrice, common[3], common[4], common[5], common[6], common[7]],
       );
+      await recordOrderEvents(tx, [limitLeg!, stopLeg!], 'PLACE', by);
       return { list: list!, orders: [limitLeg!, stopLeg!] };
     });
     this.publish(userId, { orders: out.orders, fills: [] });
@@ -360,7 +366,14 @@ export class SpotEngine {
   }
 
   /** Đóng lệnh (huỷ / hết hiệu lực / khớp xong) và trả lại số dư còn khoá */
-  private async finish(tx: Queryable, o: OrderRow, status: OrderStatus, reason: string | null): Promise<OrderRow> {
+  private async finish(
+    tx: Queryable,
+    o: OrderRow,
+    status: OrderStatus,
+    reason: string | null,
+    by: OrderActor = SYSTEM_ACTOR,
+    opts: { event?: string | null } = {},
+  ): Promise<OrderRow> {
     if (new Big(o.locked_amount).gt(0)) await unlockFunds(tx, o.user_id, o.locked_asset, o.locked_amount);
     const row = (await tx.one<OrderRow>(
       `UPDATE orders SET status = $2, reason = $3, locked_amount = 0,
@@ -369,6 +382,10 @@ export class SpotEngine {
       [o.id, status, reason],
     ))!;
     if (row.order_list_id) await this.syncList(tx, row.order_list_id);
+    // Nhật ký lệnh: huỷ / hết hiệu lực / từ chối (khớp hết đã có trong bảng fills)
+    const event =
+      opts.event !== undefined ? opts.event : status === 'CANCELED' ? 'CANCEL' : status === 'EXPIRED' ? 'EXPIRE' : status === 'REJECTED' ? 'REJECT' : null;
+    if (event) await recordOrderEvents(tx, [row], event, by);
     return row;
   }
 
@@ -380,22 +397,22 @@ export class SpotEngine {
 
   /* ============================== huỷ / sửa ============================== */
 
-  async cancelOrder(userId: string, id: number): Promise<OrderDTO> {
+  async cancelOrder(userId: string, id: number, by: OrderActor = userActor()): Promise<OrderDTO> {
     const o = await this.db.one<OrderRow>('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [id, userId]);
     if (!o) throw notFound('Không tìm thấy lệnh');
     if (!isOpen(o.status)) throw badRequest('NOT_CANCELABLE', 'Lệnh đã khớp hết hoặc đã đóng');
     // Huỷ 1 chân OCO = huỷ cả danh sách (như Binance)
     const orders = o.order_list_id
-      ? await this.closeList(o.order_list_id, 'CANCELED', null)
-      : await this.closeOrders([id], 'CANCELED', null);
+      ? await this.closeList(o.order_list_id, 'CANCELED', null, by)
+      : await this.closeOrders([id], 'CANCELED', null, by);
     this.publish(userId, { orders, fills: [] });
     return toOrderDTO(orders.find((r) => Number(r.id) === id) ?? o);
   }
 
-  async cancelOrderList(userId: string, listId: number): Promise<OrderListDTO> {
+  async cancelOrderList(userId: string, listId: number, by: OrderActor = userActor()): Promise<OrderListDTO> {
     const list = await this.db.one<OrderListRow>('SELECT * FROM order_lists WHERE id = $1 AND user_id = $2', [listId, userId]);
     if (!list) throw notFound('Không tìm thấy lệnh OCO');
-    const orders = await this.closeList(listId, 'CANCELED', null);
+    const orders = await this.closeList(listId, 'CANCELED', null, by);
     this.publish(userId, { orders, fills: [] });
     const all = await this.db.many<OrderRow>('SELECT * FROM orders WHERE order_list_id = $1 ORDER BY id', [listId]);
     const fresh = await this.db.one<OrderListRow>('SELECT * FROM order_lists WHERE id = $1', [listId]);
@@ -403,7 +420,7 @@ export class SpotEngine {
   }
 
   /** Huỷ mọi lệnh mở của người dùng (theo cặp nếu có) */
-  async cancelAll(userId: string, symbol?: string): Promise<number> {
+  async cancelAll(userId: string, symbol?: string, by: OrderActor = userActor()): Promise<number> {
     const rows = await this.db.many<{ id: number; order_list_id: number | null }>(
       `SELECT id, order_list_id FROM orders WHERE user_id = $1 AND status IN ('NEW','PARTIALLY_FILLED') ${symbol ? 'AND symbol = $2' : ''}`,
       symbol ? [userId, symbol] : [userId],
@@ -411,8 +428,8 @@ export class SpotEngine {
     const lists = new Set(rows.filter((r) => r.order_list_id).map((r) => Number(r.order_list_id)));
     const singles = rows.filter((r) => !r.order_list_id).map((r) => Number(r.id));
     const closed: OrderRow[] = [];
-    if (singles.length) closed.push(...(await this.closeOrders(singles, 'CANCELED', null)));
-    for (const l of lists) closed.push(...(await this.closeList(l, 'CANCELED', null)));
+    if (singles.length) closed.push(...(await this.closeOrders(singles, 'CANCELED', null, by)));
+    for (const l of lists) closed.push(...(await this.closeList(l, 'CANCELED', null, by)));
     this.publish(userId, { orders: closed, fills: [] });
     return closed.length;
   }
@@ -421,7 +438,7 @@ export class SpotEngine {
    * Sửa lệnh giới hạn đang chờ = huỷ và đặt lệnh mới (cancel-replace, mất thứ tự hàng đợi).
    * Khối lượng mặc định = phần chưa khớp của lệnh cũ. Đặt lệnh mới lỗi → lệnh cũ giữ nguyên.
    */
-  async replaceOrder(userId: string, id: number, input: ReplaceOrderInput): Promise<OrderDTO> {
+  async replaceOrder(userId: string, id: number, input: ReplaceOrderInput, by: OrderActor = userActor()): Promise<OrderDTO> {
     const o = await this.db.one<OrderRow>('SELECT * FROM orders WHERE id = $1 AND user_id = $2', [id, userId]);
     if (!o) throw notFound('Không tìm thấy lệnh');
     if (!isOpen(o.status)) throw badRequest('NOT_MODIFIABLE', 'Lệnh đã khớp hết hoặc đã đóng');
@@ -442,8 +459,12 @@ export class SpotEngine {
     const out = await this.db.tx(async (tx) => {
       const cur = (await tx.one<OrderRow>('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]))!;
       if (!isOpen(cur.status)) throw badRequest('NOT_MODIFIABLE', 'Lệnh vừa khớp hết hoặc đã đóng');
-      const closed = await this.finish(tx, cur, 'CANCELED', 'Đã sửa lệnh (huỷ và đặt lại)');
+      const closed = await this.finish(tx, cur, 'CANCELED', 'Đã sửa lệnh (huỷ và đặt lại)', by, { event: null });
       const placed = await this.placeInTx(tx, userId, info, next);
+      // Nhật ký: lệnh cũ "đã sửa thành" lệnh mới, lệnh mới ghi rõ thay cho lệnh nào
+      const newId = Number(placed.orders[0]!.id);
+      await recordOrderEvents(tx, [closed], 'REPLACE', by, { newOrderId: newId, newPrice: next.price, newQuantity: next.quantity });
+      await recordOrderEvents(tx, placed.orders.slice(0, 1), 'PLACE', by, { replacesOrderId: id });
       return { orders: [closed, ...placed.orders], fills: placed.fills };
     });
     this.publish(userId, out);
@@ -451,11 +472,11 @@ export class SpotEngine {
   }
 
   /** Quản trị viên huỷ hộ 1 lệnh (kèm lý do) */
-  async adminCancel(id: number, reason: string): Promise<OrderDTO> {
+  async adminCancel(id: number, reason: string, by: OrderActor = SYSTEM_ACTOR): Promise<OrderDTO> {
     const o = await this.db.one<OrderRow>('SELECT * FROM orders WHERE id = $1', [id]);
     if (!o) throw notFound('Không tìm thấy lệnh');
     if (!isOpen(o.status)) throw badRequest('NOT_CANCELABLE', 'Lệnh đã khớp hết hoặc đã đóng');
-    const orders = o.order_list_id ? await this.closeList(o.order_list_id, 'CANCELED', reason) : await this.closeOrders([id], 'CANCELED', reason);
+    const orders = o.order_list_id ? await this.closeList(o.order_list_id, 'CANCELED', reason, by) : await this.closeOrders([id], 'CANCELED', reason, by);
     this.publish(o.user_id, { orders, fills: [] });
     return toOrderDTO(orders.find((r) => Number(r.id) === id) ?? o);
   }
@@ -467,12 +488,12 @@ export class SpotEngine {
     return n;
   }
 
-  async cancelAllForUser(userId: string, reason: string): Promise<number> {
+  async cancelAllForUser(userId: string, reason: string, by: OrderActor = SYSTEM_ACTOR): Promise<number> {
     for (const fn of this.userCleanup) await fn(userId, reason);
-    return this.cancelAllWithReason(userId, reason);
+    return this.cancelAllWithReason(userId, reason, undefined, by);
   }
 
-  private async cancelAllWithReason(userId: string, reason: string, symbol?: string): Promise<number> {
+  private async cancelAllWithReason(userId: string, reason: string, symbol?: string, by: OrderActor = SYSTEM_ACTOR): Promise<number> {
     const rows = await this.db.many<{ id: number; order_list_id: number | null }>(
       `SELECT id, order_list_id FROM orders WHERE user_id = $1 AND status IN ('NEW','PARTIALLY_FILLED') ${symbol ? 'AND symbol = $2' : ''}`,
       symbol ? [userId, symbol] : [userId],
@@ -480,26 +501,26 @@ export class SpotEngine {
     const closed: OrderRow[] = [];
     const lists = new Set(rows.filter((r) => r.order_list_id).map((r) => Number(r.order_list_id)));
     const singles = rows.filter((r) => !r.order_list_id).map((r) => Number(r.id));
-    if (singles.length) closed.push(...(await this.closeOrders(singles, 'CANCELED', reason)));
-    for (const l of lists) closed.push(...(await this.closeList(l, 'CANCELED', reason)));
+    if (singles.length) closed.push(...(await this.closeOrders(singles, 'CANCELED', reason, by)));
+    for (const l of lists) closed.push(...(await this.closeList(l, 'CANCELED', reason, by)));
     this.publish(userId, { orders: closed, fills: [] });
     return closed.length;
   }
 
-  private async closeOrders(ids: number[], status: OrderStatus, reason: string | null): Promise<OrderRow[]> {
+  private async closeOrders(ids: number[], status: OrderStatus, reason: string | null, by: OrderActor = SYSTEM_ACTOR): Promise<OrderRow[]> {
     return this.db.tx(async (tx) => {
       const out: OrderRow[] = [];
       for (const id of ids) {
         const o = await tx.one<OrderRow>('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]);
-        if (o && isOpen(o.status)) out.push(await this.finish(tx, o, status, reason));
+        if (o && isOpen(o.status)) out.push(await this.finish(tx, o, status, reason, by));
       }
       return out;
     });
   }
 
-  private async closeList(listId: number, status: OrderStatus, reason: string | null): Promise<OrderRow[]> {
+  private async closeList(listId: number, status: OrderStatus, reason: string | null, by: OrderActor = SYSTEM_ACTOR): Promise<OrderRow[]> {
     const ids = await this.db.many<{ id: number }>(`SELECT id FROM orders WHERE order_list_id = $1 AND status IN ('NEW','PARTIALLY_FILLED') ORDER BY id`, [listId]);
-    return this.closeOrders(ids.map((r) => Number(r.id)), status, reason);
+    return this.closeOrders(ids.map((r) => Number(r.id)), status, reason, by);
   }
 
   /** Đặt lại tài khoản ảo về vốn ban đầu */
@@ -564,6 +585,7 @@ export class SpotEngine {
           }
         }
         const working = (await tx.one<OrderRow>('UPDATE orders SET is_working = true, updated_at = now() WHERE id = $1 RETURNING *', [o.id]))!;
+        await recordOrderEvents(tx, [working], 'TRIGGER', SYSTEM_ACTOR, { lastPrice: String(last) });
         const res = await this.takerPhase(tx, working, null);
         return { orders: [...orders, ...res.orders], fills: res.fills };
       });

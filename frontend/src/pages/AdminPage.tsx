@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, Coins, Database, Gauge, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, Users as UsersIcon } from 'lucide-react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Activity, CheckCheck, Coins, Database, Gauge, Headset, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, Users as UsersIcon } from 'lucide-react';
+import { AdjustRequests } from '../components/admin/AdjustRequests';
 import { DataStorage } from '../components/admin/DataStorage';
 import { Logs } from '../components/admin/Logs';
 import { MarketOps } from '../components/admin/MarketOps';
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard, hint: 'Chỉ số chính & sức khoẻ hệ thống' },
   { id: 'users', label: 'Người dùng', icon: UsersIcon, hint: 'Khoá, điều chỉnh số dư, phân quyền' },
   { id: 'orders', label: 'Lệnh giao dịch', icon: ListOrdered, hint: 'Theo dõi & huỷ hộ lệnh' },
+  { id: 'approvals', label: 'Duyệt điều chỉnh', icon: CheckCheck, hint: 'Điều chỉnh số dư lớn và đề xuất bồi hoàn của CSKH — cần quản trị viên thứ hai duyệt' },
   { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Nguồn giá, tạm ngừng giao dịch, thông báo, biểu phí' },
   { id: 'symbols', label: 'Cặp giao dịch', icon: Coins, hint: 'Thêm cặp từ Binance, tạm ngừng, gỡ khỏi sàn' },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục' },
@@ -81,7 +83,10 @@ export default function AdminPage() {
             </button>
           ))}
         </nav>
-        <p className="hidden px-4 py-3 text-[11px] text-tx-3 lg:block">Mọi thao tác thay đổi dữ liệu đều được ghi vào nhật ký quản trị kèm tên người thực hiện.</p>
+        <Link to="/cskh" className="mx-2 mb-1 hidden items-center gap-2 rounded-md px-3 py-2 text-[13px] font-medium text-tx-2 hover:bg-bg-3 hover:text-tx-1 lg:flex">
+          <Headset size={16} /> Hỗ trợ khách hàng ↗
+        </Link>
+        <p className="hidden px-4 py-3 text-[11px] text-tx-3 lg:block">Mọi thao tác thay đổi dữ liệu đều được ghi vào nhật ký quản trị (chỉ ghi thêm, không sửa / xoá được) kèm tên người thực hiện.</p>
       </aside>
       <div className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-4">
         <div className="mb-3">
@@ -91,6 +96,7 @@ export default function AdminPage() {
         {tab === 'overview' && <Overview onOpenUser={setOpenUser} goTab={go} />}
         {tab === 'users' && <Users onOpenUser={setOpenUser} />}
         {tab === 'orders' && <Orders onOpenUser={setOpenUser} />}
+        {tab === 'approvals' && <AdjustRequests />}
         {tab === 'market' && <MarketOps />}
         {tab === 'symbols' && <Symbols />}
         {tab === 'data' && <DataStorage />}

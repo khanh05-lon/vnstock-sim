@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import type { Server } from 'socket.io';
 import { z } from 'zod';
+import type { AdjustRequestDTO, UserRole } from '@vss/shared';
 import type { Database, Queryable } from '../db';
 import { AppError } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
@@ -25,11 +26,14 @@ export interface AdminDeps {
   onDelist?(symbol: string, reason: string): Promise<void>;
   /** Nạp lại trạng thái trong bộ nhớ của các tính năng khác sau khi khôi phục dữ liệu */
   onRestored?(): Promise<void>;
+  /** Yêu cầu điều chỉnh số dư vừa được duyệt / từ chối (báo vào yêu cầu hỗ trợ liên quan) */
+  onAdjustDecided?(r: AdjustRequestDTO): Promise<void>;
 }
 
 export interface AdminCtx {
   id: string;
   email: string;
+  role?: UserRole;
 }
 export type AdminRequest = Request & { admin: AdminCtx };
 

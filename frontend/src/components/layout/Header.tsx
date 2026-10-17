@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { ChevronDown, Headset, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { cn, fmtPct, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAccount } from '../../lib/queries';
 import { useAdminMe } from '../../lib/admin';
+import { useDeskStats, useIsStaff, useSupportUnread } from '../../lib/support';
 import { useAuth } from '../../store/auth';
 import { useMarket } from '../../store/market';
 import { useUi } from '../../store/ui';
@@ -158,9 +159,35 @@ function UserMenu() {
   );
 }
 
+const Badge = ({ n, tone = 'bg-brand' }: { n: number; tone?: string }) =>
+  n > 0 ? <span className={cn('ml-1 rounded-full px-1.5 text-[10px] font-bold leading-4 text-white', tone)}>{n > 99 ? '99+' : n}</span> : null;
+
+/** Khách: trang Hỗ trợ + số tin nhắn CSKH chưa đọc */
+function SupportLink({ item }: { item: (active: boolean) => string }) {
+  const unread = useSupportUnread();
+  return (
+    <NavLink to="/ho-tro" className={({ isActive }) => cn(item(isActive), 'flex items-center')}>
+      Hỗ trợ
+      <Badge n={unread} />
+    </NavLink>
+  );
+}
+
+/** Nhân viên: khu CSKH + số yêu cầu chưa ai nhận (đỏ nếu có yêu cầu quá hạn) */
+function DeskLink({ item }: { item: (active: boolean) => string }) {
+  const { data } = useDeskStats();
+  return (
+    <NavLink to="/cskh" className={({ isActive }) => cn(item(isActive), 'flex items-center gap-1.5')}>
+      <Headset size={15} /> CSKH
+      <Badge n={data?.unassigned ?? 0} tone={(data?.overdue ?? 0) > 0 ? 'bg-down' : 'bg-brand'} />
+    </NavLink>
+  );
+}
+
 export function Header() {
   const token = useAuth((s) => s.token);
   const { isAdmin } = useAdminMe();
+  const staff = useIsStaff();
   const theme = useUi((s) => s.theme);
   const toggleTheme = useUi((s) => s.toggleTheme);
   const { pathname } = useLocation();
@@ -179,6 +206,8 @@ export function Header() {
             {n.label}
           </NavLink>
         ))}
+        {token && <SupportLink item={item} />}
+        {staff && <DeskLink item={item} />}
         {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => cn(item(isActive), 'flex items-center gap-1.5')}>
             <ShieldCheck size={15} /> Quản trị

@@ -17,6 +17,7 @@ import {
   twoFactorSetupSchema,
   verifyEmailSchema,
   type UserDTO,
+  type UserRole,
 } from '@vss/shared';
 import type { Database, Queryable } from '../db';
 import {
@@ -24,11 +25,13 @@ import {
   markPasswordChanged,
   requireAuth,
   signMfaTicket,
+  signSupportTicket,
   signToken,
   verifyMfaTicket,
   type AuthedRequest,
 } from '../lib/auth';
 import {
+  loginBlockedEmail,
   passwordChangedEmail,
   recoveryCodeUsedEmail,
   resetPasswordEmail,
@@ -36,6 +39,7 @@ import {
   verifyEmailEmail,
   type EmailContent,
 } from '../lib/emails';
+import { LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MIN, listAuthEvents, recentLoginFailures, recordAuthEvent } from '../lib/authEvents';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import type { Mailer } from '../lib/mailer';
@@ -58,7 +62,8 @@ interface UserRow {
   full_name: string;
   password_hash: string;
   created_at: Date | string;
-  role: 'USER' | 'ADMIN';
+  role: UserRole;
+  status: string;
   email_verified_at: Date | null;
   totp_enabled_at: Date | null;
   totp_secret: string | null;
@@ -85,7 +90,7 @@ export const toUser = (u: UserDtoRow): UserDTO => ({
   email: u.email,
   fullName: u.full_name,
   createdAt: new Date(u.created_at).toISOString(),
-  role: u.role === 'ADMIN' ? 'ADMIN' : 'USER',
+  role: u.role === 'ADMIN' || u.role === 'SUPPORT' ? u.role : 'USER',
   emailVerified: u.email_verified_at != null,
   twoFactorEnabled: u.totp_enabled_at != null,
   notifyFills: !!u.notify_fills,
@@ -160,6 +165,15 @@ export function authRoutes(db: Database, mailer: Mailer) {
       : { token: signToken({ id: user.id, email: user.email }), user: toUser(user) };
 
   /**
+   * Tài khoản không hoạt động. Bị khoá (đã qua mật khẩu + 2FA) → kèm vé hỗ trợ để vẫn nhắn được CSKH;
+   * đã xoá → không cấp gì.
+   */
+  const inactiveError = (user: UserRow, message = 'Tài khoản đang bị khoá. Bạn vẫn có thể nhắn bộ phận chăm sóc khách hàng để được hỗ trợ.') =>
+    user.status === 'LOCKED'
+      ? new AppError(403, 'ACCOUNT_LOCKED', message, { supportToken: signSupportTicket({ id: user.id, email: user.email }) })
+      : new AppError(403, 'ACCOUNT_LOCKED', 'Tài khoản không còn hoạt động');
+
+  /**
    * Kiểm tra mã 2FA: mã TOTP 6 số (chống dùng lại mã cũ) hoặc mã khôi phục (đánh dấu đã dùng).
    * Trả về cách đã xác thực, hoặc null nếu sai.
    */
@@ -210,6 +224,7 @@ export function authRoutes(db: Database, mailer: Mailer) {
           throw err;
         });
       const row = await loadUser(user.id);
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'REGISTER', req });
       res.status(201).json({ token: signToken({ id: user.id, email: user.email }), user: toUser(row!) });
     }),
   );
@@ -219,9 +234,28 @@ export function authRoutes(db: Database, mailer: Mailer) {
     authLimiter,
     ah(async (req, res) => {
       const input = loginSchema.parse(req.body);
+      // Chặn dò mật khẩu theo từng tài khoản (giới hạn theo IP không đủ khi kẻ xấu đổi IP liên tục)
+      if ((await recentLoginFailures(db, input.email)) >= LOGIN_FAIL_LIMIT) {
+        const owner = await db.one<{ id: string }>('SELECT id FROM users WHERE email = $1', [input.email]);
+        await recordAuthEvent(db, { userId: owner?.id, email: input.email, event: 'LOGIN_BLOCKED', req });
+        throw new AppError(429, 'LOGIN_BLOCKED', `Đăng nhập sai quá ${LOGIN_FAIL_LIMIT} lần — tài khoản tạm khoá đăng nhập ${LOGIN_FAIL_WINDOW_MIN} phút. Quên mật khẩu? Dùng "Quên mật khẩu" để đặt lại.`);
+      }
       const user = await db.one<UserRow>('SELECT * FROM users WHERE email = $1', [input.email]);
       const ok = user ? await bcrypt.compare(input.password, user.password_hash) : false;
-      if (!user || !ok) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email hoặc mật khẩu không đúng');
+      if (!user || !ok) {
+        await recordAuthEvent(db, { userId: user?.id, email: input.email, event: 'LOGIN_FAIL', req });
+        // Lần sai thứ N: báo chủ tài khoản qua email (có thể ai đó đang dò mật khẩu)
+        if (user && (await recentLoginFailures(db, input.email)) === LOGIN_FAIL_LIMIT) {
+          sendLater(mailer, user.email, loginBlockedEmail(user.full_name, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MIN, req.ip ?? ''), { userId: user.id });
+        }
+        throw new AppError(401, 'INVALID_CREDENTIALS', 'Email hoặc mật khẩu không đúng');
+      }
+      // Bị khoá + bật 2FA: vẫn phải qua bước mã (kẻ chiếm mật khẩu không nhắn CSKH mạo danh được); /login/2fa xử lý tiếp
+      if (user.status !== 'ACTIVE' && !(user.status === 'LOCKED' && user.totp_enabled_at)) {
+        await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_LOCKED_ACCOUNT', req });
+        throw inactiveError(user);
+      }
+      if (!user.totp_enabled_at) await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_OK', req, detail: { mfa: false } });
       res.json(loginResult(user));
     }),
   );
@@ -241,8 +275,21 @@ export function authRoutes(db: Database, mailer: Mailer) {
       if (user.password_changed_at && ticket.issuedMs < new Date(user.password_changed_at).getTime()) {
         throw new AppError(401, 'MFA_EXPIRED', 'Phiên xác thực đã hết hạn, vui lòng đăng nhập lại');
       }
+      if ((await recentLoginFailures(db, user.email)) >= LOGIN_FAIL_LIMIT) {
+        await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_BLOCKED', req, detail: { step: '2fa' } });
+        throw new AppError(429, 'LOGIN_BLOCKED', `Nhập sai quá ${LOGIN_FAIL_LIMIT} lần — tạm khoá đăng nhập ${LOGIN_FAIL_WINDOW_MIN} phút`);
+      }
       const how = await checkSecondFactor(user, input.code);
-      if (!how) throw badRequest('MFA_INVALID', 'Mã xác thực không đúng hoặc đã được dùng');
+      if (!how) {
+        await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_2FA_FAIL', req });
+        throw badRequest('MFA_INVALID', 'Mã xác thực không đúng hoặc đã được dùng');
+      }
+      // Bị khoá trước hoặc trong lúc nhập mã → không cấp phiên
+      if (user.status !== 'ACTIVE') {
+        await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_LOCKED_ACCOUNT', req, detail: { mfa: how } });
+        throw inactiveError(user);
+      }
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'LOGIN_OK', req, detail: { mfa: how } });
       res.json({ token: signToken({ id: user.id, email: user.email }), user: toUser(user) });
     }),
   );
@@ -251,10 +298,11 @@ export function authRoutes(db: Database, mailer: Mailer) {
   r.post(
     '/demo',
     authLimiter,
-    ah(async (_req, res) => {
+    ah(async (req, res) => {
       if (!config.demoEmail) throw notFound('Tài khoản demo chưa được bật');
       const user = await db.one<UserRow>('SELECT * FROM users WHERE email = $1', [config.demoEmail]);
       if (!user) throw notFound('Tài khoản demo chưa được tạo');
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'DEMO_LOGIN', req });
       res.json({ token: signToken({ id: user.id, email: user.email }), user: toUser(user) });
     }),
   );
@@ -312,6 +360,7 @@ export function authRoutes(db: Database, mailer: Mailer) {
         now,
       ]);
       markPasswordChanged(user.id, now);
+      await recordAuthEvent(db, { userId: row.id, email: row.email, event: 'PASSWORD_CHANGE', req });
       sendLater(mailer, row.email, passwordChangedEmail(row.full_name, 'change'), { userId: row.id });
       // Các phiên cũ bị đăng xuất; trả token mới cho phiên hiện tại
       res.json({ ok: true, token: signToken({ id: row.id, email: row.email }) });
@@ -386,7 +435,12 @@ export function authRoutes(db: Database, mailer: Mailer) {
       markPasswordChanged(user.id, now);
       markEmailVerified(user.id);
       log.info('[auth] đã đặt lại mật khẩu', { userId: user.id });
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'PASSWORD_RESET', req });
       sendLater(mailer, user.email, passwordChangedEmail(user.full_name, 'reset'), { userId: user.id });
+      // Bị khoá, không bật 2FA: mật khẩu đã đổi nhưng không cấp phiên — chỉ vé hỗ trợ
+      if (user.status !== 'ACTIVE' && !(user.status === 'LOCKED' && user.totp_enabled_at)) {
+        throw inactiveError(user, 'Đã đặt lại mật khẩu. Tài khoản đang bị khoá — hãy nhắn bộ phận chăm sóc khách hàng để được mở khoá.');
+      }
       // Bật 2FA thì vẫn phải nhập mã: chiếm được hộp thư không đủ để vào tài khoản
       res.json(loginResult(user));
     }),
@@ -413,6 +467,7 @@ export function authRoutes(db: Database, mailer: Mailer) {
       });
       if (!user) throw notFound('Tài khoản không tồn tại');
       markEmailVerified(user.id);
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'EMAIL_VERIFIED', req });
       res.json({ ok: true, user: toUser(user) });
     }),
   );
@@ -503,6 +558,7 @@ export function authRoutes(db: Database, mailer: Mailer) {
         );
         return newRecoveryCodes(tx, user.id);
       });
+      await recordAuthEvent(db, { userId: row.id, email: row.email, event: 'TWO_FA_ENABLE', req });
       sendLater(mailer, row.email, twoFactorChangedEmail(row.full_name, true, 'user'), { userId: row.id });
       res.json({ ok: true, recoveryCodes: codes });
     }),
@@ -529,6 +585,7 @@ export function authRoutes(db: Database, mailer: Mailer) {
         );
         await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [user.id]);
       });
+      await recordAuthEvent(db, { userId: row.id, email: row.email, event: 'TWO_FA_DISABLE', req, detail: { how } });
       sendLater(mailer, row.email, twoFactorChangedEmail(row.full_name, false, how === 'recovery' ? 'recovery' : 'user'), { userId: row.id });
       res.json({ ok: true });
     }),
@@ -547,7 +604,18 @@ export function authRoutes(db: Database, mailer: Mailer) {
       await assertPassword(row, input.password);
       if (!(await checkSecondFactor(row, input.code))) throw badRequest('MFA_INVALID', 'Mã xác thực không đúng hoặc đã được dùng');
       const codes = await db.tx((tx) => newRecoveryCodes(tx, user.id));
+      await recordAuthEvent(db, { userId: row.id, email: row.email, event: 'RECOVERY_CODES_REGENERATE', req });
       res.json({ ok: true, recoveryCodes: codes });
+    }),
+  );
+
+  /** Nhật ký đăng nhập & bảo mật của chính người dùng (50 sự kiện gần nhất) */
+  r.get(
+    '/activity',
+    requireAuth,
+    ah(async (req, res) => {
+      const { user } = req as AuthedRequest;
+      res.json(await listAuthEvents(db, user.id, 50));
     }),
   );
 

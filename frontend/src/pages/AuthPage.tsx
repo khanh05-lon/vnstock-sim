@@ -1,15 +1,27 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { BarChart3, Eye, EyeOff, Headset, KeyRound, Lock, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { RULES, loginSchema, registerSchema, type UserDTO } from '@vss/shared';
 import { AuthFrame, MajorsMini } from '../components/auth/AuthFrame';
-import { api, errMsg } from '../lib/api';
+import { api, errMsg, supportTokenOf } from '../lib/api';
+import { useSupportPass } from '../lib/support';
 import { useAuth, type LoginResult } from '../store/auth';
 
 /** Bước 2 khi tài khoản bật 2FA: nhập mã 6 số hoặc mã khôi phục */
-export function MfaStep({ mfaToken, onDone, onCancel }: { mfaToken: string; onDone(res: { token: string; user: UserDTO }): void; onCancel(): void }) {
+export function MfaStep({
+  mfaToken,
+  onDone,
+  onCancel,
+  onLocked,
+}: {
+  mfaToken: string;
+  onDone(res: { token: string; user: UserDTO }): void;
+  onCancel(): void;
+  /** Tài khoản đang bị khoá: nhận vé hỗ trợ thay cho phiên đăng nhập */
+  onLocked?(supportToken: string): void;
+}) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [useRecovery, setUseRecovery] = useState(false);
@@ -21,6 +33,8 @@ export function MfaStep({ mfaToken, onDone, onCancel }: { mfaToken: string; onDo
     try {
       onDone(await api<{ token: string; user: UserDTO }>('/auth/login/2fa', { method: 'POST', body: { mfaToken, code: code.trim() } }));
     } catch (err) {
+      const supportToken = supportTokenOf(err);
+      if (supportToken && onLocked) return onLocked(supportToken);
       toast.error(errMsg(err));
       setCode('');
     } finally {
@@ -90,12 +104,21 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Vé chờ nhập mã 2FA (từ bước mật khẩu, hoặc chuyển từ trang đặt lại mật khẩu)
   const [mfaToken, setMfaToken] = useState<string | null>(state?.mfaToken ?? null);
+  // Đúng mật khẩu nhưng tài khoản đang bị khoá → chỉ được nhắn CSKH
+  const [locked, setLocked] = useState(false);
+  const lockedWith = (supportToken: string) => {
+    useSupportPass.getState().set(supportToken);
+    setMfaToken(null);
+    setPassword('');
+    setLocked(true);
+  };
 
   if (token) return <Navigate to={from} replace />;
   const isLogin = mode === 'login';
 
   const done = (res: { token: string; user: UserDTO }, msg: string) => {
     qc.clear();
+    useSupportPass.getState().clear();
     setAuth(res.token, res.user);
     toast.success(msg);
     nav(from, { replace: true });
@@ -125,6 +148,8 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           : `Tạo tài khoản thành công, bạn được cấp ${Number(RULES.initialUsdt).toLocaleString('en-US')} USDT vốn ảo. Hãy kiểm tra email để xác thực tài khoản.`,
       );
     } catch (err) {
+      const supportToken = supportTokenOf(err);
+      if (supportToken) return lockedWith(supportToken);
       toast.error(errMsg(err));
     } finally {
       setBusy(false);
@@ -219,13 +244,32 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         </div>
 
         <div className="mx-auto w-full max-w-md rounded-2xl border border-line bg-bg-1 p-6 sm:p-8" style={{ boxShadow: 'var(--shadow)' }}>
-          {mfaToken ? (
+          {locked ? (
+            <>
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-down/15 text-down">
+                <Lock size={22} />
+              </span>
+              <h2 className="mt-4 text-[22px] font-bold">Tài khoản đang bị khoá</h2>
+              <p className="mt-2 text-[14px] text-tx-2">
+                Bạn chưa giao dịch được cho tới khi tài khoản được mở khoá. Tài khoản thường bị khoá khi nghi có người truy cập trái phép, hoặc theo quyết định của quản trị
+                viên (lý do đã gửi qua email của bạn).
+              </p>
+              <p className="mt-2 text-[14px] text-tx-2">Hãy nhắn bộ phận chăm sóc khách hàng để xác minh chính chủ và được hướng dẫn mở khoá.</p>
+              <button className="btn btn-brand mt-5 h-11 w-full text-[15px]" onClick={() => nav('/ho-tro-khoa')}>
+                <Headset size={16} /> Nhắn bộ phận chăm sóc khách hàng
+              </button>
+              <button className="btn btn-ghost mt-2 h-10 w-full" onClick={() => setLocked(false)}>
+                Quay lại
+              </button>
+            </>
+          ) : mfaToken ? (
             <>
               <h2 className="text-[24px] font-bold">Xác thực 2 lớp</h2>
               <p className="mb-6 mt-1 text-tx-3">Bước cuối để đăng nhập an toàn</p>
               <MfaStep
                 mfaToken={mfaToken}
                 onDone={(res) => done(res, `Chào mừng trở lại, ${res.user.fullName}!`)}
+                onLocked={lockedWith}
                 onCancel={() => {
                   setMfaToken(null);
                   nav(loc.pathname, { replace: true, state: { from } });

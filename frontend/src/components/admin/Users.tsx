@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Search, UserPlus } from 'lucide-react';
-import { LEDGER_LABEL, ORDER_STATUS_LABEL } from '@vss/shared';
+import { toast } from 'sonner';
+import { LEDGER_LABEL, ORDER_STATUS_LABEL, ROLE_LABEL, type UserRole } from '@vss/shared';
+import { OrderTimelineModal } from '../support/SupportUi';
 import { AUDIT_LABEL, auditSummary, useAdminAction, useAdminUser, useAdminUsers, type AdminUserDetail } from '../../lib/admin';
 import { cleanDecimal, cn, decOrNull, fmtDateTime, fmtInt, fmtPct, fmtPrice, fmtQty, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAuth } from '../../store/auth';
@@ -8,7 +10,7 @@ import { Empty, Modal, Spinner, UnderlineTabs } from '../common/ui';
 import { STATUS_STYLE, SideChip, typeLabel } from '../trade/OrdersPanel';
 import { KeyValue, Pill, ReasonModal, fmtAgo } from './adminUi';
 
-type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'grant' | 'revoke' | 'delete' | 'verify' | 'reset2fa' | null;
+type ActionKind = 'lock' | 'unlock' | 'adjust' | 'reset' | 'role' | 'delete' | 'verify' | 'reset2fa' | null;
 
 function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }) {
   const me = useAuth((s) => s.user);
@@ -18,6 +20,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
   const [asset, setAsset] = useState('USDT');
   const [sign, setSign] = useState<1 | -1>(1);
   const [confirmEmail, setConfirmEmail] = useState('');
+  const [role, setRole] = useState<UserRole>(d.user.role);
   const u = d.user;
   const self = me?.id === u.id;
   const base = `/admin/users/${u.id}`;
@@ -32,7 +35,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
     <>
       <div className="flex flex-wrap gap-2">
         {u.status === 'ACTIVE' ? (
-          <button className="btn btn-ghost h-8 text-down" disabled={self || u.role === 'ADMIN'} onClick={() => setKind('lock')} title={u.role === 'ADMIN' ? 'Thu quyền quản trị trước' : undefined}>
+          <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('lock')} title={u.role !== 'USER' ? 'Thu quyền nhân viên trước' : undefined}>
             Khoá tài khoản
           </button>
         ) : (
@@ -40,21 +43,22 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
             Mở khoá
           </button>
         )}
-        <button className="btn btn-ghost h-8" onClick={() => setKind('adjust')}>
+        <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('adjust')} title={self ? 'Không tự điều chỉnh số dư của mình' : undefined}>
           Điều chỉnh số dư
         </button>
-        <button className="btn btn-ghost h-8" onClick={() => setKind('reset')}>
+        <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('reset')}>
           Đặt lại tài khoản
         </button>
-        {u.role === 'USER' ? (
-          <button className="btn btn-ghost h-8" disabled={self || u.status === 'LOCKED'} onClick={() => setKind('grant')}>
-            Cấp quyền quản trị
-          </button>
-        ) : (
-          <button className="btn btn-ghost h-8" disabled={self} onClick={() => setKind('revoke')}>
-            Thu quyền quản trị
-          </button>
-        )}
+        <button
+          className="btn btn-ghost h-8"
+          disabled={self}
+          onClick={() => {
+            setRole(u.role);
+            setKind('role');
+          }}
+        >
+          Đổi vai trò ({ROLE_LABEL[u.role]})
+        </button>
         {!u.emailVerified && (
           <button className="btn btn-ghost h-8" onClick={() => setKind('verify')}>
             Xác thực email hộ
@@ -65,7 +69,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
             Tắt 2FA hộ
           </button>
         )}
-        <button className="btn btn-ghost h-8 text-down" disabled={self || u.role === 'ADMIN'} onClick={() => setKind('delete')}>
+        <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('delete')}>
           Xoá tài khoản
         </button>
       </div>
@@ -122,7 +126,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
         title="Điều chỉnh số dư"
         description={(() => {
           const b = d.account.balances.find((x) => x.asset === asset);
-          return `Số dư ${asset} hiện tại: khả dụng ${b ? fmtQty(b.free) : '0'}, đang khoá ${b ? fmtQty(b.locked) : '0'}. Giá trị quy USDT được cộng vào vốn đã góp để lãi/lỗ và bảng xếp hạng không bị sai lệch.`;
+          return `Số dư ${asset} hiện tại: khả dụng ${b ? fmtQty(b.free) : '0'}, đang khoá ${b ? fmtQty(b.locked) : '0'}. Giá trị quy USDT được cộng vào vốn đã góp để lãi/lỗ và bảng xếp hạng không bị sai lệch. Từ ngưỡng phê duyệt trở lên sẽ thành yêu cầu, cần một quản trị viên khác duyệt.`;
         })()}
         confirmLabel={amount ? `${sign > 0 ? 'Cộng' : 'Trừ'} ${amount} ${asset}` : 'Xác nhận'}
         canConfirm={!!amount}
@@ -159,7 +163,15 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
         }
         onClose={close}
         onConfirm={async (reason) => {
-          if (amount && (await act(`${base}/adjust-balance`, 'POST', { asset, amount: sign > 0 ? amount : `-${amount}`, reason }, 'Đã điều chỉnh số dư'))) close();
+          if (!amount) return;
+          const r = await act<{ pending?: boolean; request?: { id: number } }>(
+            `${base}/adjust-balance`,
+            'POST',
+            { asset, amount: sign > 0 ? amount : `-${amount}`, reason },
+            'Đã gửi điều chỉnh',
+          );
+          if (r?.pending) toast.info(`Giá trị lớn: đã tạo yêu cầu #${r.request?.id}, chờ quản trị viên khác duyệt (mục Duyệt điều chỉnh)`, { duration: 10_000 });
+          if (r) close();
         }}
       />
       <ReasonModal
@@ -174,25 +186,31 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
         }}
       />
       <ReasonModal
-        open={kind === 'grant' || kind === 'revoke'}
-        title={kind === 'grant' ? `Cấp quyền quản trị cho ${u.email}` : `Thu quyền quản trị của ${u.email}`}
-        description={
-          kind === 'grant'
-            ? 'Người này sẽ xem được dữ liệu mọi tài khoản và thực hiện mọi thao tác quản trị. Chỉ cấp cho người tin cậy.'
-            : 'Người này trở về tài khoản nhà đầu tư thường.'
-        }
-        confirmLabel={kind === 'grant' ? 'Cấp quyền' : 'Thu quyền'}
+        open={kind === 'role'}
+        title={`Đổi vai trò của ${u.email}`}
+        description="Nhân viên CSKH: trả lời khách, xem hồ sơ khách qua yêu cầu hỗ trợ, huỷ hộ lệnh, khoá khẩn, đề xuất điều chỉnh (cần quản trị viên duyệt). Quản trị viên: toàn quyền. Ở môi trường thật nhân viên phải bật 2FA."
+        confirmLabel="Lưu vai trò"
         requireReason={false}
+        canConfirm={role !== u.role}
+        extra={
+          <select className="input h-9 w-full" value={role} onChange={(e) => setRole(e.target.value as UserRole)} aria-label="Vai trò">
+            {(['USER', 'SUPPORT', 'ADMIN'] as UserRole[]).map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]}
+              </option>
+            ))}
+          </select>
+        }
         onClose={close}
         onConfirm={async () => {
-          if (await act(`${base}/role`, 'POST', { role: kind === 'grant' ? 'ADMIN' : 'USER' }, 'Đã cập nhật quyền')) close();
+          if (await act(`${base}/role`, 'POST', { role }, 'Đã cập nhật vai trò')) close();
         }}
       />
       <ReasonModal
         open={kind === 'delete'}
-        title={`Xoá vĩnh viễn ${u.email}`}
-        description="Xoá người dùng cùng toàn bộ tài khoản tiền, lệnh, khớp, danh mục, sao kê. Không hoàn tác được — nên xuất bản sao lưu trước."
-        confirmLabel="Xoá vĩnh viễn"
+        title={`Xoá tài khoản ${u.email}`}
+        description="Xoá thông tin cá nhân (email, họ tên, mật khẩu, 2FA) và chặn đăng nhập. Lệnh, khớp lệnh, sổ cái, tin nhắn hỗ trợ được GIỮ LẠI ở dạng ẩn danh để đối soát và giải quyết khiếu nại. Không hoàn tác được."
+        confirmLabel="Xoá tài khoản"
         danger
         requireReason={false}
         canConfirm={confirmEmail.trim().toLowerCase() === u.email}
@@ -218,7 +236,8 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
 
 export function UserDetailModal({ id, onClose }: { id: string | null; onClose(): void }) {
   const { data: d, isLoading } = useAdminUser(id);
-  const [tab, setTab] = useState<'balances' | 'orders' | 'ledger' | 'audit'>('balances');
+  const [tab, setTab] = useState<'balances' | 'orders' | 'ledger' | 'audit' | 'logins'>('balances');
+  const [timeline, setTimeline] = useState<number | null>(null);
   return (
     <Modal open={!!id} onClose={onClose} title="Hồ sơ người dùng" width={920}>
       {isLoading || !d ? (
@@ -231,8 +250,8 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[17px] font-bold">{d.user.fullName}</span>
-                {d.user.role === 'ADMIN' && <Pill tone="brand">Quản trị viên</Pill>}
-                {d.user.status === 'LOCKED' ? <Pill tone="bad">Đã khoá</Pill> : <Pill tone="good">Hoạt động</Pill>}
+                {d.user.role !== 'USER' && <Pill tone="brand">{ROLE_LABEL[d.user.role]}</Pill>}
+                {d.user.status === 'LOCKED' ? <Pill tone="bad">Đã khoá</Pill> : d.user.status === 'DELETED' ? <Pill tone="muted">Đã xoá (ẩn danh)</Pill> : <Pill tone="good">Hoạt động</Pill>}
                 {d.user.online && <Pill tone="info">Đang trực tuyến</Pill>}
                 {d.user.emailVerified ? <Pill tone="good">Email đã xác thực</Pill> : <Pill tone="warn">Email chưa xác thực</Pill>}
                 {d.user.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
@@ -243,7 +262,8 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
               {d.user.lockedReason && <div className="mt-1 text-[12px] text-down">Lý do khoá: {d.user.lockedReason}</div>}
             </div>
           </div>
-          <UserActions d={d} onDeleted={onClose} />
+          {d.user.status !== 'DELETED' && <UserActions d={d} onDeleted={onClose} />}
+          <OrderTimelineModal orderId={timeline} path={timeline ? `/admin/orders/${timeline}/events` : undefined} onClose={() => setTimeline(null)} />
           {(() => {
             const nav = Number(d.account.totalUsdt);
             const base = Number(d.account.contributedUsdt);
@@ -274,6 +294,7 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                 { value: 'orders', label: 'Lệnh gần đây' },
                 { value: 'ledger', label: 'Sổ cái' },
                 { value: 'audit', label: 'Lịch sử quản trị' },
+                { value: 'logins', label: 'Đăng nhập & bảo mật' },
               ]}
             />
             <div className="max-h-[320px] overflow-auto">
@@ -323,7 +344,11 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                     <tbody>
                       {d.orders.map((o) => (
                         <tr key={o.id} className="h-8 border-t border-line">
-                          <td className="px-3 text-tx-3">#{o.id}</td>
+                          <td className="px-3 text-tx-3">
+                            <button className="hover:text-brand hover:underline" onClick={() => setTimeline(o.id)} title="Xem nhật ký lệnh">
+                              #{o.id}
+                            </button>
+                          </td>
                           <td className="px-2">{fmtDateTime(o.createdAt)}</td>
                           <td className="px-2 font-semibold">{o.symbol}</td>
                           <td className="px-2">
@@ -391,6 +416,21 @@ export function UserDetailModal({ id, onClose }: { id: string | null; onClose():
                   </ul>
                 ) : (
                   <Empty title="Chưa có thao tác quản trị nào với tài khoản này" />
+                ))}
+              {tab === 'logins' &&
+                (d.authEvents.length ? (
+                  <ul className="divide-y divide-line">
+                    {d.authEvents.map((e) => (
+                      <li key={e.id} className={cn('flex flex-wrap gap-x-3 px-3 py-2 text-[12px]', /FAIL|BLOCKED|LOCKED/.test(e.event) && 'text-down')}>
+                        <span className="num text-tx-3">{fmtDateTime(e.createdAt)}</span>
+                        <span className="font-medium">{e.label}</span>
+                        {e.ip && <span className="text-tx-3">IP {e.ip}</span>}
+                        {e.userAgent && <span className="max-w-[360px] truncate text-tx-3">{e.userAgent}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <Empty title="Chưa có nhật ký đăng nhập" />
                 ))}
             </div>
           </div>
@@ -530,6 +570,7 @@ export function Users({ onOpenUser }: { onOpenUser(id: string): void }) {
                       <span className={cn('h-1.5 w-1.5 rounded-full', u.online ? 'bg-up' : 'bg-bg-4')} title={u.online ? 'Đang trực tuyến' : 'Ngoại tuyến'} />
                       {u.fullName}
                       {u.role === 'ADMIN' && <Pill tone="brand">QTV</Pill>}
+                      {u.role === 'SUPPORT' && <Pill tone="info">CSKH</Pill>}
                       {u.twoFactorEnabled && <Pill tone="info">2FA</Pill>}
                       {!u.emailVerified && <Pill tone="warn">Chưa xác thực</Pill>}
                     </div>

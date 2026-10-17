@@ -10,7 +10,9 @@ import type { MarketService } from '../market/marketService';
 import { metrics } from '../ops/metrics';
 import type { NavService } from '../portfolio/nav';
 import { monthlyReport } from '../portfolio/report';
+import { recordAuthEvent } from '../lib/authEvents';
 import { accountView } from '../trading/account';
+import { listOrderEvents, userActor } from '../trading/orderEvents';
 import { toFillDTO, toLedgerDTO, toOrderDTO, toOrderListDTO, type FillRow, type LedgerRow, type OrderListRow, type OrderRow } from '../trading/dto';
 import type { SpotEngine } from '../trading/engine';
 
@@ -102,7 +104,10 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
     '/account/reset',
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
+      // Ghi lại tổng tài sản trước khi xoá lịch sử (đặt lại không xoá được dấu vết)
+      const before = await accountView(db, market, user.id).catch(() => null);
       await engine.resetAccount(user.id);
+      await recordAuthEvent(db, { userId: user.id, email: user.email, event: 'ACCOUNT_RESET', req, detail: { navUsdtBefore: before?.totalUsdt ?? null } });
       res.json({ ok: true });
     }),
   );
@@ -135,7 +140,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = placeOrderSchema.parse(req.body);
-      const order = await engine.placeOrder(user.id, input);
+      const order = await engine.placeOrder(user.id, input, userActor(req.ip));
       metrics.orders.placed++;
       res.status(201).json(order);
     }),
@@ -148,7 +153,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = ocoOrderSchema.parse(req.body);
-      const list = await engine.placeOco(user.id, input);
+      const list = await engine.placeOco(user.id, input, userActor(req.ip));
       metrics.orders.placed += 2;
       res.status(201).json(list);
     }),
@@ -211,13 +216,22 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
   );
 
   /** Sửa lệnh giới hạn (huỷ và đặt lại) */
+  /** Nhật ký của 1 lệnh: ai đặt / sửa / huỷ, lúc nào, từ IP nào + các lần khớp */
+  r.get(
+    '/orders/:id/events',
+    ah(async (req, res) => {
+      const { user } = req as AuthedRequest;
+      res.json(await listOrderEvents(db, idParam(req.params.id), user.id));
+    }),
+  );
+
   r.put(
     '/orders/:id',
     orderLimiter,
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
       const input = replaceOrderSchema.parse(req.body);
-      res.json(await engine.replaceOrder(user.id, idParam(req.params.id), input));
+      res.json(await engine.replaceOrder(user.id, idParam(req.params.id), input, userActor(req.ip)));
     }),
   );
 
@@ -226,7 +240,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
     orderLimiter,
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
-      const order = await engine.cancelOrder(user.id, idParam(req.params.id));
+      const order = await engine.cancelOrder(user.id, idParam(req.params.id), userActor(req.ip));
       metrics.orders.cancelled++;
       res.json(order);
     }),
@@ -237,7 +251,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
     orderLimiter,
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
-      res.json(await engine.cancelOrderList(user.id, idParam(req.params.id)));
+      res.json(await engine.cancelOrderList(user.id, idParam(req.params.id), userActor(req.ip)));
     }),
   );
 
@@ -248,7 +262,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
       const { symbol } = historyQuery.parse(req.query);
-      const n = await engine.cancelAll(user.id, symbol || undefined);
+      const n = await engine.cancelAll(user.id, symbol || undefined, userActor(req.ip));
       metrics.orders.cancelled += n;
       res.json({ canceled: n });
     }),

@@ -149,3 +149,34 @@ export function priceAlertEmail(name: string, symbol: string, condition: string,
     { label: `Mở ${symbol}`, url: `${config.publicUrl}/trade/${symbol}` },
   );
 }
+
+export function loginBlockedEmail(name: string, fails: number, minutes: number, ip: string): EmailContent {
+  return layout(
+    `Cảnh báo: đăng nhập sai nhiều lần — ${BRAND}`,
+    hello(name),
+    [
+      `Tài khoản của bạn vừa bị nhập sai mật khẩu ${fails} lần liên tiếp${ip ? ` (lần gần nhất từ địa chỉ IP ${ip})` : ''}.`,
+      `Để bảo vệ tài khoản, hệ thống tạm chặn đăng nhập trong ${minutes} phút.`,
+      'Nếu không phải bạn, hãy đổi mật khẩu ngay, bật xác thực 2 lớp và báo cho bộ phận chăm sóc khách hàng.',
+    ],
+    { label: 'Đặt lại mật khẩu', url: `${config.publicUrl}/forgot-password` },
+  );
+}
+
+export function supportReplyEmail(name: string, ticketId: number, subject: string, preview: string): EmailContent {
+  return layout(
+    `Phản hồi yêu cầu hỗ trợ #${ticketId} — ${BRAND}`,
+    hello(name),
+    [`Bộ phận chăm sóc khách hàng vừa trả lời yêu cầu "${subject}":`, preview.length > 300 ? `${preview.slice(0, 300)}…` : preview],
+    { label: 'Xem và trả lời', url: `${config.publicUrl}/ho-tro?ticket=${ticketId}` },
+  );
+}
+
+export function supportResolvedEmail(name: string, ticketId: number, subject: string, resolution: string): EmailContent {
+  return layout(
+    `Yêu cầu hỗ trợ #${ticketId} đã được xử lý — ${BRAND}`,
+    hello(name),
+    [`Yêu cầu "${subject}" đã được xử lý.`, `Kết quả: ${resolution}`, 'Nếu chưa hài lòng, bạn có thể trả lời ngay trong yêu cầu để mở lại, hoặc đánh giá chất lượng hỗ trợ.'],
+    { label: 'Xem yêu cầu', url: `${config.publicUrl}/ho-tro?ticket=${ticketId}` },
+  );
+}

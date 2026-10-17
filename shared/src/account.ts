@@ -136,13 +136,21 @@ export const preferencesSchema = z
   })
   .strict();
 
+/** Vai trò: nhà đầu tư, nhân viên chăm sóc khách hàng, quản trị viên */
+export type UserRole = 'USER' | 'SUPPORT' | 'ADMIN';
+
+export const ROLE_LABEL: Record<UserRole, string> = { USER: 'Nhà đầu tư', SUPPORT: 'Nhân viên CSKH', ADMIN: 'Quản trị viên' };
+
+/** Nhân viên (CSKH hoặc quản trị) — được vào khu vực hỗ trợ khách hàng */
+export const isStaff = (role: string | null | undefined): boolean => role === 'SUPPORT' || role === 'ADMIN';
+
 /** Thông tin người dùng đăng nhập */
 export interface UserDTO {
   id: string;
   email: string;
   fullName: string;
   createdAt: string;
-  role: 'USER' | 'ADMIN';
+  role: UserRole;
   emailVerified: boolean;
   twoFactorEnabled: boolean;
   notifyFills: boolean;

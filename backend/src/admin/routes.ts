@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Router, type NextFunction, type Request, type Response } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { Big, RULES, registerSchema } from '@vss/shared';
+import crypto from 'node:crypto';
+import { Big, RULES, registerSchema, type UserRole } from '@vss/shared';
 import { config } from '../config';
-import { markEmailVerified, requireAuth, type AuthedRequest } from '../lib/auth';
+import { markEmailVerified, markPasswordChanged } from '../lib/auth';
+import { listAuthEvents } from '../lib/authEvents';
+import { listOrderEvents } from '../trading/orderEvents';
 import { accountLockedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { utcDay } from '../portfolio/nav';
@@ -13,9 +16,9 @@ import { sendLater } from '../routes/auth';
 import { createUserAccount } from '../seed/seed';
 import { accountView, navOf } from '../trading/account';
 import { toLedgerDTO, toOrderDTO, type BalanceRow, type LedgerRow, type OrderRow } from '../trading/dto';
-import { credit, ledger as writeLedger } from '../trading/wallet';
 import { exportBackup, serializeBackup } from './backup';
-import { assetParam, audit, forbidden, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
+import { assetParam, audit, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
+import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
 import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
 import { mountMarketAdmin } from './marketAdmin';
@@ -71,8 +74,8 @@ interface UserRow {
   id: string;
   email: string;
   full_name: string;
-  role: 'USER' | 'ADMIN';
-  status: 'ACTIVE' | 'LOCKED';
+  role: UserRole;
+  status: 'ACTIVE' | 'LOCKED' | 'DELETED';
   locked_reason: string | null;
   created_at: Date;
   last_seen_at: Date | null;
@@ -88,16 +91,8 @@ export function adminRoutes(deps: AdminDeps) {
   const { db, io, market, engine, store, mailer } = deps;
   const r = Router();
 
-  /** Chỉ quản trị viên đang hoạt động; vai trò đọc lại từ CSDL ở mỗi request để thu quyền có hiệu lực ngay */
-  r.use(requireAuth, (req: Request, _res: Response, next: NextFunction) => {
-    const { user } = req as AuthedRequest;
-    db.one<{ role: string; status: string }>('SELECT role, status FROM users WHERE id = $1', [user.id]).then((row) => {
-      if (!row || row.role !== 'ADMIN') return next(forbidden('Bạn không có quyền truy cập khu vực quản trị'));
-      if (row.status !== 'ACTIVE') return next(forbidden('Tài khoản quản trị đang bị khoá'));
-      (req as AdminRequest).admin = { id: user.id, email: user.email };
-      next();
-    }, next);
-  });
+  /** Chỉ quản trị viên đang hoạt động (bắt buộc 2FA nếu REQUIRE_STAFF_2FA); nhân viên CSKH dùng /api/support-desk */
+  r.use(...staffGuard(db, ['ADMIN']));
 
   const broadcast = () => io.emit('system', store.status());
 
@@ -278,7 +273,9 @@ export function adminRoutes(deps: AdminDeps) {
       const id = uuid.parse(req.params.id);
       const u = await db.one<UserRow>(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = $1`, [id]);
       if (!u) throw notFound('Không tìm thấy người dùng');
+      await auditView(db, (req as AdminRequest).admin, id, u.email, 'admin');
       const account = await accountView(db, market, id);
+      const authEvents = await listAuthEvents(db, id, 30);
       const orders = await db.many<OrderRow>('SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC LIMIT 30', [id]);
       const ledger = await db.many<LedgerRow>('SELECT * FROM ledger WHERE user_id = $1 ORDER BY id DESC LIMIT 30', [id]);
       const auditRows = await db.many(
@@ -312,6 +309,7 @@ export function adminRoutes(deps: AdminDeps) {
         orders: orders.map(toOrderDTO),
         ledger: ledger.map(toLedgerDTO),
         audit: auditRows,
+        authEvents,
       });
     }),
   );
@@ -339,6 +337,7 @@ export function adminRoutes(deps: AdminDeps) {
   const loadTarget = async (id: string) => {
     const u = await db.one<UserRow>(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = $1`, [id]);
     if (!u) throw notFound('Không tìm thấy người dùng');
+    if (u.status === 'DELETED') throw badRequest('DELETED', 'Tài khoản đã bị xoá (ẩn danh) — không thao tác được');
     return u;
   };
 
@@ -387,16 +386,8 @@ export function adminRoutes(deps: AdminDeps) {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
       const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
-      if (id === admin.id) throw badRequest('SELF', 'Không thể tự khoá tài khoản của mình');
-      const u = await loadTarget(id);
-      if (u.role === 'ADMIN') throw badRequest('IS_ADMIN', 'Hãy thu quyền quản trị trước khi khoá tài khoản này');
-      await db.many(`UPDATE users SET status = 'LOCKED', locked_reason = $2 WHERE id = $1`, [id, reason]);
-      store.locked.add(id);
-      const cancelled = await engine.cancelAllForUser(id, 'Tài khoản bị khoá bởi quản trị viên');
-      io.in(`user:${id}`).disconnectSockets(true);
-      await audit(db, admin, 'USER_LOCK', 'user', id, { email: u.email, reason, cancelledOrders: cancelled });
-      sendLater(mailer, u.email, accountLockedEmail(u.full_name, true, reason), { userId: id });
-      res.json({ ok: true, cancelledOrders: cancelled });
+      const { cancelledOrders } = await lockUser(deps, admin, id, reason);
+      res.json({ ok: true, cancelledOrders });
     }),
   );
 
@@ -420,12 +411,13 @@ export function adminRoutes(deps: AdminDeps) {
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
-      const { role } = z.object({ role: z.enum(['USER', 'ADMIN']) }).parse(req.body);
+      const { role } = z.object({ role: z.enum(['USER', 'SUPPORT', 'ADMIN']) }).parse(req.body);
       if (id === admin.id) throw badRequest('SELF', 'Không thể tự thay đổi quyền của chính mình');
       const u = await loadTarget(id);
-      if (u.status === 'LOCKED' && role === 'ADMIN') throw badRequest('LOCKED', 'Không cấp quyền quản trị cho tài khoản đang bị khoá');
+      if (u.role === role) throw badRequest('NO_CHANGE', 'Vai trò không đổi');
+      if (u.status !== 'ACTIVE' && role !== 'USER') throw badRequest('LOCKED', 'Không cấp quyền nhân viên cho tài khoản đang bị khoá');
       await db.many('UPDATE users SET role = $2 WHERE id = $1', [id, role]);
-      await audit(db, admin, role === 'ADMIN' ? 'ROLE_GRANT_ADMIN' : 'ROLE_REVOKE_ADMIN', 'user', id, { email: u.email });
+      await audit(db, admin, 'ROLE_SET', 'user', id, { email: u.email, from: u.role, to: role });
       res.json({ ok: true });
     }),
   );
@@ -436,6 +428,7 @@ export function adminRoutes(deps: AdminDeps) {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
       const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
+      if (id === admin.id) throw badRequest('SELF', 'Không thể tự đặt lại tài khoản của mình — nhờ quản trị viên khác');
       const u = await loadTarget(id);
       await engine.resetAccount(id);
       await audit(db, admin, 'ACCOUNT_RESET', 'user', id, { email: u.email, reason });
@@ -463,31 +456,19 @@ export function adminRoutes(deps: AdminDeps) {
           reason: reasonSchema,
         })
         .parse(req.body);
+      if (id === admin.id) throw badRequest('SELF', 'Không thể tự điều chỉnh số dư của chính mình');
       const u = await loadTarget(id);
       const price = market.priceUsdt(asset);
       if (!price) throw badRequest('ASSET', `Không định giá được ${asset} (chưa có cặp ${asset}USDT trên sàn)`);
       const usdtValue = new Big(amount).times(price);
       if (usdtValue.abs().gt(1_000_000)) throw badRequest('LIMIT', 'Mỗi lần điều chỉnh tối đa tương đương 1.000.000 USDT');
-      const after = await db.tx(async (tx) => {
-        let total: string;
-        if (new Big(amount).gt(0)) {
-          total = await credit(tx, id, asset, amount, usdtValue.toFixed());
-        } else {
-          const take = new Big(amount).abs().toFixed();
-          const row = await tx.one<BalanceRow>(
-            `UPDATE balances SET free = free - $3,
-                    cost_usdt = GREATEST(cost_usdt - cost_usdt * $3 / NULLIF(free + locked, 0), 0), updated_at = now()
-             WHERE user_id = $1 AND asset = $2 AND free >= $3 RETURNING *`,
-            [id, asset, take],
-          );
-          if (!row) throw badRequest('INSUFFICIENT_BALANCE', `Số dư ${asset} khả dụng không đủ để trừ ${take}`);
-          total = new Big(row.free).plus(row.locked).toFixed();
-        }
-        await tx.many('UPDATE accounts SET contributed_usdt = contributed_usdt + $2, updated_at = now() WHERE user_id = $1', [id, usdtValue.toFixed()]);
-        await writeLedger(tx, id, asset, 'ADJUST', amount, total, null, `Quản trị viên điều chỉnh: ${reason}`);
-        await audit(tx, admin, 'BALANCE_ADJUST', 'user', id, { email: u.email, asset, amount, usdtValue: usdtValue.toFixed(2), reason, balanceAfter: total });
-        return total;
-      });
+      // Từ ngưỡng trở lên: tạo yêu cầu, quản trị viên KHÁC phải duyệt (nguyên tắc 2 người)
+      if (usdtValue.abs().gte(config.adjustApprovalUsdt)) {
+        const request = await createAdjustRequest(db, admin, { userId: id, email: u.email, asset, amount, usdtValue: usdtValue.toFixed(), reason });
+        res.status(202).json({ ok: true, pending: true, request });
+        return;
+      }
+      const after = await db.tx((tx) => applyBalanceAdjust(tx, admin, { userId: id, email: u.email, asset, amount, usdtValue: usdtValue.toFixed(), reason }));
       io.to(`user:${id}`).emit('account');
       res.json({ ok: true, balanceAfter: after });
     }),
@@ -498,19 +479,40 @@ export function adminRoutes(deps: AdminDeps) {
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
-      const { confirmEmail } = z.object({ confirmEmail: z.string().trim().toLowerCase() }).parse(req.body ?? {});
+      const { confirmEmail, purge } = z
+        .object({ confirmEmail: z.string().trim().toLowerCase(), purge: z.boolean().optional() })
+        .parse(req.body ?? {});
       if (id === admin.id) throw badRequest('SELF', 'Không thể tự xoá tài khoản của mình');
       const u = await loadTarget(id);
-      if (u.role === 'ADMIN') throw badRequest('IS_ADMIN', 'Hãy thu quyền quản trị trước khi xoá tài khoản này');
+      if (u.role !== 'USER') throw badRequest('IS_STAFF', 'Hãy thu quyền nhân viên trước khi xoá tài khoản này');
       if (confirmEmail !== u.email) throw badRequest('CONFIRM', 'Email xác nhận không khớp');
-      await engine.cancelAllForUser(id, 'Tài khoản bị xoá');
+      if (purge && config.isProd) throw badRequest('PURGE', 'Môi trường thật không được xoá hẳn dữ liệu giao dịch — chỉ ẩn danh');
+      await engine.cancelAllForUser(id, 'Tài khoản bị xoá', { actor: admin.email });
       io.in(`user:${id}`).disconnectSockets(true);
+      // Ẩn danh thì dòng users vẫn còn → phải thu hồi mọi phiên đăng nhập cũ (như đổi mật khẩu)
+      const deletedAt = new Date();
       await db.tx(async (tx) => {
-        await tx.many('DELETE FROM users WHERE id = $1', [id]);
-        await audit(tx, admin, 'USER_DELETE', 'user', id, { email: u.email, fullName: u.full_name });
+        if (purge) {
+          // Chỉ môi trường chạy thử (dọn tài khoản thử của khảo sát tải)
+          await tx.exec(`SET LOCAL vss.purge = 'on'`);
+          await tx.many('DELETE FROM users WHERE id = $1', [id]);
+        } else {
+          // Xoá thông tin cá nhân nhưng GIỮ lệnh, khớp, sổ cái, tin nhắn hỗ trợ để đối soát / giải quyết khiếu nại
+          await tx.many(
+            `UPDATE users SET email = $2, full_name = 'Người dùng đã xoá', display_name = NULL, show_on_leaderboard = false,
+                    password_hash = $3, totp_secret = NULL, totp_pending_secret = NULL, totp_enabled_at = NULL,
+                    status = 'DELETED', deleted_at = now(), locked_reason = NULL, password_changed_at = $4
+             WHERE id = $1`,
+            [id, `deleted-${id}@deleted.invalid`, await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10), deletedAt],
+          );
+          await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [id]);
+          await tx.many(`UPDATE price_alerts SET status = 'CANCELLED' WHERE user_id = $1 AND status = 'ACTIVE'`, [id]);
+        }
+        await audit(tx, admin, purge ? 'USER_PURGE' : 'USER_DELETE', 'user', id, { email: u.email, fullName: u.full_name });
       });
+      if (!purge) markPasswordChanged(id, deletedAt);
       store.locked.delete(id);
-      res.json({ ok: true });
+      res.json({ ok: true, anonymized: !purge });
     }),
   );
 
@@ -567,9 +569,86 @@ export function adminRoutes(deps: AdminDeps) {
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0) throw badRequest('ID', 'Mã lệnh không hợp lệ');
       const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
-      const order = await engine.adminCancel(id, `Quản trị viên huỷ: ${reason}`);
+      const order = await engine.adminCancel(id, `Quản trị viên huỷ: ${reason}`, { actor: admin.email });
       await audit(db, admin, 'ORDER_CANCEL', 'order', String(id), { symbol: order.symbol, side: order.side, qty: order.origQty, reason });
       res.json(order);
+    }),
+  );
+
+  r.get(
+    '/orders/:id/events',
+    ah(async (req, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw badRequest('ID', 'Mã lệnh không hợp lệ');
+      res.json(await listOrderEvents(db, id));
+    }),
+  );
+
+  /* ------------------------------ duyệt điều chỉnh số dư ------------------------------ */
+
+  r.get(
+    '/adjust-requests',
+    ah(async (req, res) => {
+      const { status } = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'ALL']).default('PENDING') }).parse(req.query);
+      const rows = await db.many<AdjustRequestRow>(
+        `SELECT r.*, u.email, u.full_name FROM balance_adjust_requests r JOIN users u ON u.id = r.user_id
+         ${status === 'ALL' ? '' : 'WHERE r.status = $1'} ORDER BY r.id DESC LIMIT 200`,
+        status === 'ALL' ? [] : [status],
+      );
+      res.json(rows.map(toAdjustRequestDTO));
+    }),
+  );
+
+  r.post(
+    '/adjust-requests/:id/:decision',
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) throw badRequest('ID', 'Mã yêu cầu không hợp lệ');
+      const decision = z.enum(['approve', 'reject']).parse(req.params.decision);
+      const { note } = z.object({ note: z.string().trim().max(300).optional() }).parse(req.body ?? {});
+      if (decision === 'reject' && (!note || note.length < 3)) throw badRequest('NOTE', 'Ghi lý do từ chối (tối thiểu 3 ký tự)');
+      const out = await db.tx(async (tx) => {
+        const r = await tx.one<AdjustRequestRow>(
+          'SELECT r.*, u.email, u.full_name FROM balance_adjust_requests r JOIN users u ON u.id = r.user_id WHERE r.id = $1 FOR UPDATE OF r',
+          [id],
+        );
+        if (!r) throw notFound('Không tìm thấy yêu cầu');
+        if (r.status !== 'PENDING') throw badRequest('DECIDED', 'Yêu cầu đã được xử lý');
+        // Nguyên tắc 2 người: người đề xuất không tự duyệt / từ chối yêu cầu của mình
+        if (r.requested_by === admin.id) throw badRequest('SELF', 'Không được tự duyệt yêu cầu do chính mình tạo — cần quản trị viên khác');
+        if (r.user_id === admin.id) throw badRequest('SELF', 'Không được duyệt điều chỉnh số dư của chính mình');
+        let balanceAfter: string | null = null;
+        if (decision === 'approve') {
+          balanceAfter = await applyBalanceAdjust(tx, admin, {
+            userId: r.user_id,
+            email: r.email ?? '',
+            asset: r.asset,
+            amount: new Big(r.amount).toFixed(),
+            usdtValue: new Big(r.usdt_value).toFixed(),
+            reason: r.reason,
+            requestId: id,
+            requestedBy: r.requested_by_email,
+            ticketId: r.ticket_id == null ? null : Number(r.ticket_id),
+          });
+        }
+        const row = await tx.one<AdjustRequestRow>(
+          `UPDATE balance_adjust_requests SET status = $2, decided_by = $3, decided_by_email = $4, decision_note = $5, decided_at = now()
+           WHERE id = $1 RETURNING *`,
+          [id, decision === 'approve' ? 'APPROVED' : 'REJECTED', admin.id, admin.email, note ?? null],
+        );
+        await audit(tx, admin, decision === 'approve' ? 'BALANCE_ADJUST_APPROVE' : 'BALANCE_ADJUST_REJECT', 'user', r.user_id, {
+          requestId: id,
+          email: r.email,
+          asset: r.asset,
+          amount: new Big(r.amount).toFixed(),
+          note: note ?? null,
+        });
+        return { dto: toAdjustRequestDTO({ ...row!, email: r.email, full_name: r.full_name }), userId: r.user_id, ticketId: r.ticket_id, balanceAfter };
+      });
+      if (decision === 'approve') io.to(`user:${out.userId}`).emit('account');
+      await deps.onAdjustDecided?.(out.dto);
+      res.json({ ...out.dto, balanceAfter: out.balanceAfter });
     }),
   );
 

@@ -4,11 +4,43 @@ import { Copy, Download, ShieldCheck, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { changePasswordSchema, preferencesSchema, RULES, type UserDTO } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
-import { fmtDateTime } from '../../lib/format';
+import { Link } from 'react-router-dom';
+import { cn, fmtDateTime } from '../../lib/format';
+import { useAuthActivity } from '../../lib/support';
 import { useAuth } from '../../store/auth';
 import { Modal, Spinner, UnderlineTabs } from '../common/ui';
 
-type Tab = 'password' | 'security' | 'prefs' | 'reset';
+/** Lịch sử đăng nhập & thao tác bảo mật của chính người dùng — phát hiện đăng nhập lạ */
+function ActivityPanel() {
+  const { data, isLoading } = useAuthActivity(true);
+  if (isLoading) return <Spinner className="m-6" />;
+  if (!data?.length) return <p className="text-tx-3">Chưa có hoạt động nào được ghi.</p>;
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] text-tx-3">
+        50 hoạt động gần nhất. Thấy đăng nhập lạ (thời gian, địa chỉ IP không phải của bạn)? Đổi mật khẩu ngay, bật xác thực 2 lớp và{' '}
+        <Link to="/ho-tro?new=1" className="text-brand hover:underline">
+          báo cho bộ phận hỗ trợ
+        </Link>
+        .
+      </p>
+      <ul className="max-h-[360px] divide-y divide-line overflow-auto rounded-md border border-line">
+        {data.map((e) => (
+          <li key={e.id} className={cn('px-3 py-2 text-[12px]', /FAIL|BLOCKED|LOCKED/.test(e.event) && 'text-down')}>
+            <div className="flex flex-wrap gap-x-2">
+              <span className="font-medium">{e.label}</span>
+              <span className="text-tx-3">{fmtDateTime(e.createdAt)}</span>
+              {e.ip && <span className="text-tx-3">IP {e.ip}</span>}
+            </div>
+            {e.userAgent && <div className="truncate text-[11px] text-tx-3">{e.userAgent}</div>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+type Tab = 'password' | 'security' | 'activity' | 'prefs' | 'reset';
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange(v: boolean): void; label: string; hint?: string }) {
   return (
@@ -347,6 +379,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'password' }:
         items={[
           { value: 'password', label: 'Mật khẩu' },
           { value: 'security', label: 'Xác thực 2 lớp' },
+          { value: 'activity', label: 'Hoạt động' },
           { value: 'prefs', label: 'Thông báo & riêng tư' },
           { value: 'reset', label: 'Đặt lại vốn ảo' },
         ]}
@@ -373,6 +406,7 @@ export function AccountSettingsModal({ open, onClose, initialTab = 'password' }:
         </form>
       )}
       {tab === 'security' && <TwoFactorPanel />}
+      {tab === 'activity' && <ActivityPanel />}
       {tab === 'prefs' && <PreferencesPanel onSaved={onClose} />}
       {tab === 'reset' && (
         <div className="space-y-3">

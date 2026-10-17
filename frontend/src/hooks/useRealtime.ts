@@ -100,6 +100,17 @@ export function useRealtime() {
       void qc.invalidateQueries({ queryKey: ['account'] });
       void qc.invalidateQueries({ queryKey: ['ledger'] });
     });
+    // Hỗ trợ khách hàng: khách nhận tin trả lời / thay đổi trạng thái yêu cầu
+    s.on('support', (ev: { ticketId: number; kind: string }) => {
+      void qc.invalidateQueries({ queryKey: ['support'] });
+      const viewing = location.pathname === '/ho-tro' && new URLSearchParams(location.search).get('ticket') === String(ev.ticketId);
+      if (ev.kind === 'message' && !viewing) toast.info(`CSKH vừa trả lời yêu cầu #${ev.ticketId}`, { description: 'Mở mục Hỗ trợ để xem', duration: 10_000 });
+    });
+    // Nhân viên CSKH: yêu cầu mới / tin nhắn mới của khách
+    s.on('support:staff', (ev: { ticketId: number; kind: string }) => {
+      void qc.invalidateQueries({ queryKey: ['desk'] });
+      if (ev.kind === 'created') toast.warning(`Yêu cầu hỗ trợ mới #${ev.ticketId}`, { description: 'Mở khu vực CSKH để tiếp nhận', duration: 10_000 });
+    });
 
     for (const fn of listeners) fn(s);
     return () => {

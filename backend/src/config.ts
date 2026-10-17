@@ -108,6 +108,10 @@ export const config = {
   },
   /** Bắt buộc xác thực email trước khi được đặt lệnh */
   requireEmailVerification: bool('REQUIRE_EMAIL_VERIFICATION', false),
+  /** Nhân viên (quản trị, CSKH) phải bật xác thực 2 lớp mới vào được khu vực nhân viên — mặc định bật ở production */
+  requireStaff2fa: bool('REQUIRE_STAFF_2FA', isProd),
+  /** Điều chỉnh số dư có giá trị từ mức này (USDT) trở lên phải có quản trị viên thứ hai duyệt */
+  adjustApprovalUsdt: Number(process.env.ADJUST_APPROVAL_USDT ?? 1000),
   dataEncryptionKey,
   marketFeed: feed as 'binance' | 'sim',
   binance: {

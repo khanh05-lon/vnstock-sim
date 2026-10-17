@@ -39,7 +39,12 @@ export const BACKUP_TABLES: TableSpec[] = [
   { name: 'ledger', sql: 'SELECT * FROM ledger ORDER BY id', replace: true },
   { name: 'nav_daily', sql: 'SELECT * FROM nav_daily ORDER BY day, user_id', replace: true },
   { name: 'market_meta', sql: `SELECT * FROM market_meta WHERE key LIKE 'admin.%'`, replace: true },
-  { name: 'admin_audit_log', sql: 'SELECT * FROM admin_audit_log ORDER BY id', replace: true },
+  { name: 'order_events', sql: 'SELECT * FROM order_events ORDER BY id', replace: true },
+  { name: 'balance_adjust_requests', sql: 'SELECT * FROM balance_adjust_requests ORDER BY id', replace: true },
+  { name: 'support_tickets', sql: 'SELECT * FROM support_tickets ORDER BY id', replace: true },
+  { name: 'support_messages', sql: 'SELECT * FROM support_messages ORDER BY id', replace: true },
+  // Nhật ký quản trị chỉ được ghi thêm: khôi phục KHÔNG xoá nhật ký hiện có, chỉ gộp thêm dòng còn thiếu
+  { name: 'admin_audit_log', sql: 'SELECT * FROM admin_audit_log ORDER BY id', replace: false },
 ];
 
 /** Bảng xoá theo khi khôi phục nhưng không có trong bản sao lưu (token tạm thời) */

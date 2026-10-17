@@ -24,6 +24,9 @@ const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const SupportPage = lazy(() => import('./pages/SupportPage'));
+const LockedSupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.LockedSupportPage })));
+const SupportDeskPage = lazy(() => import('./pages/SupportDeskPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -73,6 +76,8 @@ export function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            {/* Tài khoản bị khoá nhắn CSKH bằng vé hỗ trợ (không cần phiên đăng nhập) */}
+            <Route path="/ho-tro-khoa" element={<LockedSupportPage />} />
             <Route path="/" element={<Home />}>
               <Route index element={<MarketsPage />} />
             </Route>
@@ -103,6 +108,15 @@ export function App() {
               <Route path="bo-loc" element={<Navigate to="/thi-truong" replace />} />
               <Route path="portfolio" element={<Navigate to="/vi" replace />} />
               <Route path="history" element={<Navigate to="/lich-su" replace />} />
+              <Route
+                path="ho-tro"
+                element={
+                  <RequireAuth>
+                    <SupportPage />
+                  </RequireAuth>
+                }
+              />
+              <Route path="cskh" element={<SupportDeskPage />} />
               <Route path="admin" element={<AdminPage />} />
               <Route path="dieu-khoan" element={<LegalPage kind="terms" />} />
               <Route path="chinh-sach-bao-mat" element={<LegalPage kind="privacy" />} />

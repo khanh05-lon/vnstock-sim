@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { AccountDTO, LedgerDTO, OrderDTO, RulesPatch, SymbolFilters, TradingRules } from '@vss/shared';
+import type { AccountDTO, AuthEventDTO, LedgerDTO, OrderDTO, RulesPatch, SymbolFilters, TradingRules, UserRole } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
 
@@ -53,8 +53,8 @@ export interface AdminUser {
   id: string;
   email: string;
   fullName: string;
-  role: 'USER' | 'ADMIN';
-  status: 'ACTIVE' | 'LOCKED';
+  role: UserRole;
+  status: 'ACTIVE' | 'LOCKED' | 'DELETED';
   lockedReason: string | null;
   createdAt: string;
   lastSeenAt: string | null;
@@ -81,6 +81,7 @@ export interface AdminUserDetail {
   orders: OrderDTO[];
   ledger: LedgerDTO[];
   audit: AuditRow[];
+  authEvents: AuthEventDTO[];
 }
 
 export type AdminOrder = OrderDTO & { userId: string; userEmail: string };
@@ -321,6 +322,12 @@ export const AUDIT_LABEL: Record<string, string> = {
   USER_RESET_2FA: 'Tắt 2FA hộ',
   ROLE_GRANT_ADMIN: 'Cấp quyền quản trị',
   ROLE_REVOKE_ADMIN: 'Thu quyền quản trị',
+  ROLE_SET: 'Đổi vai trò',
+  USER_VIEW: 'Xem hồ sơ khách',
+  USER_PURGE: 'Xoá hẳn tài khoản thử',
+  BALANCE_ADJUST_REQUEST: 'Đề xuất điều chỉnh số dư',
+  BALANCE_ADJUST_APPROVE: 'Duyệt điều chỉnh số dư',
+  BALANCE_ADJUST_REJECT: 'Từ chối điều chỉnh số dư',
   ACCOUNT_RESET: 'Đặt lại tài khoản ảo',
   CASH_ADJUST: 'Điều chỉnh vốn ảo',
   BALANCE_ADJUST: 'Điều chỉnh số dư',

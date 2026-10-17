@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Pencil, X } from 'lucide-react';
+import { History, LifeBuoy, Pencil, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Big, ORDER_STATUS_LABEL, ORDER_TYPE_LABEL, type OrderDTO, type OrderStatus, type SymbolRow } from '@vss/shared';
 import { api, errMsg } from '../../lib/api';
@@ -9,6 +9,7 @@ import { useAccount, useCancelOrder, useInvalidateTrading, useLoggedIn, useMyTra
 import { useMarket } from '../../store/market';
 import { CoinIcon } from '../common/CoinIcon';
 import { Empty, Modal, Spinner } from '../common/ui';
+import { OrderTimelineModal } from '../support/SupportUi';
 
 export const STATUS_STYLE: Record<OrderStatus, string> = {
   NEW: 'bg-info/15 text-info',
@@ -96,6 +97,7 @@ function OpenOrders({ symbol, onlyThis }: { symbol: string; onlyThis: boolean })
   const rows = useMarket((s) => s.rows);
   const cancel = useCancelOrder();
   const [editing, setEditing] = useState<OrderDTO | null>(null);
+  const [timeline, setTimeline] = useState<number | null>(null);
   if (isLoading) return <Spinner className="m-6" />;
   if (!data?.length) return <Empty title="Không có lệnh mở" />;
   return (
@@ -141,6 +143,7 @@ function OpenOrders({ symbol, onlyThis }: { symbol: string; onlyThis: boolean })
                 <td className="px-2 text-right">{o.price ? fmtUsd(new Big(o.price).times(o.origQty).toFixed()) : '--'}</td>
                 <td className="px-3 text-right">
                   <div className="flex justify-end gap-1">
+                    <OrderMoreActions id={o.id} onTimeline={setTimeline} />
                     {o.type === 'LIMIT' && !o.orderListId && (
                       <button onClick={() => setEditing(o)} className="rounded p-1 text-tx-3 hover:bg-bg-3 hover:text-tx-1" aria-label="Sửa lệnh" title="Sửa lệnh">
                         <Pencil size={14} />
@@ -157,6 +160,21 @@ function OpenOrders({ symbol, onlyThis }: { symbol: string; onlyThis: boolean })
         </tbody>
       </table>
       <ModifyOrderModal order={editing} onClose={() => setEditing(null)} />
+      <OrderTimelineModal orderId={timeline} onClose={() => setTimeline(null)} />
+    </>
+  );
+}
+
+/** Xem nhật ký lệnh (ai đặt / sửa / huỷ, lúc nào, IP) và báo sự cố lệnh cho bộ phận hỗ trợ */
+function OrderMoreActions({ id, onTimeline }: { id: number; onTimeline(id: number): void }) {
+  return (
+    <>
+      <button onClick={() => onTimeline(id)} className="rounded p-1 text-tx-3 hover:bg-bg-3 hover:text-tx-1" aria-label={`Nhật ký lệnh ${id}`} title="Nhật ký lệnh">
+        <History size={14} />
+      </button>
+      <Link to={`/ho-tro?new=1&order=${id}`} className="rounded p-1 text-tx-3 hover:bg-bg-3 hover:text-ref" aria-label={`Báo sự cố lệnh ${id}`} title="Báo sự cố lệnh này cho CSKH">
+        <LifeBuoy size={14} />
+      </Link>
     </>
   );
 }
@@ -164,11 +182,13 @@ function OpenOrders({ symbol, onlyThis }: { symbol: string; onlyThis: boolean })
 function OrderHistory({ symbol, onlyThis }: { symbol: string; onlyThis: boolean }) {
   const { data, isLoading } = useOrderHistory(onlyThis ? { symbol } : {}, 100);
   const rows = useMarket((s) => s.rows);
+  const [timeline, setTimeline] = useState<number | null>(null);
   if (isLoading) return <Spinner className="m-6" />;
   const list = (data ?? []).filter((o) => o.status !== 'NEW' && o.status !== 'PARTIALLY_FILLED');
   if (!list.length) return <Empty title="Chưa có lịch sử lệnh" />;
   return (
-    <table className="tbl num w-full text-[12px]">
+    <>
+      <table className="tbl num w-full text-[12px]">
       <thead>
         <tr className="text-left">
           <th className="px-3 py-2">Thời gian</th>
@@ -179,7 +199,8 @@ function OrderHistory({ symbol, onlyThis }: { symbol: string; onlyThis: boolean 
           <th className="px-2 text-right">Giá đặt</th>
           <th className="px-2 text-right">Đã khớp</th>
           <th className="px-2 text-right">Tổng</th>
-          <th className="px-3 text-right">Trạng thái</th>
+          <th className="px-2 text-right">Trạng thái</th>
+          <th className="px-3" />
         </tr>
       </thead>
       <tbody>
@@ -197,14 +218,21 @@ function OrderHistory({ symbol, onlyThis }: { symbol: string; onlyThis: boolean 
               <td className="px-2 text-right text-tx-2">{o.price ? fmtPrice(o.price, r?.filters.tickSize) : 'Thị trường'}</td>
               <td className="px-2 text-right">{fmtQty(o.executedQty, r?.filters.stepSize)}</td>
               <td className="px-2 text-right">{fmtUsd(o.cummulativeQuoteQty)}</td>
-              <td className="px-3 text-right">
+              <td className="px-2 text-right">
                 <span className={cn('chip h-5 px-1.5 text-[10px]', STATUS_STYLE[o.status])}>{ORDER_STATUS_LABEL[o.status]}</span>
+              </td>
+              <td className="px-3">
+                <div className="flex justify-end gap-1">
+                  <OrderMoreActions id={o.id} onTimeline={setTimeline} />
+                </div>
               </td>
             </tr>
           );
         })}
       </tbody>
-    </table>
+      </table>
+      <OrderTimelineModal orderId={timeline} onClose={() => setTimeline(null)} />
+    </>
   );
 }
 

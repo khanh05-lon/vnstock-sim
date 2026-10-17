@@ -153,7 +153,7 @@ async function main() {
   // 4. Dọn dẹp
   let deleted = 0;
   for (const u of users) {
-    const r = await call('DELETE', `/admin/users/${u.id}`, admin, { confirmEmail: u.email });
+    const r = await call('DELETE', `/admin/users/${u.id}`, admin, { confirmEmail: u.email, purge: true });
     if (r.status === 200) deleted++;
   }
 

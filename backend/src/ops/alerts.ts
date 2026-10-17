@@ -44,6 +44,8 @@ export interface AlertOptions {
   thresholds: { eventLoopMs: number; p95Ms: number; rssMb: number; dbSlowMs: number; errorRate: number };
   /** true khi đang trong giờ giao dịch và nguồn giá thật được kỳ vọng hoạt động nhưng đang chạy giả lập */
   feedLost?: () => boolean;
+  /** Số yêu cầu hỗ trợ khách hàng đã quá hạn trả lời (số liệu cache, cập nhật định kỳ) */
+  supportOverdue?: () => number;
 }
 
 /**
@@ -108,6 +110,15 @@ export class AlertMonitor {
         level: 'warning',
         title: 'Mất nguồn giá Binance (đang chạy giả lập)',
         check: () => ({ firing: !!opts.feedLost?.(), detail: 'Không nhận được dữ liệu từ luồng Binance, bảng giá và khớp lệnh đang dùng giá giả lập' }),
+      },
+      {
+        key: 'support_overdue',
+        level: 'warning',
+        title: 'Yêu cầu hỗ trợ khách hàng quá hạn trả lời',
+        check: () => {
+          const n = opts.supportOverdue?.() ?? 0;
+          return { firing: n > 0, detail: `${n} yêu cầu hỗ trợ đã quá hạn trả lời khách (xem khu vực CSKH)` };
+        },
       },
     ];
   }

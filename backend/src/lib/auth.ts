@@ -52,6 +52,28 @@ export function verifyMfaTicket(token: string): (AuthUser & { issuedMs: number }
   }
 }
 
+/** Thời hạn vé hỗ trợ cấp cho tài khoản đang bị khoá */
+export const SUPPORT_TICKET_TTL_SEC = 2 * 60 * 60;
+
+/**
+ * Vé hỗ trợ: tài khoản bị khoá đăng nhập đúng mật khẩu (+ 2FA nếu có) chỉ nhận vé này — dùng được cho
+ * mục Hỗ trợ (`/api/support/*`) để nhắn CSKH, không giao dịch / xem tài sản được.
+ */
+export function signSupportTicket(user: AuthUser): string {
+  return jwt.sign({ sub: user.id, email: user.email, purpose: 'support', ms: Date.now() }, config.jwtSecret, { expiresIn: SUPPORT_TICKET_TTL_SEC });
+}
+
+function verifySupportTicket(token: string): (AuthUser & { iat: number; issuedMs: number }) | null {
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload;
+    if (payload.purpose !== 'support' || typeof payload.sub !== 'string') return null;
+    const iat = payload.iat ?? 0;
+    return { id: payload.sub, email: String(payload.email ?? ''), iat, issuedMs: typeof payload.ms === 'number' ? payload.ms : iat * 1000 };
+  } catch {
+    return null;
+  }
+}
+
 /* ---------------- thu hồi phiên khi đổi / đặt lại mật khẩu ---------------- */
 
 const CACHE_TTL_MS = 5 * 60_000;
@@ -116,6 +138,26 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   isTokenCurrent(user).then((ok) => {
     if (!ok) return expired();
     (req as AuthedRequest).user = { id: user.id, email: user.email };
+    next();
+  }, next);
+}
+
+export interface SupportRequest extends AuthedRequest {
+  /** Đang dùng vé hỗ trợ (tài khoản bị khoá), không phải phiên đăng nhập đầy đủ */
+  supportOnly?: boolean;
+}
+
+/** Như `requireAuth` nhưng nhận thêm vé hỗ trợ — chỉ gắn cho route Hỗ trợ khách hàng */
+export function requireAuthOrSupportTicket(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const ticket = token ? verifySupportTicket(token) : null;
+  if (!ticket) return requireAuth(req, res, next);
+  // Đặt lại mật khẩu / xoá tài khoản thu hồi cả vé hỗ trợ đã cấp trước đó
+  isTokenCurrent(ticket).then((ok) => {
+    if (!ok) return next(unauthorized('Phiên hỗ trợ đã hết hạn, vui lòng đăng nhập lại'));
+    (req as SupportRequest).user = { id: ticket.id, email: ticket.email };
+    (req as SupportRequest).supportOnly = true;
     next();
   }, next);
 }

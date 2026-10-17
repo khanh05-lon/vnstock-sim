@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { EMAIL_VERIFY_TTL_HOURS, PASSWORD_RESET_TTL_MIN, RULES } from '@vss/shared';
 
-const UPDATED = '16/10/2026';
+const UPDATED = '17/10/2026';
 
 /** Tỷ lệ → "%" kiểu Việt Nam (0,1%); lấy từ RULES đang hiệu lực nên khớp biểu phí quản trị đặt */
 const pct = (v: string | number, digits = 3) => `${(Number(v) * 100).toLocaleString('vi-VN', { maximumFractionDigits: digits })}%`;
@@ -92,15 +92,32 @@ function Terms() {
           <li>Thay đổi biểu phí, thêm / gỡ cặp giao dịch, tạm ngừng giao dịch toàn sàn hoặc theo cặp.</li>
           <li>Khôi phục dữ liệu từ bản sao lưu khi có sự cố; dữ liệu phát sinh sau thời điểm sao lưu có thể bị mất.</li>
         </ul>
-        <p>Mọi thao tác quản trị đều được ghi vào nhật ký kèm thời điểm, người thực hiện và lý do.</p>
+        <p>
+          Mọi thao tác quản trị đều được ghi vào nhật ký kèm thời điểm, người thực hiện và lý do; nhật ký <b className="text-tx-1">chỉ được ghi thêm</b>, không ai sửa hay
+          xoá được, kể cả khi khôi phục sao lưu. Điều chỉnh số dư có giá trị lớn và mọi khoản bồi hoàn do nhân viên chăm sóc khách hàng đề xuất phải được một quản trị viên
+          khác duyệt; không ai được tự điều chỉnh số dư của chính mình.
+        </p>
       </Block>
-      <Block n={9} title="Giới hạn trách nhiệm">
+      <Block n={9} title="Hỗ trợ khách hàng và khiếu nại">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Gặp lệnh, số dư bất thường hay nghi bị truy cập trái phép, hãy gửi yêu cầu ở mục <b className="text-tx-1">Hỗ trợ</b> (có thể gắn kèm lệnh liên quan). Yêu cầu
+            khẩn cấp được trả lời trong khoảng 15 phút, liên quan lệnh / số dư / bảo mật trong khoảng 60 phút, còn lại trong khoảng 4 giờ.
+          </li>
+          <li>
+            Nhân viên chăm sóc khách hàng được xem dữ liệu tài khoản của bạn <b className="text-tx-1">chỉ khi xử lý yêu cầu bạn gửi</b>, mỗi lần xem đều được ghi nhật ký.
+            Nhân viên có thể huỷ hộ lệnh, tạm khoá tài khoản để bảo vệ bạn và đề xuất bồi hoàn (cần quản trị viên duyệt).
+          </li>
+          <li>Mỗi lần đặt, sửa, huỷ lệnh đều được ghi lại kèm thời điểm, người thực hiện và địa chỉ IP để đối chiếu khi có khiếu nại; bạn tự xem được nhật ký từng lệnh.</li>
+        </ul>
+      </Block>
+      <Block n={10} title="Giới hạn trách nhiệm">
         <p>
           Dịch vụ được cung cấp &quot;nguyên trạng&quot;. Chúng tôi không chịu trách nhiệm cho thiệt hại phát sinh từ việc dùng kết quả mô phỏng để ra quyết định đầu tư
           thật, hoặc từ việc hệ thống tạm ngừng, gián đoạn, mất kết nối nguồn giá, gửi email chậm / thất bại, mất dữ liệu mô phỏng.
         </p>
       </Block>
-      <Block n={10} title="Thay đổi điều khoản">
+      <Block n={11} title="Thay đổi điều khoản">
         <p>Điều khoản có thể được cập nhật; thay đổi quan trọng sẽ được thông báo trên banner hệ thống. Tiếp tục sử dụng nghĩa là bạn đồng ý với bản cập nhật.</p>
       </Block>
     </>
@@ -123,6 +140,13 @@ function Privacy() {
           <li>
             <b className="text-tx-1">Khi sử dụng:</b> lệnh, kết quả khớp, số dư ảo theo từng tài sản, sổ cái, lịch sử tổng tài sản theo ngày, các danh sách theo dõi, cảnh
             báo giá, tuỳ chọn thông báo và bảng xếp hạng, thời điểm hoạt động gần nhất.
+          </li>
+          <li>
+            <b className="text-tx-1">Nhật ký đăng nhập và lệnh:</b> mỗi lần đăng nhập (thành công / sai mật khẩu), đổi mật khẩu, bật / tắt 2FA, đặt / sửa / huỷ lệnh
+            được ghi kèm thời điểm, địa chỉ IP và trình duyệt. Bạn xem được lịch sử đăng nhập của mình trong Cài đặt → Hoạt động.
+          </li>
+          <li>
+            <b className="text-tx-1">Yêu cầu hỗ trợ:</b> nội dung trao đổi với bộ phận chăm sóc khách hàng, đánh giá của bạn.
           </li>
           <li>
             <b className="text-tx-1">Nhật ký kỹ thuật:</b> địa chỉ IP, thời điểm, đường dẫn và kết quả request, phục vụ bảo mật và xử lý sự cố. Số liệu giám sát hệ thống
@@ -164,15 +188,25 @@ function Privacy() {
             Bản sao lưu cơ sở dữ liệu: giữ theo chu kỳ xoay vòng của đơn vị vận hành (đề xuất 30 ngày); dữ liệu đã xoá có thể còn trong bản sao lưu cho tới khi bản đó hết
             hạn.
           </li>
-          <li>Nhật ký kỹ thuật: theo chính sách xoay vòng log của máy chủ; nhật ký thao tác quản trị: giữ lâu dài để phục vụ kiểm tra.</li>
+          <li>Nhật ký kỹ thuật: theo chính sách xoay vòng log của máy chủ.</li>
+          <li>
+            Nhật ký thao tác quản trị, nhật ký đăng nhập, nhật ký lệnh và tin nhắn hỗ trợ: giữ lâu dài, chỉ được ghi thêm, làm bằng chứng khi có khiếu nại hay tranh chấp.
+          </li>
+          <li>
+            Khi tài khoản bị xoá: họ tên, email, mật khẩu, khoá 2FA bị xoá ngay; lịch sử lệnh, khớp lệnh, sổ cái và tin nhắn hỗ trợ được giữ ở dạng{' '}
+            <b className="text-tx-1">ẩn danh</b> (không còn gắn với email / họ tên) để đối soát.
+          </li>
         </ul>
-        <p>Chỉ quản trị viên được cấp quyền mới truy cập được dữ liệu, và mọi thao tác của họ đều được ghi nhật ký.</p>
+        <p>
+          Chỉ quản trị viên và nhân viên chăm sóc khách hàng được cấp quyền mới truy cập được dữ liệu (nhân viên CSKH chỉ qua yêu cầu hỗ trợ bạn gửi), và mọi thao tác của
+          họ đều được ghi nhật ký.
+        </p>
       </Block>
       <Block n={4} title="Quyền của bạn">
         <ul className="list-disc space-y-1 pl-5">
           <li>Xem và tải về lịch sử lệnh, khớp, sổ cái của mình (trang Lịch sử, Xuất CSV).</li>
           <li>Đổi mật khẩu, bật / tắt 2FA, bật / tắt email thông báo, đổi tên hiển thị và rút khỏi bảng xếp hạng bất cứ lúc nào trong Cài đặt tài khoản.</li>
-          <li>Yêu cầu chỉnh sửa, xoá tài khoản và toàn bộ dữ liệu liên quan bằng cách liên hệ ban quản trị.</li>
+          <li>Yêu cầu chỉnh sửa, xoá tài khoản bằng cách gửi yêu cầu ở mục Hỗ trợ (chọn "Dữ liệu cá nhân, xoá tài khoản").</li>
           <li>Rút lại đồng ý xử lý dữ liệu, đồng nghĩa ngừng sử dụng dịch vụ và xoá tài khoản.</li>
         </ul>
       </Block>

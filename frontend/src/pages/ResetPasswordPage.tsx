@@ -5,7 +5,8 @@ import { Eye, EyeOff, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { resetPasswordSchema } from '@vss/shared';
 import { AuthCard } from '../components/auth/AuthFrame';
-import { api, ApiError, errMsg } from '../lib/api';
+import { api, ApiError, errMsg, supportTokenOf } from '../lib/api';
+import { useSupportPass } from '../lib/support';
 import { useAuth, type LoginResult } from '../store/auth';
 
 export default function ResetPasswordPage() {
@@ -45,7 +46,15 @@ export default function ResetPasswordPage() {
       toast.success('Đã đặt mật khẩu mới và đăng nhập');
       nav('/', { replace: true });
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'RESET_TOKEN_INVALID') setInvalid(true);
+      const supportToken = supportTokenOf(err);
+      if (supportToken) {
+        // Mật khẩu đã đổi nhưng tài khoản đang bị khoá → chỉ vào được mục Hỗ trợ
+        logout();
+        qc.clear();
+        useSupportPass.getState().set(supportToken);
+        toast.success(errMsg(err));
+        nav('/ho-tro-khoa', { replace: true });
+      } else if (err instanceof ApiError && err.code === 'RESET_TOKEN_INVALID') setInvalid(true);
       else toast.error(errMsg(err));
     } finally {
       setBusy(false);

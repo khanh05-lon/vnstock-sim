@@ -1,3 +1,4 @@
+import { isStaff } from '@vss/shared';
 import fs from 'node:fs';
 import http from 'node:http';
 import cors from 'cors';
@@ -7,6 +8,9 @@ import { Server } from 'socket.io';
 import { config } from './config';
 import { Database } from './db';
 import { installAdmin } from './admin';
+import { deskRoutes } from './support/desk';
+import { SupportService } from './support/service';
+import { supportRoutes } from './routes/support';
 import { initSessionCheck } from './lib/auth';
 import { errorHandler, notFound } from './lib/errors';
 import { log, requestLogger } from './lib/logger';
@@ -101,7 +105,12 @@ async function main() {
     webhookUrl: config.alertWebhookUrl,
     thresholds: config.alertThresholds,
     feedLost: () => config.marketFeed === 'binance' && market.feed() === 'SIM',
+    supportOverdue: () => support.overdueCount(),
   });
+  // Hỗ trợ khách hàng: khách nhận sự kiện ở phòng user:<id>, nhân viên ở phòng "staff"
+  const support = new SupportService(db, mailer);
+  support.notifyCustomer = (userId, ev) => io.to(`user:${userId}`).emit('support', ev);
+  support.notifyStaff = (ev) => io.to('staff').emit('support:staff', ev);
   await engine.load();
   const nav = new NavService(db, market);
   const priceAlerts = new PriceAlertService(db, {
@@ -123,7 +132,7 @@ async function main() {
   };
 
   // Quản trị & vận hành (phải đứng trước các route /api khác: chặn tài khoản bị khoá)
-  await installAdmin({
+  const store = await installAdmin({
     app,
     io,
     db,
@@ -135,7 +144,19 @@ async function main() {
     onRestored: async () => {
       await priceAlerts.load();
     },
+    // Kết quả duyệt điều chỉnh số dư → báo vào yêu cầu hỗ trợ liên quan
+    onAdjustDecided: async (r) => {
+      if (!r.ticketId) return;
+      const approved = r.status === 'APPROVED';
+      await support.postSystem(
+        r.ticketId,
+        `Yêu cầu điều chỉnh #${r.id} (${r.amount} ${r.asset}) ${approved ? 'đã được duyệt' : 'bị từ chối'} bởi ${r.decidedByEmail}${r.decisionNote ? `: ${r.decisionNote}` : ''}`,
+        true,
+      );
+      if (approved) await support.postSystem(r.ticketId, `Số dư của bạn đã được điều chỉnh ${r.amount} ${r.asset}`, false);
+    },
   });
+  app.use('/api/support-desk', deskRoutes({ db, io, market, engine, store, mailer, support }));
 
   // Chỉ số Prometheus: cần METRICS_TOKEN (production không có token → tắt)
   app.get('/api/metrics', (req, res, next) => {
@@ -168,17 +189,30 @@ async function main() {
   app.use('/api', communityRoutes(db, nav, market));
   app.use('/api', watchlistRoutes(db));
   app.use('/api', alertRoutes(priceAlerts));
+  app.use('/api', supportRoutes(support));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);
   app.use(errorHandler);
 
   attachSocket(io, market);
+  // Nhân viên (quản trị, CSKH) vào phòng "staff" để nhận yêu cầu hỗ trợ mới theo thời gian thực
+  io.on('connection', (socket) => {
+    const u = socket.data.user as { id: string } | undefined;
+    if (!u) return;
+    db.one<{ role: string; status: string }>('SELECT role, status FROM users WHERE id = $1', [u.id]).then(
+      (row) => {
+        if (row && row.status === 'ACTIVE' && isStaff(row.role)) void socket.join('staff');
+      },
+      () => undefined,
+    );
+  });
   market.start();
   await nav.snapshotAll().catch((err) => log.error('[nav] lỗi chụp tổng tài sản lúc khởi động', { err }));
   nav.start();
   metrics.startSampling();
   alerts.start();
+  support.start();
   if (!config.alertEmails.length && !config.alertWebhookUrl) log.warn('[alert] chưa cấu hình ALERT_EMAILS / ALERT_WEBHOOK_URL, cảnh báo chỉ ghi log và hiện ở trang Quản trị');
 
   server.listen(config.port, () => {
@@ -198,6 +232,7 @@ async function main() {
     server.close();
     nav.stop();
     alerts.stop();
+    support.stop();
     metrics.stopSampling();
     await digest.flush().catch(() => undefined);
     await market.stop();

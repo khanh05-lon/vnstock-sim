@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { useSupportPass } from '../lib/support';
 import { mockFetch, renderApp } from '../test/render';
 import { MfaStep } from './AuthPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
@@ -54,6 +55,22 @@ describe('Đặt lại mật khẩu', () => {
     expect(await screen.findByText(/đã hết hạn/i)).toBeTruthy();
     expect(screen.getByRole('link', { name: /yêu cầu link mới/i }).getAttribute('href')).toBe('/forgot-password');
   });
+
+  it('tài khoản đang bị khoá (403 kèm vé hỗ trợ) → không đăng nhập, giữ vé để nhắn CSKH', async () => {
+    useSupportPass.getState().clear();
+    // payload JWT: {"email":"lan@example.test"}
+    const ticket = `h.${btoa('{"email":"lan@example.test"}')}.s`;
+    mockFetch({
+      '/api/auth/reset-password': () => ({ status: 403, json: { error: { code: 'ACCOUNT_LOCKED', message: 'Đã đặt lại mật khẩu. Tài khoản đang bị khoá', supportToken: ticket } } }),
+    });
+    const { container } = renderApp(<ResetPasswordPage />, `/reset-password?token=${'a'.repeat(43)}`);
+    const [pw, confirm] = container.querySelectorAll('input[type="password"]');
+    fireEvent.change(pw, { target: { value: 'matkhau123' } });
+    fireEvent.change(confirm, { target: { value: 'matkhau123' } });
+    fireEvent.click(screen.getByRole('button', { name: /lưu mật khẩu mới/i }));
+    await waitFor(() => expect(useSupportPass.getState().pass).toMatchObject({ token: ticket, email: 'lan@example.test' }));
+    useSupportPass.getState().clear();
+  });
 });
 
 describe('Bước nhập mã 2FA khi đăng nhập', () => {
@@ -71,6 +88,19 @@ describe('Bước nhập mã 2FA khi đăng nhập', () => {
     fireEvent.click(button);
     await waitFor(() => expect(done).toHaveBeenCalled());
     expect(calls[0].body).toEqual({ mfaToken: 'x'.repeat(30), code: '123456' });
+  });
+
+  it('tài khoản bị khoá → trả vé hỗ trợ cho trang đăng nhập, không báo lỗi', async () => {
+    mockFetch({
+      '/api/auth/login/2fa': () => ({ status: 403, json: { error: { code: 'ACCOUNT_LOCKED', message: 'Tài khoản đang bị khoá', supportToken: 've-ho-tro' } } }),
+    });
+    const done = vi.fn();
+    const locked = vi.fn();
+    renderApp(<MfaStep mfaToken={'x'.repeat(30)} onDone={done} onCancel={() => undefined} onLocked={locked} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /xác nhận/i }));
+    await waitFor(() => expect(locked).toHaveBeenCalledWith('ve-ho-tro'));
+    expect(done).not.toHaveBeenCalled();
   });
 
   it('chuyển sang mã khôi phục', () => {

@@ -7,6 +7,8 @@ export class AppError extends Error {
     public status: number,
     public code: string,
     message: string,
+    /** Trường bổ sung trả kèm trong `error` (vd. vé hỗ trợ khi tài khoản bị khoá) */
+    public extra?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -30,7 +32,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return;
   }
   if (err instanceof AppError) {
-    res.status(err.status).json({ error: { code: err.code, message: err.message } });
+    res.status(err.status).json({ error: { ...err.extra, code: err.code, message: err.message } });
     return;
   }
   if (err instanceof SyntaxError && 'body' in (err as object)) {
