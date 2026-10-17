@@ -180,3 +180,44 @@ export function supportResolvedEmail(name: string, ticketId: number, subject: st
     { label: 'Xem yêu cầu', url: `${config.publicUrl}/ho-tro?ticket=${ticketId}` },
   );
 }
+
+const vnTime = (iso: string) => new Date(iso).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+
+/** Báo người có thẩm quyền: có đề xuất thao tác lớn / điều chỉnh số dư cần duyệt */
+export function approvalRequestEmail(
+  name: string,
+  a: { id: number; kindLabel: string; summary: string; reason: string; requestedBy: string; expiresAt?: string | null },
+): EmailContent {
+  return layout(
+    `Cần duyệt: ${a.kindLabel} #${a.id} — ${BRAND}`,
+    hello(name),
+    [
+      `${a.requestedBy} vừa đề xuất "${a.kindLabel}" và cần một người có thẩm quyền KHÁC duyệt thì mới được thực hiện.`,
+      `Nội dung: ${a.summary}`,
+      `Lý do: ${a.reason}`,
+      ...(a.expiresAt ? [`Hạn duyệt: ${vnTime(a.expiresAt)} (giờ Việt Nam) — quá hạn phải đề xuất lại.`] : []),
+    ],
+    { label: 'Mở hàng chờ duyệt', url: `${config.publicUrl}/admin?tab=approvals` },
+    'Chỉ duyệt khi đã kiểm tra kỹ. Thấy bất thường (không rõ lý do, người đề xuất lạ, giao dịch đáng ngờ trước đó) thì từ chối và báo Rủi ro & giám sát.',
+  );
+}
+
+/** Báo khi vai trò nhân viên thay đổi: cho chính người được đổi và các Quản trị hệ thống khác */
+export function roleChangedEmail(
+  name: string,
+  a: { email: string; from: string; to: string; by: string; requestedBy?: string | null; self: boolean; bootstrap?: boolean },
+): EmailContent {
+  const who = a.requestedBy ? `đề xuất bởi ${a.requestedBy}, duyệt bởi ${a.by}` : `thực hiện bởi ${a.by}`;
+  return layout(
+    `${a.self ? 'Vai trò tài khoản của bạn' : `Vai trò của ${a.email}`} đã thay đổi — ${BRAND}`,
+    hello(name),
+    [
+      `${a.self ? 'Tài khoản của bạn' : `Tài khoản ${a.email}`} vừa được đổi vai trò: ${a.from} → ${a.to} (${who}).`,
+      ...(a.bootstrap ? ['Thay đổi có hiệu lực ngay vì hệ thống đang chỉ có 1 Quản trị hệ thống — nên tạo thêm Quản trị hệ thống thứ hai.'] : []),
+      a.self
+        ? 'Nếu bạn không biết về thay đổi này, hãy báo ngay cho Quản trị hệ thống.'
+        : 'Nếu thay đổi này không đúng kế hoạch, hãy thu quyền và kiểm tra nhật ký quản trị ngay.',
+    ],
+    { label: 'Xem nhật ký quản trị', url: `${config.publicUrl}/admin?tab=logs` },
+  );
+}

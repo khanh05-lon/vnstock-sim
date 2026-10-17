@@ -179,7 +179,7 @@ và gửi cảnh báo.
       lúc khởi tạo (khi chỉ có 1 người, cấp vai trò có hiệu lực ngay và nhật ký đánh dấu bootstrap)
 - [ ] Nhân viên CSKH dùng vai trò "Nhân viên CSKH" (không cấp quyền quản trị), đã bật 2FA; có người trực khu CSKH và nhận cảnh báo "yêu cầu hỗ trợ quá hạn" qua `ALERT_EMAILS`
 - [ ] Tường lửa chỉ mở 22/80/443; SSH đăng nhập bằng khoá, tắt đăng nhập mật khẩu
-- [ ] SMTP thật đã cấu hình, `REQUIRE_EMAIL_VERIFICATION=true`
+- [ ] SMTP thật đã cấu hình, `REQUIRE_EMAIL_VERIFICATION=true` — thiếu SMTP thì người có thẩm quyền KHÔNG nhận được email báo đề xuất cần duyệt / đổi vai trò (chỉ ghi ra log)
 - [ ] Sao lưu tự động + bản chép ra ngoài máy; đã thử khôi phục ít nhất 1 lần
 - [ ] Gắn giám sát `/api/health` từ bên ngoài + cấu hình `ALERT_EMAILS`
 - [ ] Cập nhật hệ điều hành định kỳ (`sudo apt update && sudo apt upgrade`), cập nhật image (`docker compose pull`)

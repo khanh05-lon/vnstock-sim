@@ -488,6 +488,11 @@ export class SpotEngine {
     return n;
   }
 
+  /** Huỷ lệnh đang mở của 1 người trên 1 cặp (vd. nhân viên khi cặp chuyển sang giá điều chỉnh) */
+  async cancelForUserOnSymbol(userId: string, symbol: string, reason: string, by: OrderActor = SYSTEM_ACTOR): Promise<number> {
+    return this.cancelAllWithReason(userId, reason, symbol, by);
+  }
+
   async cancelAllForUser(userId: string, reason: string, by: OrderActor = SYSTEM_ACTOR): Promise<number> {
     for (const fn of this.userCleanup) await fn(userId, reason);
     return this.cancelAllWithReason(userId, reason, undefined, by);

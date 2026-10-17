@@ -9,7 +9,7 @@ import { config } from '../config';
 import { markEmailVerified, markPasswordChanged } from '../lib/auth';
 import { listAuthEvents } from '../lib/authEvents';
 import { listOrderEvents } from '../trading/orderEvents';
-import { accountLockedEmail, twoFactorChangedEmail } from '../lib/emails';
+import { accountLockedEmail, roleChangedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { utcDay } from '../portfolio/nav';
@@ -19,6 +19,7 @@ import { accountView, navOf } from '../trading/account';
 import { toLedgerDTO, toOrderDTO, type BalanceRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { exportBackup, serializeBackup } from './backup';
 import { Approvals, mountApprovals } from './approvals';
+import { notifyStaff } from './notify';
 import { assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
 import { metrics } from '../ops/metrics';
@@ -103,7 +104,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   const broadcast = () => io.emit('system', store.status());
   // Thao tác lớn: người thứ hai có thẩm quyền duyệt rồi mới thực hiện
-  const approvals = new Approvals(db);
+  const approvals = new Approvals(db, mailer);
   mountApprovals(r, approvals);
 
   // Tham số giao dịch, danh mục mã, khôi phục dữ liệu
@@ -429,6 +430,19 @@ export function adminRoutes(deps: AdminDeps) {
   const setRole = async (admin: AdminCtx, u: UserRow, role: UserRole, extra: Record<string, unknown>) => {
     await db.many('UPDATE users SET role = $2 WHERE id = $1', [u.id, role]);
     await audit(db, admin, 'ROLE_SET', 'user', u.id, { email: u.email, from: u.role, to: role, ...extra });
+    // Báo chính người được đổi và mọi Quản trị hệ thống khác — cấp quyền lạ bị phát hiện ngay
+    const info = {
+      email: u.email,
+      from: ROLE_LABEL[u.role],
+      to: ROLE_LABEL[role],
+      by: admin.email,
+      requestedBy: typeof extra.requestedBy === 'string' ? extra.requestedBy : null,
+      bootstrap: extra.bootstrap === true,
+    };
+    sendLater(mailer, u.email, roleChangedEmail(u.full_name, { ...info, self: true }), { userId: u.id });
+    await notifyStaff(db, mailer, 'staff.manage', [admin.id, u.id], (name) => roleChangedEmail(name, { ...info, self: false }), { target: u.id }).catch(
+      () => undefined,
+    );
     return { email: u.email, from: u.role, to: role };
   };
 
@@ -558,7 +572,7 @@ export function adminRoutes(deps: AdminDeps) {
           amount,
           usdtValue: usdtValue.toFixed(),
           reason: abs.lt(limit) ? `${reason} (cộng dồn 24 giờ vượt ngưỡng duyệt)` : reason,
-        });
+        }, mailer);
         res.status(202).json({ ok: true, pending: true, request, cumulative: abs.lt(limit) });
         return;
       }

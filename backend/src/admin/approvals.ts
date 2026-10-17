@@ -2,9 +2,12 @@ import type { Router } from 'express';
 import { z } from 'zod';
 import { APPROVAL_KIND_LABEL, APPROVAL_PERMISSION, APPROVAL_TTL_MIN, type ApprovalDTO, type ApprovalKind, type ApprovalStatus } from '@vss/shared';
 import type { Database } from '../db';
+import { approvalRequestEmail } from '../lib/emails';
+import type { Mailer } from '../lib/mailer';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { assertCan, audit, need, type AdminCtx, type AdminRequest } from './common';
+import { notifyStaff } from './notify';
 
 interface ApprovalRow {
   id: number | string;
@@ -63,7 +66,10 @@ export class Approvals {
   private executors = new Map<ApprovalKind, ApprovalExecutor>();
   private cleanups = new Map<ApprovalKind, (payload: Record<string, unknown>) => void>();
 
-  constructor(private db: Database) {}
+  constructor(
+    private db: Database,
+    private mailer?: Mailer,
+  ) {}
 
   register(kind: ApprovalKind, fn: ApprovalExecutor) {
     this.executors.set(kind, fn);
@@ -114,7 +120,25 @@ export class Approvals {
         await audit(tx, admin, 'APPROVAL_REQUEST', 'approval', String(r!.id), { kind: a.kind, target: a.target, summary: a.summary, reason: a.reason });
         return r!;
       });
-      return toDTO(row);
+      const dto = toDTO(row);
+      // Báo mọi người có thẩm quyền duyệt (trừ người đề xuất) — đề xuất không bị bỏ quên tới lúc hết hạn
+      await notifyStaff(
+        this.db,
+        this.mailer,
+        APPROVAL_PERMISSION[a.kind],
+        [admin.id],
+        (name) =>
+          approvalRequestEmail(name, {
+            id: dto.id,
+            kindLabel: APPROVAL_KIND_LABEL[a.kind],
+            summary: a.summary,
+            reason: a.reason,
+            requestedBy: admin.email,
+            expiresAt: dto.expiresAt,
+          }),
+        { approvalId: dto.id },
+      ).catch((err) => log.error('[approval] không gửi được email báo duyệt', { id: dto.id, err }));
+      return dto;
     } catch (err) {
       if ((err as { code?: string }).code === '23505') {
         throw new AppError(409, 'PENDING_EXISTS', `Đã có đề xuất "${APPROVAL_KIND_LABEL[a.kind]}"${a.target ? ` cho ${a.target}` : ''} đang chờ duyệt — duyệt hoặc huỷ đề xuất đó trước`);

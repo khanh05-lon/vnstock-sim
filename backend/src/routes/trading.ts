@@ -133,6 +133,18 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
 
   /* ------------------------------ lệnh ------------------------------ */
 
+  /**
+   * Nhân viên (mọi vai trò) biết trước kịch bản giá → không được đặt / sửa lệnh cặp đang ở giá điều chỉnh,
+   * tránh giao dịch dựa trên thông tin nội bộ. Chỉ tra vai trò khi cặp đang ở giá điều chỉnh.
+   */
+  const assertNotInsider = async (userId: string, symbol: string) => {
+    if (market.info(symbol)?.priceMode !== 'MANUAL') return;
+    const row = await db.one<{ role: string }>('SELECT role FROM users WHERE id = $1', [userId]);
+    if (row && row.role !== 'USER') {
+      throw new AppError(403, 'STAFF_MANUAL_PRICE', `Nhân viên không được giao dịch ${symbol} khi cặp đang ở giá điều chỉnh (tránh giao dịch dựa trên thông tin nội bộ)`);
+    }
+  };
+
   r.post(
     '/orders',
     orderLimiter,
@@ -140,6 +152,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = placeOrderSchema.parse(req.body);
+      await assertNotInsider(user.id, input.symbol);
       const order = await engine.placeOrder(user.id, input, userActor(req.ip));
       metrics.orders.placed++;
       res.status(201).json(order);
@@ -153,6 +166,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = ocoOrderSchema.parse(req.body);
+      await assertNotInsider(user.id, input.symbol);
       const list = await engine.placeOco(user.id, input, userActor(req.ip));
       metrics.orders.placed += 2;
       res.status(201).json(list);
@@ -231,7 +245,10 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
     ah(async (req, res) => {
       const { user } = req as AuthedRequest;
       const input = replaceOrderSchema.parse(req.body);
-      res.json(await engine.replaceOrder(user.id, idParam(req.params.id), input, userActor(req.ip)));
+      const id = idParam(req.params.id);
+      const o = await db.one<{ symbol: string }>('SELECT symbol FROM orders WHERE id = $1 AND user_id = $2', [id, user.id]);
+      if (o) await assertNotInsider(user.id, o.symbol);
+      res.json(await engine.replaceOrder(user.id, id, input, userActor(req.ip)));
     }),
   );
 

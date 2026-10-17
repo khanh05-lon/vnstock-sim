@@ -3,12 +3,14 @@ import { Big, PERMISSION_DENIED, can, type AdjustRequestDTO, type Permission, ty
 import { config } from '../config';
 import type { Database, Queryable } from '../db';
 import { requireAuth, type AuthedRequest } from '../lib/auth';
-import { accountLockedEmail } from '../lib/emails';
+import { accountLockedEmail, approvalRequestEmail } from '../lib/emails';
+import type { Mailer } from '../lib/mailer';
 import { badRequest, notFound } from '../lib/errors';
 import { sendLater } from '../routes/auth';
 import type { BalanceRow } from '../trading/dto';
 import { credit, ledger as writeLedger } from '../trading/wallet';
 import { audit, forbidden, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
+import { notifyStaff } from './notify';
 
 /**
  * Chỉ cho nhân viên có quyền `perm` (theo vai trò), đang hoạt động; vai trò đọc lại từ CSDL ở mỗi request
@@ -146,6 +148,7 @@ export async function createAdjustRequest(
   q: Queryable,
   staff: AdminCtx,
   a: { userId: string; email: string; asset: string; amount: string; usdtValue: string; reason: string; ticketId?: number | null },
+  mailer?: Mailer,
 ): Promise<AdjustRequestDTO> {
   const row = await q.one<AdjustRequestRow>(
     `INSERT INTO balance_adjust_requests (user_id, asset, amount, usdt_value, reason, ticket_id, requested_by, requested_by_email)
@@ -161,5 +164,21 @@ export async function createAdjustRequest(
     reason: a.reason,
     ticketId: a.ticketId ?? null,
   });
+  // Báo người Tài chính có thể duyệt (trừ người đề xuất và chính chủ tài khoản được điều chỉnh)
+  await notifyStaff(
+    q,
+    mailer,
+    'finance.approve',
+    [staff.id, a.userId],
+    (name) =>
+      approvalRequestEmail(name, {
+        id: Number(row!.id),
+        kindLabel: 'Điều chỉnh số dư',
+        summary: `${Number(a.amount) > 0 ? 'Cộng' : 'Trừ'} ${a.amount.replace('-', '')} ${a.asset} (≈ ${new Big(a.usdtValue).abs().toFixed(2)} USDT) cho ${a.email}${a.ticketId ? ` — yêu cầu hỗ trợ #${a.ticketId}` : ''}`,
+        reason: a.reason,
+        requestedBy: staff.email,
+      }),
+    { adjustRequestId: Number(row!.id) },
+  ).catch(() => undefined);
   return toAdjustRequestDTO({ ...row!, email: a.email });
 }

@@ -16,9 +16,11 @@ import { config } from '../src/config';
 import type { Database } from '../src/db';
 import { signToken } from '../src/lib/auth';
 import { errorHandler } from '../src/lib/errors';
-import type { Mailer } from '../src/lib/mailer';
+import type { MailMessage, Mailer } from '../src/lib/mailer';
 import { MarketService } from '../src/market/marketService';
 import { seedSymbols } from '../src/market/symbols';
+import type { NavService } from '../src/portfolio/nav';
+import { tradingRoutes } from '../src/routes/trading';
 import { createUserAccount } from '../src/seed/seed';
 import { SpotEngine } from '../src/trading/engine';
 import { closeTestDb, openTestDb } from './helpers/db';
@@ -60,7 +62,10 @@ describe('Phân quyền & duyệt 2 người (API)', () => {
   let base: string;
   let market: MarketService;
   let engine: SpotEngine;
-  const mailer: Mailer = { kind: 'smtp', send: async () => undefined };
+  const sent: MailMessage[] = [];
+  const mailer: Mailer = { kind: 'smtp', send: async (m) => void sent.push(m) };
+  /** Email gửi tới `who` có tiêu đề khớp */
+  const mailsTo = (who: string, re: RegExp) => sent.filter((m) => m.to === u[who]!.email && re.test(m.subject));
   const u: Record<string, { id: string; email: string; token: string }> = {};
   const backupDir = config.backupDir;
   let tmp: string;
@@ -99,6 +104,7 @@ describe('Phân quyền & duyệt 2 người (API)', () => {
     const app = express();
     app.use(express.json());
     app.use('/api/admin', adminRoutes({ db, io: new Server(), market, engine, store, mailer }));
+    app.use('/api', tradingRoutes(db, market, engine, { history: async () => [] } as unknown as NavService));
     app.use(errorHandler);
     server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
@@ -257,6 +263,91 @@ describe('Phân quyền & duyệt 2 người (API)', () => {
     expect(second.body.request.reason).toMatch(/cộng dồn 24 giờ/);
     // người Tài chính khác chưa làm gì cho khách này → vẫn được điều chỉnh nhỏ trực tiếp
     expect((await call('POST', `/users/${u.khach3!.id}/adjust-balance`, 'fin2', { asset: 'USDT', amount: '100', reason: 'Bồi hoàn' })).status).toBe(200);
+  });
+
+  it('nhân viên không giao dịch cặp đang ở giá điều chỉnh; lệnh chờ sẵn của nhân viên bị huỷ; nhân viên vừa đặt lệnh thì chỉnh giá nhỏ cũng phải duyệt', async () => {
+    const SYM = 'DOGEUSDT';
+    await market.flushNow();
+    const order = async (who: string, priceFactor: number) => {
+      const last = Number(market.lastPrice(SYM));
+      const price = (last * priceFactor).toFixed(5);
+      const res = await fetch(`${base.replace('/admin', '')}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u[who]!.token}` },
+        body: JSON.stringify({ symbol: SYM, side: 'BUY', type: 'LIMIT', timeInForce: 'GTC', price, quantity: String(Math.ceil(20 / Number(price))) }),
+      });
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    // Giá thực tế: nhân viên giao dịch như thường
+    const staffOrder = await order('ops', 0.95);
+    expect(staffOrder.status).toBe(201);
+    const custOrder = await order('khach', 0.95);
+    expect(custOrder.status).toBe(201);
+
+    // ops vừa đặt lệnh → chỉnh giá dù chỉ +1% cũng thành đề xuất, kèm cảnh báo tên nhân viên
+    const target = (Number(market.lastPrice(SYM)) * 1.01).toFixed(5);
+    sent.length = 0;
+    const r = await call<{ request: ApprovalDTO }>('POST', `/prices/${SYM}/set`, 'ops', { price: target, volatilityPct: 0, reason: 'Thử chỉnh giá' });
+    expect(r.status).toBe(202);
+    expect(r.body.request.summary).toContain(`Nhân viên đã đặt lệnh ${SYM}`);
+    expect(r.body.request.summary).toContain(u.ops!.email);
+    // email báo người có thẩm quyền duyệt (Vận hành / Rủi ro khác), không báo người đề xuất / vai trò khác
+    expect(mailsTo('risk', /Cần duyệt: Chỉnh giá lớn/)).toHaveLength(1);
+    expect(mailsTo('ops2', /Cần duyệt/)).toHaveLength(1);
+    expect(mailsTo('ops', /Cần duyệt/)).toHaveLength(0);
+    expect(mailsTo('fin', /Cần duyệt/)).toHaveLength(0);
+    expect(mailsTo('risk', /Cần duyệt/)[0]!.text).toContain('/admin?tab=approvals');
+
+    const ok = await call<ApprovalDTO>('POST', `/approvals/${r.body.request.id}/approve`, 'risk', {});
+    expect(ok.body.result).toMatchObject({ staffOrdersCancelled: 1 });
+    expect((await db.one<{ status: string; reason: string }>('SELECT status, reason FROM orders WHERE id = $1', [staffOrder.body.id]))).toMatchObject({
+      status: 'CANCELED',
+      reason: expect.stringMatching(/nhân viên không được giữ lệnh/),
+    });
+    expect((await db.one<{ status: string }>('SELECT status FROM orders WHERE id = $1', [custOrder.body.id]))!.status).toBe('NEW');
+
+    // đang giá điều chỉnh: nhân viên (kể cả Kiểm toán, CSKH) bị chặn, khách vẫn giao dịch được
+    for (const who of ['ops', 'audit', 'cskh']) {
+      const x = await order(who, 0.97);
+      expect(x.status, who).toBe(403);
+      expect(x.body.error.code).toBe('STAFF_MANUAL_PRICE');
+    }
+    expect((await order('khach', 0.97)).status).toBe(201);
+
+    // về giá thực tế → nhân viên giao dịch lại được
+    expect((await call('POST', `/prices/${SYM}/live`, 'ops', { reason: 'Kết thúc' })).status).toBe(200);
+    const again = await order('ops', 0.95);
+    expect(again.status).toBe(201);
+
+    // chuyển sang giá điều chỉnh (giữ giá) cũng huỷ lệnh chờ của nhân viên; nhật ký ghi ai vừa đặt lệnh
+    const m = await call('POST', `/prices/${SYM}/manual`, 'ops', { reason: 'Giữ giá cho bài học' });
+    expect(m.status).toBe(200);
+    expect(m.body.staffOrdersCancelled).toBe(1);
+    expect((await db.one<{ status: string }>('SELECT status FROM orders WHERE id = $1', [again.body.id]))!.status).toBe('CANCELED');
+    const a = await db.one<{ detail: { staffRecentOrders: { email: string }[] } }>(`SELECT detail FROM admin_audit_log WHERE action = 'PRICE_MODE_MANUAL' ORDER BY id DESC LIMIT 1`);
+    expect(a!.detail.staffRecentOrders.map((x) => x.email)).toContain(u.ops!.email);
+    expect((await call('POST', `/prices/${SYM}/live`, 'ops', { reason: 'Kết thúc' })).status).toBe(200);
+  });
+
+  it('email: yêu cầu điều chỉnh số dư báo Tài chính khác; đổi vai trò báo chính chủ và các Quản trị hệ thống khác', async () => {
+    sent.length = 0;
+    await makeUser('khach4', 'USER');
+    const big = await call('POST', `/users/${u.khach4!.id}/adjust-balance`, 'fin', { asset: 'USDT', amount: '2000', reason: 'Bồi hoàn lớn' });
+    expect(big.status).toBe(202);
+    expect(mailsTo('fin2', /Cần duyệt: Điều chỉnh số dư/)).toHaveLength(1);
+    expect(mailsTo('fin', /Cần duyệt/)).toHaveLength(0);
+    expect(mailsTo('risk', /Cần duyệt/)).toHaveLength(0);
+
+    sent.length = 0;
+    await makeUser('nv2', 'USER');
+    const g = await call<{ request: ApprovalDTO }>('POST', `/users/${u.nv2!.id}/role`, 'admin1', { role: 'RISK', reason: 'Tuyển nhân viên rủi ro' });
+    expect(mailsTo('admin2', /Cần duyệt: Cấp \/ đổi vai trò/)).toHaveLength(1);
+    await call('POST', `/approvals/${g.body.request.id}/approve`, 'admin2', {});
+    const self = mailsTo('nv2', /Vai trò tài khoản của bạn/);
+    expect(self).toHaveLength(1);
+    expect(self[0]!.text).toContain(`đề xuất bởi ${u.admin1!.email}, duyệt bởi ${u.admin2!.email}`);
+    expect(mailsTo('admin1', /Vai trò của nv2@example.test/)).toHaveLength(1);
+    expect(mailsTo('admin2', /Vai trò của/)).toHaveLength(0);
   });
 
   it('khôi phục dữ liệu: lưu file + chạy thử, quản trị hệ thống KHÁC duyệt mới ghi đè; file bị sửa sau khi đề xuất thì từ chối', async () => {

@@ -49,7 +49,8 @@ function Terms() {
         <p>
           Quản trị viên có thể chuyển một cặp sang <b className="text-tx-1">giá điều chỉnh</b> (vd. kịch bản biến động cho lớp học, cuộc thi): giá, sổ lệnh và giao dịch của
           cặp đó do sàn tự sinh, không theo Binance, và lệnh khớp theo giá này. Cặp đang dùng giá điều chỉnh luôn có nhãn <b className="text-tx-1">Giá điều chỉnh</b> trên bảng
-          giá và trang giao dịch; mỗi lần chỉnh giá đều ghi nhật ký (người chỉnh, thời điểm, giá trước / sau, lý do) để đối chiếu khi có khiếu nại.
+          giá và trang giao dịch; mỗi lần chỉnh giá đều ghi nhật ký (người chỉnh, thời điểm, giá trước / sau, lý do) để đối chiếu khi có khiếu nại. Nhân viên sàn{' '}
+          <b className="text-tx-1">không được giao dịch</b> cặp đang ở giá điều chỉnh, lệnh chờ của nhân viên trên cặp đó bị huỷ khi bắt đầu chỉnh giá.
         </p>
       </Block>
       <Block n={4} title="Lệnh và cách khớp lệnh mô phỏng">

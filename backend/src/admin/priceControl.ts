@@ -25,7 +25,30 @@ import { audit, need, symbolParam, type AdminCtx, type AdminDeps, type AdminRequ
  * Chỉnh giá lớn (so với giá hiện tại HOẶC giá Binance quá PRICE_APPROVAL_PCT) thành đề xuất, người thứ hai duyệt.
  */
 export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approvals) {
-  const { db, market } = deps;
+  const { db, market, engine } = deps;
+
+  /** Nhân viên đã đặt lệnh cặp này trong 60 phút qua — dấu hiệu có thể biết trước kịch bản giá */
+  const staffRecentOrders = (symbol: string) =>
+    db.many<{ email: string; n: number }>(
+      `SELECT u.email, count(*)::int AS n FROM orders o JOIN users u ON u.id = o.user_id
+       WHERE o.symbol = $1 AND u.role <> 'USER' AND o.created_at > now() - interval '60 minutes'
+       GROUP BY u.email ORDER BY u.email`,
+      [symbol],
+    );
+
+  /** Cặp chuyển sang / đổi giá điều chỉnh: huỷ mọi lệnh đang mở của nhân viên trên cặp (không giữ lệnh chờ sẵn) */
+  const cancelStaffOrders = async (admin: AdminCtx, symbol: string) => {
+    const users = await db.many<{ user_id: string }>(
+      `SELECT DISTINCT o.user_id FROM orders o JOIN users u ON u.id = o.user_id
+       WHERE o.symbol = $1 AND o.status IN ('NEW','PARTIALLY_FILLED') AND u.role <> 'USER'`,
+      [symbol],
+    );
+    let n = 0;
+    for (const u of users) {
+      n += await engine.cancelForUserOnSymbol(u.user_id, symbol, `${symbol} ở giá điều chỉnh — nhân viên không được giữ lệnh trên cặp này`, { actor: admin.email });
+    }
+    return n;
+  };
 
   const save = (q: Queryable, symbol: string, control: StoredPriceControl | null) =>
     q.many(`UPDATE symbols SET price_mode = $2, price_control = $3::jsonb, updated_at = now() WHERE symbol = $1`, [
@@ -151,12 +174,20 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
         reason,
         by: admin.email,
       };
+      // Tra trước khi mở transaction: trong db.tx chỉ được dùng tx (gọi db.* sẽ khoá chết với PGlite)
+      const recent = await staffRecentOrders(symbol);
       await db.tx(async (tx) => {
         await save(tx, symbol, control);
-        await audit(tx, admin, 'PRICE_MODE_MANUAL', 'symbol', symbol, { reason, price: last, binancePrice: pc.ref, volatilityPct: control.volatilityPct });
+        await audit(tx, admin, 'PRICE_MODE_MANUAL', 'symbol', symbol, {
+          reason,
+          price: last,
+          binancePrice: pc.ref,
+          volatilityPct: control.volatilityPct,
+          staffRecentOrders: recent,
+        });
       });
       market.setPriceControl(symbol, toControl(control));
-      res.json({ ok: true });
+      res.json({ ok: true, staffOrdersCancelled: await cancelStaffOrders(admin, symbol) });
     }),
   );
 
@@ -180,9 +211,11 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
       reason: input.reason,
       by: admin.email,
     };
+    const recent = await staffRecentOrders(symbol);
     await db.tx(async (tx) => {
       await save(tx, symbol, control);
       await audit(tx, admin, 'PRICE_SET', 'symbol', symbol, {
+        staffRecentOrders: recent,
         reason: input.reason,
         from: last,
         to,
@@ -195,7 +228,8 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
       });
     });
     market.setPriceControl(symbol, toControl(control));
-    return { from: last, to, endAt: control.endAt };
+    const staffOrdersCancelled = await cancelStaffOrders(admin, symbol);
+    return { from: last, to, endAt: control.endAt, staffOrdersCancelled };
   };
 
   approvals.register('PRICE_SET', async (admin, req) => {
@@ -218,12 +252,24 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
       const move = pct(last, to) ?? 0;
       const vsBinance = pc.ref ? (pct(pc.ref, to) ?? 0) : null;
       const limit = config.priceApprovalPct;
-      if (Math.abs(move) > limit || (vsBinance != null && Math.abs(vsBinance) > limit)) {
+      // Có nhân viên vừa đặt lệnh cặp này → chỉnh giá dù nhỏ cũng phải có người thứ hai xem xét
+      const recent = await staffRecentOrders(symbol);
+      if (Math.abs(move) > limit || (vsBinance != null && Math.abs(vsBinance) > limit) || recent.length) {
+        const warn = recent.length ? ` ⚠ Nhân viên đã đặt lệnh ${symbol} trong 60 phút qua: ${recent.map((x) => `${x.email} (${x.n} lệnh)`).join(', ')}` : '';
         const request = await approvals.create(admin, {
           kind: 'PRICE_SET',
           target: symbol,
-          payload: { price: to, durationMin: input.durationMin, volatilityPct: input.volatilityPct, priceAtRequest: last, binancePrice: pc.ref, changePct: move, vsBinancePct: vsBinance },
-          summary: `${symbol}: ${last} → ${to} (${move > 0 ? '+' : ''}${move}%${vsBinance != null ? `, lệch giá Binance ${vsBinance > 0 ? '+' : ''}${vsBinance}%` : ''}) ${input.durationMin ? `trong ${input.durationMin} phút` : 'ngay lập tức'}, dao động ±${input.volatilityPct}%`,
+          payload: {
+            price: to,
+            durationMin: input.durationMin,
+            volatilityPct: input.volatilityPct,
+            priceAtRequest: last,
+            binancePrice: pc.ref,
+            changePct: move,
+            vsBinancePct: vsBinance,
+            staffRecentOrders: recent,
+          },
+          summary: `${symbol}: ${last} → ${to} (${move > 0 ? '+' : ''}${move}%${vsBinance != null ? `, lệch giá Binance ${vsBinance > 0 ? '+' : ''}${vsBinance}%` : ''}) ${input.durationMin ? `trong ${input.durationMin} phút` : 'ngay lập tức'}, dao động ±${input.volatilityPct}%.${warn}`,
           reason: input.reason,
         });
         res.status(202).json({ ok: true, pending: true, request });

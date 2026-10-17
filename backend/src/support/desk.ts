@@ -212,7 +212,7 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
         usdtValue: usdtValue.toFixed(),
         reason,
         ticketId: id,
-      });
+      }, deps.mailer);
       await support.action(staff, id, `đề xuất điều chỉnh ${amount} ${asset} (≈ ${usdtValue.toFixed(2)} USDT), yêu cầu duyệt #${request.id} — ${reason}`);
       res.status(201).json({ request, ticket: await support.detailForStaff(id) });
     }),
