@@ -22,6 +22,7 @@ import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuar
 import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
 import { mountMarketAdmin } from './marketAdmin';
+import { mountPriceControl } from './priceControl';
 
 export type { AdminDeps } from './common';
 
@@ -98,6 +99,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   // Tham số giao dịch, danh mục mã, khôi phục dữ liệu
   mountMarketAdmin(r, deps, broadcast);
+  mountPriceControl(r, deps);
 
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();

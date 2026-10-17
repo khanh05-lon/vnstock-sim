@@ -46,6 +46,11 @@ function Terms() {
           <b className="text-tx-1">Giả lập</b>. Chúng tôi không bảo đảm dữ liệu chính xác, đầy đủ hay kịp thời. Mọi nội dung trên hệ thống, kể cả bảng xếp hạng,{' '}
           <b className="text-tx-1">không phải khuyến nghị đầu tư</b>.
         </p>
+        <p>
+          Quản trị viên có thể chuyển một cặp sang <b className="text-tx-1">giá điều chỉnh</b> (vd. kịch bản biến động cho lớp học, cuộc thi): giá, sổ lệnh và giao dịch của
+          cặp đó do sàn tự sinh, không theo Binance, và lệnh khớp theo giá này. Cặp đang dùng giá điều chỉnh luôn có nhãn <b className="text-tx-1">Giá điều chỉnh</b> trên bảng
+          giá và trang giao dịch; mỗi lần chỉnh giá đều ghi nhật ký (người chỉnh, thời điểm, giá trước / sau, lý do) để đối chiếu khi có khiếu nại.
+        </p>
       </Block>
       <Block n={4} title="Lệnh và cách khớp lệnh mô phỏng">
         <ul className="list-disc space-y-1 pl-5">

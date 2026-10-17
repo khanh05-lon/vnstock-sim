@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { AccountDTO, AuthEventDTO, LedgerDTO, OrderDTO, RulesPatch, SymbolFilters, TradingRules, UserRole } from '@vss/shared';
+import { PRICE_ACTION_LABEL } from '@vss/shared';
+import type { AccountDTO, AdminPriceRow, AuthEventDTO, LedgerDTO, OrderDTO, PriceHistoryItem, RulesPatch, SymbolFilters, TradingRules, UserRole } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
 
@@ -278,6 +279,19 @@ export const useAdminLogs = (live: boolean) =>
   useQuery({ queryKey: ['admin', 'logs'], queryFn: () => api<LogLine[]>('/admin/logs?limit=300'), refetchInterval: live ? 3000 : false });
 
 /** Gọi 1 thao tác quản trị: báo kết quả + làm mới dữ liệu quản trị */
+/** Giá từng cặp: giá thực tế / giá điều chỉnh (làm mới 3 giây để theo dõi kịch bản) */
+export function useAdminPrices() {
+  return useQuery({ queryKey: ['admin', 'prices'], queryFn: () => api<AdminPriceRow[]>('/admin/prices'), refetchInterval: 3_000 });
+}
+
+export function usePriceHistory(symbol: string | null) {
+  return useQuery({
+    queryKey: ['admin', 'prices', 'history', symbol],
+    queryFn: () => api<PriceHistoryItem[]>(`/admin/prices/${symbol}/history`),
+    enabled: !!symbol,
+  });
+}
+
 export function useAdminAction() {
   const qc = useQueryClient();
   return async <T = unknown>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body: unknown, success: string): Promise<T | null> => {
@@ -314,6 +328,7 @@ export async function downloadBackup() {
 }
 
 export const AUDIT_LABEL: Record<string, string> = {
+  ...PRICE_ACTION_LABEL,
   USER_LOCK: 'Khoá tài khoản',
   USER_UNLOCK: 'Mở khoá tài khoản',
   USER_DELETE: 'Xoá tài khoản',

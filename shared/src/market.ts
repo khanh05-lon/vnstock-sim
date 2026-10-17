@@ -4,6 +4,8 @@ import type { Dec } from './decimal';
 
 /** Trạng thái cặp giao dịch: TRADING đang giao dịch, HALT tạm ngừng (quản trị viên / nguồn báo), BREAK ngừng hẳn */
 export type SymbolStatus = 'TRADING' | 'HALT' | 'BREAK';
+/** LIVE = giá thực tế từ Binance; MANUAL = giá do quản trị viên điều chỉnh (xem priceControl.ts) */
+export type PriceMode = 'LIVE' | 'MANUAL';
 
 /**
  * Bộ lọc giao dịch của cặp — cùng ý nghĩa với Binance exchangeInfo:
@@ -41,6 +43,10 @@ export interface SymbolInfo {
   status: SymbolStatus;
   filters: SymbolFilters;
   sortOrder: number;
+  /** Không có = LIVE */
+  priceMode?: PriceMode;
+  /** Thời điểm bắt đầu giá điều chỉnh (ms) — hiện cho nhà đầu tư */
+  priceSince?: number | null;
 }
 
 /** Thống kê 24 giờ trượt (rolling) — như ticker/24hr của Binance */

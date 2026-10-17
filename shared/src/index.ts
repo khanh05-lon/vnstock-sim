@@ -9,3 +9,4 @@ export * from './filters';
 export * from './rules';
 export * from './account';
 export * from './support';
+export * from './priceControl';

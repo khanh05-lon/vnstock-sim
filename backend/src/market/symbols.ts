@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ASSET_NAMES, DEFAULT_SYMBOLS, str, type SymbolFilters, type SymbolInfo, type SymbolStatus } from '@vss/shared';
+import { ASSET_NAMES, DEFAULT_SYMBOLS, str, type PriceControl, type PriceMode, type SymbolFilters, type SymbolInfo, type SymbolStatus } from '@vss/shared';
 import type { Database } from '../db';
 import { log } from '../lib/logger';
 import { parseFilters, type BinanceRest } from './binance/rest';
@@ -16,7 +16,13 @@ export interface SymbolRowDb {
   sort_order: number;
   filters: SymbolFilters;
   last_price: string | null;
+  price_mode?: PriceMode;
+  /** Kịch bản giá điều chỉnh (chỉ khi price_mode = MANUAL) */
+  price_control?: StoredPriceControl | null;
 }
+
+/** Kịch bản lưu trong CSDL: thêm lý do và người đặt để hiện trên trang quản trị */
+export type StoredPriceControl = PriceControl & { reason: string; by: string };
 
 export interface FallbackSymbol {
   symbol: string;
@@ -41,6 +47,8 @@ export const toSymbolInfo = (r: SymbolRowDb): SymbolInfo => ({
   status: r.status,
   filters: r.filters,
   sortOrder: r.sort_order,
+  priceMode: r.price_mode === 'MANUAL' && r.price_control ? 'MANUAL' : 'LIVE',
+  priceSince: r.price_mode === 'MANUAL' && r.price_control ? r.price_control.since : null,
 });
 
 async function insertSymbol(db: Database, s: FallbackSymbol, sort: number) {
@@ -107,7 +115,8 @@ export async function addSymbol(db: Database, rest: BinanceRest | null, symbol: 
   if (!s) throw new Error(`Không tìm thấy cặp ${symbol} trên Binance`);
   const sort = (await db.one<{ n: number }>('SELECT COALESCE(max(sort_order), -1)::int + 1 AS n FROM symbols'))!.n;
   await insertSymbol(db, s, sort);
-  await db.many('UPDATE symbols SET enabled = true, status = $2, updated_at = now() WHERE symbol = $1', [symbol, 'TRADING']);
+  // Thêm lại cặp đã gỡ: bắt đầu lại từ giá thực tế
+  await db.many("UPDATE symbols SET enabled = true, status = $2, price_mode = 'LIVE', price_control = NULL, updated_at = now() WHERE symbol = $1", [symbol, 'TRADING']);
   return (await db.one<SymbolRowDb>('SELECT * FROM symbols WHERE symbol = $1', [symbol]))!;
 }
 

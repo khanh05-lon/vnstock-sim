@@ -3,6 +3,7 @@ import { useWatchlist } from '../../lib/queries';
 import { cn, fmtCompact, fmtPct, fmtPrice, signTone, toneText } from '../../lib/format';
 import { useMarket, useSymbolRow } from '../../store/market';
 import { CoinIcon } from '../common/CoinIcon';
+import { ManualPriceBadge } from '../common/PriceModeBadge';
 import { useFlash } from '../common/ui';
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
@@ -66,7 +67,8 @@ export function SymbolHeader({ symbol }: { symbol: string }) {
       </div>
 
       {r.status !== 'TRADING' && <span className="chip bg-down/15 text-down">Tạm ngừng giao dịch</span>}
-      {feed === 'SIM' && (
+      {r.priceMode === 'MANUAL' && <ManualPriceBadge since={r.priceSince} />}
+      {feed === 'SIM' && r.priceMode !== 'MANUAL' && (
         <span className="chip bg-ref/15 text-ref" title="Mất kết nối Binance, giá đang chạy giả lập">
           Giá giả lập
         </span>

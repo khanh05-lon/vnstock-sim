@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, Search, Star } from 'lucide-react';
 import type { SymbolRow } from '@vss/shared';
 import { WatchlistBar } from '../components/board/WatchlistBar';
 import { CoinIcon } from '../components/common/CoinIcon';
+import { ManualPriceBadge } from '../components/common/PriceModeBadge';
 import { Empty, Spinner, useFlash } from '../components/common/ui';
 import { useWatchlist } from '../lib/queries';
 import { cn, fmtCompact, fmtPct, fmtPrice, signTone, toneText } from '../lib/format';
@@ -68,6 +69,7 @@ const Row = memo(function Row({ r, fav, onFav, loggedIn }: { r: SymbolRow; fav: 
             <div className="text-[14px] font-semibold text-tx-1">
               {r.baseAsset}
               <span className="font-normal text-tx-3">/{r.quoteAsset}</span>
+              {r.priceMode === 'MANUAL' && <ManualPriceBadge since={r.priceSince} compact className="ml-1.5 align-middle text-[10px]" />}
             </div>
             <div className="truncate text-[12px] text-tx-3">{r.name}</div>
           </div>

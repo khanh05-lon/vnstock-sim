@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, CheckCheck, Coins, Database, Gauge, Headset, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, Users as UsersIcon } from 'lucide-react';
+import { Activity, CheckCheck, Coins, Database, Gauge, Headset, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
 import { AdjustRequests } from '../components/admin/AdjustRequests';
 import { DataStorage } from '../components/admin/DataStorage';
 import { Logs } from '../components/admin/Logs';
@@ -8,6 +8,7 @@ import { MarketOps } from '../components/admin/MarketOps';
 import { Monitor } from '../components/admin/Monitor';
 import { Orders } from '../components/admin/Orders';
 import { Overview } from '../components/admin/Overview';
+import { PriceControl } from '../components/admin/PriceControl';
 import { Symbols } from '../components/admin/Symbols';
 import { UserDetailModal, Users } from '../components/admin/Users';
 import { Empty, Spinner } from '../components/common/ui';
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'orders', label: 'Lệnh giao dịch', icon: ListOrdered, hint: 'Theo dõi & huỷ hộ lệnh' },
   { id: 'approvals', label: 'Duyệt điều chỉnh', icon: CheckCheck, hint: 'Điều chỉnh số dư lớn và đề xuất bồi hoàn của CSKH — cần quản trị viên thứ hai duyệt' },
   { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Nguồn giá, tạm ngừng giao dịch, thông báo, biểu phí' },
+  { id: 'prices', label: 'Giá thị trường', icon: SlidersHorizontal, hint: 'Giá thực tế (Binance) hoặc giá điều chỉnh cho từng cặp: đặt giá, chạy kịch bản' },
   { id: 'symbols', label: 'Cặp giao dịch', icon: Coins, hint: 'Thêm cặp từ Binance, tạm ngừng, gỡ khỏi sàn' },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục' },
   { id: 'monitor', label: 'Giám sát', icon: Gauge, hint: 'Chỉ số vận hành, cảnh báo tự động' },
@@ -98,6 +100,7 @@ export default function AdminPage() {
         {tab === 'orders' && <Orders onOpenUser={setOpenUser} />}
         {tab === 'approvals' && <AdjustRequests />}
         {tab === 'market' && <MarketOps />}
+        {tab === 'prices' && <PriceControl />}
         {tab === 'symbols' && <Symbols />}
         {tab === 'data' && <DataStorage />}
         {tab === 'monitor' && <Monitor />}

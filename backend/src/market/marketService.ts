@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import {
   Big,
   floorStep,
+  priceOnPath,
   str,
   type BookLevel,
   type Dec,
@@ -10,6 +11,7 @@ import {
   type Kline,
   type KlineInterval,
   type MarketStatus,
+  type PriceControl,
   type Side,
   type SymbolInfo,
   type SymbolRow,
@@ -19,9 +21,10 @@ import {
 } from '@vss/shared';
 import type { Database } from '../db';
 import { log } from '../lib/logger';
+import { gaussian, mulberry32 } from '../lib/prng';
 import type { BinanceRest } from './binance/rest';
 import { BinanceStream, type MiniTicker } from './binance/stream';
-import { SimFeed } from './simFeed';
+import { SimFeed, type SimStep } from './simFeed';
 import { loadSymbols, toSymbolInfo, type SymbolRowDb } from './symbols';
 
 /*
@@ -36,6 +39,9 @@ import { loadSymbols, toSymbolInfo, type SymbolRowDb } from './symbols';
  *
  * Khớp lệnh ảo: lệnh người dùng "ăn" sổ lệnh thật (consumeBook) nhưng không gửi lên Binance; phần đã ăn
  * được ghi nhớ tới khi có bản sổ lệnh mới để 2 lệnh liên tiếp không khớp trùng cùng một thanh khoản.
+ *
+ * Giá điều chỉnh (quản trị viên, `control`): cặp bỏ qua luồng Binance (chỉ nhớ giá tham chiếu `ref`), mỗi chu kỳ
+ * sàn tự sinh giá theo kịch bản (priceOnPath + dao động), sổ lệnh và giao dịch quanh giá đó → lệnh khớp theo giá này.
  */
 
 export interface SymbolState {
@@ -51,6 +57,12 @@ export interface SymbolState {
   vwap: { t: number; pq: number; q: number }[];
   /** Nến 1 phút gần nhất (tối đa 1 ngày) */
   bars: Kline[];
+  /** Kịch bản giá điều chỉnh; null = giá thực tế (Binance) */
+  control: PriceControl | null;
+  /** Độ lệch dao động hiện tại so với đường giá kịch bản (tỉ lệ, vd. 0.001 = +0,1%) */
+  dev: number;
+  /** Giá Binance gần nhất — vẫn theo dõi khi cặp đang ở giá điều chỉnh để quản trị viên so sánh */
+  ref: string | null;
 }
 
 export interface MarketHooks {
@@ -132,6 +144,8 @@ export class MarketService extends EventEmitter {
   private downSince = Date.now();
   private readonly sim = new SimFeed();
   private lastSimAt = Date.now();
+  private lastManualAt = Date.now();
+  private readonly rand = mulberry32(Date.now() ^ 0x5eed);
   private pendingTrades = new Map<string, TradeTick[]>();
   private changedBook = new Set<string>();
   private changedTicker = new Set<string>();
@@ -162,7 +176,9 @@ export class MarketService extends EventEmitter {
         const tickers = await this.rest.tickers(rows.map((r) => r.symbol));
         for (const t of tickers) {
           const s = this.states.get(t.symbol);
-          if (s) s.ticker = t;
+          if (!s) continue;
+          s.ref = t.last;
+          if (!s.control) s.ticker = t;
         }
       } catch (err) {
         log.warn('[market] không tải được ticker 24h từ Binance, dùng giá lưu trong CSDL', { err });
@@ -339,20 +355,45 @@ export class MarketService extends EventEmitter {
     const s = this.states.get(symbol);
     if (!s) return [];
     if (this.rest && this.opts.feed === 'binance') {
-      const key = `${symbol}:${interval}:${limit}:${endTime ?? ''}`;
+      // Giá điều chỉnh: lịch sử thật chỉ tới lúc bắt đầu điều chỉnh, phần sau là nến của giá điều chỉnh (trong bộ nhớ)
+      const since = s.control?.since ?? null;
+      const restEnd = since != null ? Math.min(endTime ?? since, since) : endTime;
+      const key = `${symbol}:${interval}:${limit}:${restEnd ?? ''}`;
       const hit = this.klineCache.get(key);
-      if (hit && Date.now() - hit.at < hit.ttl) return this.mergeLive(s, hit.data, interval, !endTime);
-      try {
-        const data = await this.rest.klines(symbol, interval, limit, endTime);
-        this.klineCache.set(key, { at: Date.now(), ttl: endTime ? 600_000 : 15_000, data });
-        if (this.klineCache.size > 500) this.klineCache.delete(this.klineCache.keys().next().value!);
-        return this.mergeLive(s, data, interval, !endTime);
-      } catch (err) {
-        log.warn(`[market] không tải được nến ${symbol} ${interval} từ Binance, dùng nến trong bộ nhớ`, { err });
+      let data: Kline[] | null = hit && Date.now() - hit.at < hit.ttl ? hit.data : null;
+      if (!data) {
+        try {
+          data = await this.rest.klines(symbol, interval, limit, restEnd);
+          this.klineCache.set(key, { at: Date.now(), ttl: restEnd ? 600_000 : 15_000, data });
+          if (this.klineCache.size > 500) this.klineCache.delete(this.klineCache.keys().next().value!);
+        } catch (err) {
+          log.warn(`[market] không tải được nến ${symbol} ${interval} từ Binance, dùng nến trong bộ nhớ`, { err });
+        }
       }
+      if (data) return since != null ? this.withManualBars(s, since, data, interval, limit, endTime) : this.mergeLive(s, data, interval, !endTime);
     }
     const bars = aggregateBars(s.bars, interval);
     const filtered = endTime ? bars.filter((b) => b.time * 1000 <= endTime) : bars;
+    return filtered.slice(-limit);
+  }
+
+  /** Nến Binance tới lúc bắt đầu giá điều chỉnh + nến giá điều chỉnh từ đó (nến 1 phút trong bộ nhớ, tối đa 1 ngày) */
+  private withManualBars(s: SymbolState, since: number, data: Kline[], interval: KlineInterval, limit: number, endTime?: number): Kline[] {
+    const out = data.map((k) => ({ ...k }));
+    const own = aggregateBars(
+      s.bars.filter((b) => b.time * 1000 >= Math.floor(since / 60_000) * 60_000),
+      interval,
+    );
+    for (const b of own) {
+      const last = out[out.length - 1];
+      if (last && last.time === b.time) {
+        last.high = Math.max(last.high, b.high);
+        last.low = Math.min(last.low, b.low);
+        last.close = b.close;
+        last.volume += b.volume;
+      } else if (!last || b.time > last.time) out.push({ ...b });
+    }
+    const filtered = endTime ? out.filter((b) => b.time * 1000 <= endTime) : out;
     return filtered.slice(-limit);
   }
 
@@ -383,7 +424,10 @@ export class MarketService extends EventEmitter {
     if (this.rest && this.opts.feed === 'binance') {
       try {
         const [t] = await this.rest.tickers([row.symbol]);
-        if (t) s.ticker = t;
+        if (t) {
+          s.ref = t.last;
+          if (!s.control) s.ticker = t;
+        }
       } catch {
         /* dùng giá lưu trong CSDL */
       }
@@ -403,6 +447,34 @@ export class MarketService extends EventEmitter {
     if (!s) return;
     s.info = { ...s.info, status };
     this.emit('symbols');
+  }
+
+  /** Kịch bản giá điều chỉnh của cặp (null = giá thực tế) và giá Binance gần nhất */
+  priceControl(symbol: string): { control: PriceControl | null; ref: string | null } | null {
+    const s = this.states.get(symbol);
+    return s ? { control: s.control, ref: s.ref } : null;
+  }
+
+  /**
+   * Bật / đổi kịch bản (control) hoặc tắt (null) giá điều chỉnh. Nơi gọi (trang quản trị) chịu trách nhiệm
+   * lưu CSDL và ghi nhật ký; ở đây chỉ đổi trạng thái trong bộ nhớ.
+   */
+  setPriceControl(symbol: string, control: PriceControl | null) {
+    const s = this.states.get(symbol);
+    if (!s) return;
+    const wasManual = !!s.control;
+    s.control = control;
+    if (!control) {
+      s.dev = 0;
+      // Về giá thực tế: dùng ngay giá Binance gần nhất; sổ lệnh / thống kê 24h thật tới ở bản cập nhật kế tiếp
+      if (s.ref && !this.usingSim()) {
+        s.ticker.last = s.ref;
+        this.seedBook(s);
+        this.changedTicker.add(symbol);
+      }
+    }
+    s.info = { ...s.info, priceMode: control ? 'MANUAL' : 'LIVE', priceSince: control?.since ?? null };
+    if (wasManual !== !!control) this.emit('symbols');
   }
 
   /** Giả lập: ép giá của cặp ở bước kế tiếp (test, minh hoạ lệnh dừng) */
@@ -435,7 +507,14 @@ export class MarketService extends EventEmitter {
       trades: [],
       vwap: [],
       bars: [],
+      control: null,
+      dev: 0,
+      ref: null,
     };
+    if (r.price_mode === 'MANUAL' && r.price_control) {
+      const c = r.price_control;
+      s.control = { since: c.since, from: c.from, to: c.to, startAt: c.startAt, endAt: c.endAt, volatilityPct: c.volatilityPct };
+    }
     this.states.set(r.symbol, s);
     return s;
   }
@@ -467,6 +546,8 @@ export class MarketService extends EventEmitter {
     for (const m of list) {
       const s = this.states.get(m.symbol);
       if (!s) continue;
+      s.ref = str(m.close);
+      if (s.control) continue;
       const open = new Big(m.open);
       const change = new Big(m.close).minus(open);
       s.ticker = {
@@ -487,17 +568,17 @@ export class MarketService extends EventEmitter {
 
   private onDepth(symbol: string, bids: BookLevel[], asks: BookLevel[]) {
     const s = this.states.get(symbol);
-    if (s && !this.usingSim()) this.setBook(s, bids, asks);
+    if (s && !s.control && !this.usingSim()) this.setBook(s, bids, asks);
   }
 
   private onTrade(t: TradeTick) {
-    if (this.usingSim()) return;
+    if (this.usingSim() || this.states.get(t.symbol)?.control) return;
     this.recordTrade(t, false);
   }
 
   private onKline(symbol: string, k: Kline) {
     const s = this.states.get(symbol);
-    if (!s || this.usingSim()) return;
+    if (!s || s.control || this.usingSim()) return;
     const lastBar = s.bars[s.bars.length - 1];
     if (lastBar && lastBar.time === k.time) s.bars[s.bars.length - 1] = k;
     else {
@@ -558,25 +639,47 @@ export class MarketService extends EventEmitter {
     const dt = Math.min(now - this.lastSimAt, 5_000);
     this.lastSimAt = now;
     for (const s of this.states.values()) {
-      if (s.info.status !== 'TRADING') continue;
+      if (s.info.status !== 'TRADING' || s.control) continue;
       const last = s.ticker.last !== '0' ? s.ticker.last : null;
       if (!last) continue;
-      const r = this.sim.step({ symbol: s.info.symbol, filters: s.info.filters, last }, dt, now);
-      this.setBook(s, r.bids, r.asks);
-      s.ticker.last = r.last;
-      for (const t of r.trades) this.recordTrade(t, true);
-      if (!r.trades.length) this.updateBar(s, Number(r.last), 0, now);
-      const open = new Big(s.ticker.open);
-      if (open.gt(0)) {
-        const change = new Big(s.ticker.last).minus(open);
-        s.ticker.change = change.toFixed();
-        s.ticker.changePct = Number(change.div(open).times(100).toFixed(2));
-      }
-      if (new Big(r.last).gt(s.ticker.high)) s.ticker.high = r.last;
-      if (new Big(r.last).lt(s.ticker.low)) s.ticker.low = r.last;
-      s.ticker.updatedAt = now;
-      this.changedTicker.add(s.info.symbol);
+      this.applyStep(s, this.sim.step({ symbol: s.info.symbol, filters: s.info.filters, last }, dt, now), now);
     }
+  }
+
+  /** Giá điều chỉnh: bám đường giá kịch bản, cộng dao động ngẫu nhiên kéo dần về đường giá (không vượt biên dao động) */
+  private manualStep(now: number) {
+    const dt = Math.max(1, Math.min(now - this.lastManualAt, 5_000));
+    this.lastManualAt = now;
+    for (const s of this.states.values()) {
+      const c = s.control;
+      if (!c || s.info.status !== 'TRADING') continue;
+      const vol = c.volatilityPct / 100;
+      if (vol > 0) {
+        const theta = Math.min(1, dt / 20_000);
+        s.dev += -s.dev * theta + (vol / 2) * Math.sqrt(2 * theta) * gaussian(this.rand);
+        s.dev = Math.max(-vol, Math.min(vol, s.dev));
+      } else s.dev = 0;
+      this.sim.forced.set(s.info.symbol, String(priceOnPath(c, now) * (1 + s.dev)));
+      this.applyStep(s, this.sim.step({ symbol: s.info.symbol, filters: s.info.filters, last: s.ticker.last }, dt, now), now);
+    }
+  }
+
+  /** Áp 1 bước giá tự sinh (giả lập hoặc điều chỉnh): sổ lệnh, giao dịch, nến, thống kê 24h */
+  private applyStep(s: SymbolState, r: SimStep, now: number) {
+    this.setBook(s, r.bids, r.asks);
+    s.ticker.last = r.last;
+    for (const t of r.trades) this.recordTrade(t, true);
+    if (!r.trades.length) this.updateBar(s, Number(r.last), 0, now);
+    const open = new Big(s.ticker.open);
+    if (open.gt(0)) {
+      const change = new Big(s.ticker.last).minus(open);
+      s.ticker.change = change.toFixed();
+      s.ticker.changePct = Number(change.div(open).times(100).toFixed(2));
+    }
+    if (new Big(r.last).gt(s.ticker.high)) s.ticker.high = r.last;
+    if (new Big(r.last).lt(s.ticker.low)) s.ticker.low = r.last;
+    s.ticker.updatedAt = now;
+    this.changedTicker.add(s.info.symbol);
   }
 
   private async flush() {
@@ -593,6 +696,7 @@ export class MarketService extends EventEmitter {
         this.emit('feed', this.status());
       }
       if (sim) this.simStep(now);
+      this.manualStep(now);
 
       const trades = this.pendingTrades;
       const changed = this.changedBook;
