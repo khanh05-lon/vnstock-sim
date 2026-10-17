@@ -76,6 +76,8 @@ Sau khi chạy:
 | `MARKET_PROVIDER` | | `mock` (giả lập) hoặc `vnstock` (giá thật, xem mục 7) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | nên có | Gửi email. Để trống → nội dung email chỉ ghi ra log |
 | `REQUIRE_EMAIL_VERIFICATION` | | `true` = phải xác thực email mới được đặt lệnh |
+| `REQUIRE_STAFF_2FA` | | Nhân viên (quản trị, CSKH) phải bật 2FA mới vào khu vực nhân viên — mặc định bật khi `NODE_ENV=production` |
+| `ADJUST_APPROVAL_USDT` | | Điều chỉnh số dư từ mức này (USDT, mặc định 1000) trở lên cần quản trị viên thứ hai duyệt |
 | `METRICS_TOKEN` | | Bật `/api/metrics` (Prometheus) với header `Authorization: Bearer <token>` |
 | `ALERT_EMAILS`, `ALERT_WEBHOOK_URL` | | Nơi nhận cảnh báo vận hành (mục 6); ngưỡng chỉnh bằng `ALERT_*_MS`, `ALERT_RSS_MB`, `ALERT_ERROR_RATE_PCT` |
 | `BACKUP_DIR` | | Nơi ghi bản sao lưu tự động trước mỗi lần khôi phục từ trang Quản trị (mặc định `./data/backups`, trong Docker nằm trong volume `appdata`) |
@@ -167,7 +169,8 @@ và gửi cảnh báo.
 ## 8. Danh sách kiểm tra bảo mật
 
 - [ ] `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, `POSTGRES_PASSWORD` là chuỗi ngẫu nhiên, không commit lên Git (`.env` đã nằm trong `.gitignore`)
-- [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA
+- [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA; có ít nhất 2 quản trị viên để duyệt điều chỉnh số dư (nguyên tắc 2 người)
+- [ ] Nhân viên CSKH dùng vai trò "Nhân viên CSKH" (không cấp quyền quản trị), đã bật 2FA; có người trực khu CSKH và nhận cảnh báo "yêu cầu hỗ trợ quá hạn" qua `ALERT_EMAILS`
 - [ ] Tường lửa chỉ mở 22/80/443; SSH đăng nhập bằng khoá, tắt đăng nhập mật khẩu
 - [ ] SMTP thật đã cấu hình, `REQUIRE_EMAIL_VERIFICATION=true`
 - [ ] Sao lưu tự động + bản chép ra ngoài máy; đã thử khôi phục ít nhất 1 lần

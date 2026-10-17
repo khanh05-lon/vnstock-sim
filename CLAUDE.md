@@ -2,6 +2,22 @@
 
 Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Socket.io + PGlite), `frontend/` (React + Vite + Tailwind v4).
 
+> Từ migration `200_crypto_spot.sql` dự án là **sàn coin Spot (VNCoin)**, giá từ Binance, số tiền dạng chuỗi thập phân (NUMERIC). Các ghi chú bên dưới
+> về VNĐ, HOSE/HNX, T+2, ký quỹ, sự kiện quyền là của phiên bản sàn chứng khoán cũ — đối chiếu code trước khi làm theo.
+
+## Trách nhiệm, dấu vết & CSKH (migration 210)
+
+- Bảng **chỉ được ghi thêm** (trigger `append_only_guard`): `admin_audit_log`, `auth_events`, `support_messages`. Không viết code UPDATE / DELETE các bảng này; test muốn dọn thì tạo CSDL mới. Riêng xoá hẳn tài khoản thử (chỉ ngoài production) dùng `SET LOCAL vss.purge = 'on'`.
+- `admin_audit_log` không có khoá ngoại và trong sao lưu là `replace: false` → khôi phục sao lưu chỉ gộp thêm, không xoá nhật ký hiện có. Bảng mới có khoá ngoại tới `users` phải nằm trong `BACKUP_TABLES` (vì khôi phục `TRUNCATE users CASCADE`).
+- Nhật ký lệnh `order_events`: mọi hàm đổi trạng thái lệnh trong `SpotEngine` nhận `by: OrderActor` (`userActor(req.ip)` cho khách, `{ actor: email }` cho nhân viên, `SYSTEM_ACTOR` mặc định). Thêm đường huỷ / sửa lệnh mới phải truyền `by` và để `finish()` ghi sự kiện.
+- Nhật ký đăng nhập `auth_events` qua `recordAuthEvent()` (`lib/authEvents.ts`); đăng nhập sai 5 lần / 15 phút → chặn theo tài khoản (`LOGIN_BLOCKED`).
+- Vai trò `USER | SUPPORT | ADMIN`. Khu quản trị `/api/admin` chỉ ADMIN; khu CSKH `/api/support-desk` cho SUPPORT + ADMIN; cả hai qua `staffGuard()` (`admin/staff.ts`, bắt 2FA khi `REQUIRE_STAFF_2FA`). Nhân viên chỉ xem dữ liệu khách qua yêu cầu hỗ trợ, mỗi lần xem ghi `USER_VIEW`.
+- Điều chỉnh số dư: không tự điều chỉnh / tự duyệt; từ `ADJUST_APPROVAL_USDT` trở lên và mọi đề xuất của CSKH thành `balance_adjust_requests`, quản trị viên khác duyệt (`applyBalanceAdjust`).
+- Xoá người dùng = ẩn danh (`status = 'DELETED'`), giữ lệnh / khớp / sổ cái / tin nhắn hỗ trợ; đặt `password_changed_at` để thu hồi mọi phiên cũ (dòng users vẫn còn nên token cũ không tự mất hiệu lực). `loadTarget` / `lockUser` từ chối tài khoản đã xoá.
+- Tài khoản bị khoá đăng nhập đúng (mật khẩu + 2FA) chỉ nhận **vé hỗ trợ** (JWT `purpose: 'support'`, trả trong `error.supportToken` của lỗi 403 `ACCOUNT_LOCKED`) — chỉ `requireAuthOrSupportTicket` của `/api/support/*` nhận vé này. FE lưu ở `useSupportPass` (sessionStorage), trang `/ho-tro-khoa`; `api(path, { token })` dùng token thay phiên.
+- Hỗ trợ khách hàng: `support/service.ts` (hạn trả lời `SUPPORT_SLA_MINUTES` tính từ `customer_waiting_since`, tự đóng sau 7 ngày), realtime `support` (phòng `user:<id>`) và `support:staff` (phòng `staff`); cảnh báo vận hành `support_overdue`.
+- Router `supportRoutes`, `watchlistRoutes`, `alertRoutes` phải `app.use` trước `tradingRoutes` (router đó gắn `requireAuth` cho cả `/api`).
+
 ## Lệnh
 
 - `npm run dev` (root) — chạy API :4000 và web :5173 (Vite proxy `/api`, `/socket.io` sang :4000)
