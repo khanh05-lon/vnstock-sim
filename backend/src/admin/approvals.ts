@@ -4,7 +4,7 @@ import { APPROVAL_KIND_LABEL, APPROVAL_PERMISSION, APPROVAL_TTL_MIN, type Approv
 import type { Database } from '../db';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
-import { assertCan, audit, type AdminCtx, type AdminRequest } from './common';
+import { assertCan, audit, need, type AdminCtx, type AdminRequest } from './common';
 
 interface ApprovalRow {
   id: number | string;
@@ -61,6 +61,7 @@ export type ApprovalExecutor = (executor: AdminCtx, req: ApprovedRequest) => Pro
  */
 export class Approvals {
   private executors = new Map<ApprovalKind, ApprovalExecutor>();
+  private cleanups = new Map<ApprovalKind, (payload: Record<string, unknown>) => void>();
 
   constructor(private db: Database) {}
 
@@ -68,9 +69,36 @@ export class Approvals {
     this.executors.set(kind, fn);
   }
 
+  /** Dọn tài nguyên của đề xuất khi kết thúc (duyệt / lỗi / từ chối / rút / hết hạn) — vd. xoá file sao lưu tải lên */
+  registerCleanup(kind: ApprovalKind, fn: (payload: Record<string, unknown>) => void) {
+    this.cleanups.set(kind, fn);
+  }
+
+  private cleanup(rows: Pick<ApprovalRow, 'id' | 'kind' | 'payload'>[]) {
+    for (const r of rows) {
+      try {
+        this.cleanups.get(r.kind)?.(r.payload ?? {});
+      } catch (err) {
+        log.error('[approval] lỗi dọn dẹp đề xuất', { id: r.id, kind: r.kind, err });
+      }
+    }
+  }
+
   /** Đề xuất quá hạn chưa ai duyệt → hết hạn (phải đề xuất lại với số liệu mới) */
   async expireStale() {
-    await this.db.many(`UPDATE approval_requests SET status = 'EXPIRED' WHERE status = 'PENDING' AND expires_at < now()`);
+    this.cleanup(
+      await this.db.many<ApprovalRow>(`UPDATE approval_requests SET status = 'EXPIRED' WHERE status = 'PENDING' AND expires_at < now() RETURNING id, kind, payload`),
+    );
+  }
+
+  /** Sau khi khôi phục dữ liệu: mọi đề xuất đang chờ khác dựa trên dữ liệu cũ → hết hiệu lực (kể cả dòng gộp vào từ file sao lưu) */
+  async invalidatePending(exceptId: number) {
+    this.cleanup(
+      await this.db.many<ApprovalRow>(
+        `UPDATE approval_requests SET status = 'EXPIRED', decision_note = 'Hết hiệu lực do khôi phục dữ liệu' WHERE status = 'PENDING' AND id <> $1 RETURNING id, kind, payload`,
+        [exceptId],
+      ),
+    );
   }
 
   async create(admin: AdminCtx, a: { kind: ApprovalKind; target: string | null; payload: Record<string, unknown>; summary: string; reason: string }): Promise<ApprovalDTO> {
@@ -140,6 +168,8 @@ export class Approvals {
       await this.db.many(`UPDATE approval_requests SET status = 'FAILED', result = $2::jsonb WHERE id = $1`, [id, JSON.stringify({ error: message })]);
       await audit(this.db, admin, 'APPROVAL_FAILED', 'approval', String(id), { kind: r.kind, target: r.target, error: message });
       throw err;
+    } finally {
+      this.cleanup([r]);
     }
   }
 
@@ -153,6 +183,7 @@ export class Approvals {
       [id, admin.id, admin.email, note],
     );
     if (!row) throw badRequest('DECIDED', 'Đề xuất vừa được người khác xử lý');
+    this.cleanup([r]);
     await audit(this.db, admin, 'APPROVAL_REJECT', 'approval', String(id), { kind: r.kind, target: r.target, summary: r.summary, requestedBy: r.requested_by_email, note });
     return toDTO(row);
   }
@@ -166,6 +197,7 @@ export class Approvals {
       [id, admin.id, admin.email],
     );
     if (!row) throw badRequest('DECIDED', 'Đề xuất vừa được người khác xử lý');
+    this.cleanup([r]);
     await audit(this.db, admin, 'APPROVAL_CANCEL', 'approval', String(id), { kind: r.kind, target: r.target, summary: r.summary });
     return toDTO(row);
   }
@@ -181,6 +213,7 @@ const idOf = (raw: string | undefined) => {
 export function mountApprovals(r: Router, approvals: Approvals) {
   r.get(
     '/approvals',
+    need('admin.view'),
     ah(async (req, res) => {
       const status = req.query.status === 'ALL' ? 'ALL' : 'PENDING';
       res.json(await approvals.list(status));
@@ -189,6 +222,7 @@ export function mountApprovals(r: Router, approvals: Approvals) {
 
   r.post(
     '/approvals/:id/approve',
+    need('admin.view'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const { note } = z.object({ note: z.string().trim().max(300).optional() }).parse(req.body ?? {});
@@ -198,6 +232,7 @@ export function mountApprovals(r: Router, approvals: Approvals) {
 
   r.post(
     '/approvals/:id/reject',
+    need('admin.view'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const { note } = z
@@ -209,6 +244,7 @@ export function mountApprovals(r: Router, approvals: Approvals) {
 
   r.post(
     '/approvals/:id/cancel',
+    need('admin.view'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       res.json(await approvals.cancel(admin, idOf(req.params.id)));

@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response, Router } from 'express';
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 import { PERMISSION_DENIED, can, type AdjustRequestDTO, type Permission, type UserRole } from '@vss/shared';
@@ -39,14 +39,33 @@ export type AdminRequest = Request & { admin: AdminCtx };
 
 export const forbidden = (msg: string) => new AppError(403, 'FORBIDDEN', msg);
 
+type GuardFn = ((req: Request, res: Response, next: NextFunction) => void) & { perm: Permission };
+
 /** Chặn route theo quyền chi tiết của vai trò (sau staffGuard, vai trò đã đọc lại từ CSDL ở request này) */
-export const need =
-  (perm: Permission) =>
-  (req: Request, _res: Response, next: NextFunction): void => {
+export const need = (perm: Permission): GuardFn => {
+  const fn = ((req: Request, _res: Response, next: NextFunction): void => {
     const { admin } = req as AdminRequest;
     if (admin && can(admin.role, perm)) return next();
     next(forbidden(PERMISSION_DENIED[perm]));
-  };
+  }) as GuardFn;
+  fn.perm = perm;
+  return fn;
+};
+
+/**
+ * Khu quản trị MẶC ĐỊNH CẤM: mọi route phải khai báo need(quyền) (chỉ đọc chung thì need('admin.view')).
+ * Gọi sau khi gắn hết route — thiếu khai báo thì ném lỗi ngay lúc khởi động, không để lọt route ai cũng gọi được.
+ */
+export function assertRoutesGuarded(r: Router) {
+  type Layer = { route?: { path: string; methods: Record<string, boolean>; stack: { handle: Partial<GuardFn> }[] } };
+  const missing: string[] = [];
+  for (const layer of (r as unknown as { stack: Layer[] }).stack) {
+    const route = layer.route;
+    if (!route) continue;
+    if (!route.stack.some((l) => typeof l.handle.perm === 'string')) missing.push(`${Object.keys(route.methods).join(',').toUpperCase()} ${route.path}`);
+  }
+  if (missing.length) throw new Error(`Route quản trị chưa khai báo quyền need(...): ${missing.join('; ')}`);
+}
 
 /** Kiểm tra quyền trong thân hàm (khi quyền phụ thuộc dữ liệu, vd. loại đề xuất cần duyệt) */
 export function assertCan(admin: AdminCtx, perm: Permission) {

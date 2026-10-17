@@ -24,7 +24,7 @@ export function mountMarketAdmin(r: Router, deps: AdminDeps, broadcast: () => vo
 
   /* ------------------------------ biểu phí ------------------------------ */
 
-  r.get('/rules', (_req, res) => {
+  r.get('/rules', need('admin.view'), (_req, res) => {
     res.json({ rules: RULES, defaults: DEFAULT_RULES, overrides: store.rulesPatch });
   });
 
@@ -58,6 +58,7 @@ export function mountMarketAdmin(r: Router, deps: AdminDeps, broadcast: () => vo
 
   r.get(
     '/symbols',
+    need('admin.view'),
     ah(async (_req, res) => {
       const rows = await db.many<SymbolRowDb & { holders: number; open_orders: number }>(
         `SELECT s.*,
@@ -240,6 +241,31 @@ export function mountMarketAdmin(r: Router, deps: AdminDeps, broadcast: () => vo
     }
   };
 
+  /** Thư mục file sao lưu chờ duyệt — chỉ xoá file nằm trong đây (đường dẫn lấy từ CSDL, có thể từ bản sao lưu gộp vào) */
+  const pendingDir = () => path.resolve(config.backupDir, 'pending-restore');
+  const removePendingFile = (file: unknown) => {
+    if (typeof file !== 'string') return;
+    const abs = path.resolve(file);
+    if (!abs.startsWith(pendingDir() + path.sep)) return;
+    fs.rmSync(abs, { force: true });
+  };
+  // File chứa toàn bộ dữ liệu người dùng → xoá ngay khi đề xuất kết thúc (duyệt / lỗi / từ chối / rút / hết hạn)
+  approvals.registerCleanup('DATA_RESTORE', (p) => removePendingFile(p.file));
+  // Khởi động: xoá file sót lại không còn đề xuất nào đang chờ (vd. máy chủ tắt giữa chừng)
+  void (async () => {
+    const dir = pendingDir();
+    if (!fs.existsSync(dir)) return;
+    const keep = new Set(
+      (await db.many<{ file: string }>(`SELECT payload->>'file' AS file FROM approval_requests WHERE kind = 'DATA_RESTORE' AND status = 'PENDING'`)).map((r) =>
+        path.resolve(r.file),
+      ),
+    );
+    for (const name of fs.readdirSync(dir)) {
+      const abs = path.join(dir, name);
+      if (!keep.has(abs)) fs.rmSync(abs, { force: true });
+    }
+  })().catch((err) => log.warn('[admin] không dọn được file khôi phục chờ duyệt', { err }));
+
   approvals.register('DATA_RESTORE', async (admin, req) => {
     const p = req.payload as { file: string; sha256: string };
     let raw: Buffer;
@@ -251,6 +277,7 @@ export function mountMarketAdmin(r: Router, deps: AdminDeps, broadcast: () => vo
     // File trên máy chủ bị thay sau khi đề xuất → không khôi phục
     if (crypto.createHash('sha256').update(raw).digest('hex') !== p.sha256) throw badRequest('BACKUP_CHANGED', 'File sao lưu đã bị thay đổi sau khi đề xuất — từ chối khôi phục');
     const report = await runRestore(admin, parseBackup(raw));
+    await approvals.invalidatePending(req.id);
     return { ...report, approvalId: req.id, requestedBy: req.requestedByEmail };
   });
 
@@ -283,10 +310,10 @@ export function mountMarketAdmin(r: Router, deps: AdminDeps, broadcast: () => vo
       }
       if (dryRun) return void res.json(report);
 
-      const dir = path.join(config.backupDir, 'pending-restore');
-      fs.mkdirSync(dir, { recursive: true });
+      const dir = pendingDir();
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       const file = path.join(dir, `restore-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.json`);
-      fs.writeFileSync(file, req.body);
+      fs.writeFileSync(file, req.body, { mode: 0o600 });
       const sha256 = crypto.createHash('sha256').update(req.body).digest('hex');
       const rows = report.tables.reduce((n, t) => n + t.rows, 0);
       const request = await approvals.create(admin, {

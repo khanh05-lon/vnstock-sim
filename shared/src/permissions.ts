@@ -111,7 +111,7 @@ export const ROLE_DESC: Record<UserRole, string> = {
 
 /* ---------------------------- hàng chờ duyệt (2 người) ---------------------------- */
 
-export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'DATA_RESTORE';
+export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'FAILED';
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
@@ -120,6 +120,8 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   SYMBOL_DELIST: 'Huỷ niêm yết cặp',
   MARKET_HALT: 'Tạm ngừng toàn sàn',
   DATA_RESTORE: 'Khôi phục dữ liệu',
+  ROLE_SET: 'Cấp / đổi vai trò nhân viên',
+  ACCOUNT_RESET: 'Đặt lại tài khoản khách',
 };
 
 export const APPROVAL_STATUS_LABEL: Record<ApprovalStatus, string> = {
@@ -138,6 +140,8 @@ export const APPROVAL_PERMISSION: Record<ApprovalKind, Permission> = {
   SYMBOL_DELIST: 'market.approve',
   MARKET_HALT: 'market.approve',
   DATA_RESTORE: 'data.approve',
+  ROLE_SET: 'staff.manage',
+  ACCOUNT_RESET: 'finance.approve',
 };
 
 /** Thời hạn chờ duyệt (phút) — giá / tạm ngừng cần quyết nhanh, quá hạn phải đề xuất lại */
@@ -147,7 +151,12 @@ export const APPROVAL_TTL_MIN: Record<ApprovalKind, number> = {
   SYMBOL_DELIST: 24 * 60,
   MARKET_HALT: 30,
   DATA_RESTORE: 120,
+  ROLE_SET: 24 * 60,
+  ACCOUNT_RESET: 24 * 60,
 };
+
+/** Điều chỉnh số dư trực tiếp: tổng của 1 người trong 24 giờ (mọi khách) vượt ngưỡng × hệ số này cũng phải duyệt */
+export const ADJUST_DAILY_TOTAL_MULTIPLIER = 5;
 
 export interface ApprovalDTO {
   id: number;

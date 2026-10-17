@@ -15,6 +15,7 @@ Hướng dẫn cho đội vận hành VNCoin: cách nhận và xử lý yêu c�
 | Kiểm toán | Chỉ đọc: tổng quan, người dùng, lệnh, hàng chờ duyệt, nhật ký, giám sát | Mọi thao tác ghi |
 
 Mọi vai trò: không tự điều chỉnh số dư của mình, không tự duyệt đề xuất do chính mình tạo, không sửa / xoá được nhật ký.
+Cấp / đổi vai trò nhân viên và đặt lại tài khoản khách cũng phải có người thứ hai duyệt; điều chỉnh số dư nhỏ nhưng cộng dồn 24 giờ vượt ngưỡng cũng phải duyệt.
 
 Đổi vai trò: Quản trị → Người dùng → hồ sơ → **Đổi vai trò**. Ở môi trường thật (`REQUIRE_STAFF_2FA`), nhân viên phải bật xác thực 2 lớp mới vào được khu nhân viên.
 

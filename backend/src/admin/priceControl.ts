@@ -68,6 +68,7 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
 
   r.get(
     '/prices',
+    need('admin.view'),
     ah(async (_req, res) => {
       const meta = new Map(
         (await db.many<{ symbol: string; price_control: StoredPriceControl | null }>(`SELECT symbol, price_control FROM symbols WHERE price_mode = 'MANUAL'`)).map(
@@ -113,6 +114,7 @@ export function mountPriceControl(r: Router, deps: AdminDeps, approvals: Approva
   /** Lịch sử chỉnh giá của 1 cặp (từ nhật ký quản trị) */
   r.get(
     '/prices/:symbol/history',
+    need('admin.view'),
     ah(async (req, res) => {
       const symbol = symbolParam.parse(req.params.symbol);
       const rows = await db.many<{ id: number; action: string; admin_email: string; detail: Record<string, unknown>; created_at: Date }>(

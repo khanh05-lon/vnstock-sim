@@ -138,7 +138,7 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
         title="Điều chỉnh số dư"
         description={(() => {
           const b = d.account.balances.find((x) => x.asset === asset);
-          return `Số dư ${asset} hiện tại: khả dụng ${b ? fmtQty(b.free) : '0'}, đang khoá ${b ? fmtQty(b.locked) : '0'}. Giá trị quy USDT được cộng vào vốn đã góp để lãi/lỗ và bảng xếp hạng không bị sai lệch. Từ ngưỡng phê duyệt trở lên sẽ thành yêu cầu, cần một quản trị viên khác duyệt.`;
+          return `Số dư ${asset} hiện tại: khả dụng ${b ? fmtQty(b.free) : '0'}, đang khoá ${b ? fmtQty(b.locked) : '0'}. Giá trị quy USDT được cộng vào vốn đã góp để lãi/lỗ và bảng xếp hạng không bị sai lệch. Từ ngưỡng phê duyệt trở lên — tính cả tổng các lần bạn điều chỉnh trực tiếp trong 24 giờ — sẽ thành yêu cầu, cần một người Tài chính khác duyệt.`;
         })()}
         confirmLabel={amount ? `${sign > 0 ? 'Cộng' : 'Trừ'} ${amount} ${asset}` : 'Xác nhận'}
         canConfirm={!!amount}
@@ -188,20 +188,29 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
       <ReasonModal
         open={kind === 'reset'}
         title={`Đặt lại tài khoản ${u.email}`}
-        description="Xoá toàn bộ lệnh, khớp lệnh, số dư coin và sổ cái của người dùng; ví về vốn ảo ban đầu (USDT). Không hoàn tác được."
-        confirmLabel="Đặt lại"
+        description="Gửi đề xuất: khi một người Tài chính khác duyệt, toàn bộ lệnh, khớp lệnh, số dư coin và sổ cái của người dùng bị xoá; ví về vốn ảo ban đầu (USDT). Không hoàn tác được."
+        confirmLabel="Gửi đề xuất"
         danger
         onClose={close}
         onConfirm={async (reason) => {
-          if (await act(`${base}/reset`, 'POST', { reason }, 'Đã đặt lại tài khoản')) close();
+          if (await act(`${base}/reset`, 'POST', { reason }, 'Đã gửi đề xuất đặt lại tài khoản')) close();
         }}
       />
       <ReasonModal
         open={kind === 'role'}
         title={`Đổi vai trò của ${u.email}`}
-        description={<>{ROLE_DESC[role]} Ở môi trường thật nhân viên phải bật 2FA.</>}
-        confirmLabel="Lưu vai trò"
-        requireReason={false}
+        description={
+          <>
+            {ROLE_DESC[role]} Ở môi trường thật nhân viên phải bật 2FA.
+            <div className="mt-2 text-[12px] text-tx-3">
+              {role === 'USER' && u.role !== 'ADMIN'
+                ? 'Thu quyền về Nhà đầu tư: có hiệu lực ngay.'
+                : 'Cấp / đổi vai trò nhân viên (và thu quyền Quản trị hệ thống) cần một Quản trị hệ thống khác duyệt — trừ khi hệ thống mới chỉ có 1 Quản trị hệ thống.'}
+            </div>
+          </>
+        }
+        confirmLabel={role === 'USER' && u.role !== 'ADMIN' ? 'Thu quyền' : 'Gửi đề xuất'}
+        requireReason={!(role === 'USER' && u.role !== 'ADMIN')}
         canConfirm={role !== u.role}
         extra={
           <select className="input h-9 w-full" value={role} onChange={(e) => setRole(e.target.value as UserRole)} aria-label="Vai trò">
@@ -213,8 +222,8 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
           </select>
         }
         onClose={close}
-        onConfirm={async () => {
-          if (await act(`${base}/role`, 'POST', { role }, 'Đã cập nhật vai trò')) close();
+        onConfirm={async (reason) => {
+          if (await act(`${base}/role`, 'POST', { role, reason: reason || undefined }, 'Đã cập nhật vai trò')) close();
         }}
       />
       <ReasonModal

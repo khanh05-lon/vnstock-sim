@@ -4,13 +4,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { Big, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
+import { ADJUST_DAILY_TOTAL_MULTIPLIER, Big, ROLE_LABEL, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
 import { config } from '../config';
 import { markEmailVerified, markPasswordChanged } from '../lib/auth';
 import { listAuthEvents } from '../lib/authEvents';
 import { listOrderEvents } from '../trading/orderEvents';
 import { accountLockedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
+import { log } from '../lib/logger';
 import { utcDay } from '../portfolio/nav';
 import { sendLater } from '../routes/auth';
 import { createUserAccount } from '../seed/seed';
@@ -18,7 +19,7 @@ import { accountView, navOf } from '../trading/account';
 import { toLedgerDTO, toOrderDTO, type BalanceRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { exportBackup, serializeBackup } from './backup';
 import { Approvals, mountApprovals } from './approvals';
-import { assetParam, audit, need, reasonSchema, uuid, type AdminDeps, type AdminRequest } from './common';
+import { assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
 import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
@@ -150,13 +151,14 @@ export function adminRoutes(deps: AdminDeps) {
 
   /* ------------------------------ tổng quan ------------------------------ */
 
-  r.get('/me', (req, res) => {
+  r.get('/me', need('admin.view'), (req, res) => {
     const { admin } = req as AdminRequest;
     res.json({ ok: true, admin, permissions: admin.role ? ROLE_PERMISSIONS[admin.role] : [] });
   });
 
   r.get(
     '/overview',
+    need('admin.view'),
     ah(async (_req, res) => {
       const td = utcDay();
       const users = await db.one<{ total: number; new7d: number; locked: number; admins: number; active15m: number }>(
@@ -424,23 +426,71 @@ export function adminRoutes(deps: AdminDeps) {
     }),
   );
 
+  const setRole = async (admin: AdminCtx, u: UserRow, role: UserRole, extra: Record<string, unknown>) => {
+    await db.many('UPDATE users SET role = $2 WHERE id = $1', [u.id, role]);
+    await audit(db, admin, 'ROLE_SET', 'user', u.id, { email: u.email, from: u.role, to: role, ...extra });
+    return { email: u.email, from: u.role, to: role };
+  };
+
+  approvals.register('ROLE_SET', async (admin, req) => {
+    if (req.target === admin.id) throw badRequest('SELF', 'Không được duyệt thay đổi vai trò của chính mình');
+    const u = await loadTarget(req.target!);
+    const role = (req.payload as { role: UserRole }).role;
+    if (u.role === role) throw badRequest('NO_CHANGE', 'Vai trò đã như đề xuất');
+    if (u.status !== 'ACTIVE' && role !== 'USER') throw badRequest('LOCKED', 'Tài khoản đang bị khoá — không cấp quyền nhân viên');
+    return setRole(admin, u, role, { approvalId: req.id, requestedBy: req.requestedByEmail, reason: req.reason });
+  });
+
+  /**
+   * Phân quyền. Thu quyền nhân viên (không phải Quản trị hệ thống) về Nhà đầu tư: có hiệu lực ngay (chiều an toàn).
+   * Mọi thay đổi khác — cấp / đổi vai trò nhân viên, thu quyền Quản trị hệ thống — cần Quản trị hệ thống KHÁC duyệt,
+   * để 1 người không tự tạo tài khoản phụ rồi tự cấp quyền mà lách luật 2 người. Ngoại lệ: hệ thống mới chỉ có
+   * đúng 1 Quản trị hệ thống (khởi tạo ban đầu) → áp dụng ngay, nhật ký ghi bootstrap.
+   */
   r.post(
     '/users/:id/role',
     need('staff.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
-      const { role } = z.object({ role: z.enum(USER_ROLES as [UserRole, ...UserRole[]]) }).parse(req.body);
+      const { role, reason } = z
+        .object({ role: z.enum(USER_ROLES as [UserRole, ...UserRole[]]), reason: reasonSchema.optional() })
+        .parse(req.body);
       if (id === admin.id) throw badRequest('SELF', 'Không thể tự thay đổi quyền của chính mình');
       const u = await loadTarget(id);
       if (u.role === role) throw badRequest('NO_CHANGE', 'Vai trò không đổi');
       if (u.status !== 'ACTIVE' && role !== 'USER') throw badRequest('LOCKED', 'Không cấp quyền nhân viên cho tài khoản đang bị khoá');
-      await db.many('UPDATE users SET role = $2 WHERE id = $1', [id, role]);
-      await audit(db, admin, 'ROLE_SET', 'user', id, { email: u.email, from: u.role, to: role });
-      res.json({ ok: true });
+      if (role === 'USER' && u.role !== 'ADMIN') {
+        res.json({ ok: true, ...(await setRole(admin, u, role, { reason: reason ?? null })) });
+        return;
+      }
+      const admins = (await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE'`))!.n;
+      if (admins <= 1) {
+        log.warn('[admin] cấp vai trò khi hệ thống chỉ có 1 Quản trị hệ thống (khởi tạo)', { by: admin.email, target: u.email, role });
+        res.json({ ok: true, bootstrap: true, ...(await setRole(admin, u, role, { reason: reason ?? null, bootstrap: true })) });
+        return;
+      }
+      const request = await approvals.create(admin, {
+        kind: 'ROLE_SET',
+        target: id,
+        payload: { role, from: u.role, email: u.email },
+        summary: `${u.email}: ${ROLE_LABEL[u.role]} → ${ROLE_LABEL[role]}`,
+        reason: reason ?? `Đổi vai trò thành ${ROLE_LABEL[role]}`,
+      });
+      res.status(202).json({ ok: true, pending: true, request });
     }),
   );
 
+  approvals.register('ACCOUNT_RESET', async (admin, req) => {
+    if (req.target === admin.id) throw badRequest('SELF', 'Không được duyệt đặt lại tài khoản của chính mình');
+    const u = await loadTarget(req.target!);
+    await engine.resetAccount(u.id);
+    await audit(db, admin, 'ACCOUNT_RESET', 'user', u.id, { email: u.email, reason: req.reason, approvalId: req.id, requestedBy: req.requestedByEmail });
+    io.to(`user:${u.id}`).emit('account');
+    return { email: u.email };
+  });
+
+  /** Đặt lại tài khoản khách (xoá sạch lệnh, khớp, coin, sổ cái; ví về vốn ban đầu): đề xuất, người Tài chính khác duyệt */
   r.post(
     '/users/:id/reset',
     need('finance.adjust'),
@@ -448,11 +498,16 @@ export function adminRoutes(deps: AdminDeps) {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
       const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
-      if (id === admin.id) throw badRequest('SELF', 'Không thể tự đặt lại tài khoản của mình — nhờ quản trị viên khác');
+      if (id === admin.id) throw badRequest('SELF', 'Không thể tự đặt lại tài khoản của mình');
       const u = await loadTarget(id);
-      await engine.resetAccount(id);
-      await audit(db, admin, 'ACCOUNT_RESET', 'user', id, { email: u.email, reason });
-      res.json({ ok: true });
+      const request = await approvals.create(admin, {
+        kind: 'ACCOUNT_RESET',
+        target: id,
+        payload: { email: u.email },
+        summary: `Đặt lại tài khoản ${u.email}: xoá toàn bộ lệnh, khớp lệnh, số dư coin, sổ cái; ví về vốn ảo ban đầu (không hoàn tác được)`,
+        reason,
+      });
+      res.status(202).json({ ok: true, pending: true, request });
     }),
   );
 
@@ -483,10 +538,28 @@ export function adminRoutes(deps: AdminDeps) {
       if (!price) throw badRequest('ASSET', `Không định giá được ${asset} (chưa có cặp ${asset}USDT trên sàn)`);
       const usdtValue = new Big(amount).times(price);
       if (usdtValue.abs().gt(1_000_000)) throw badRequest('LIMIT', 'Mỗi lần điều chỉnh tối đa tương đương 1.000.000 USDT');
-      // Từ ngưỡng trở lên: tạo yêu cầu, quản trị viên KHÁC phải duyệt (nguyên tắc 2 người)
-      if (usdtValue.abs().gte(config.adjustApprovalUsdt)) {
-        const request = await createAdjustRequest(db, admin, { userId: id, email: u.email, asset, amount, usdtValue: usdtValue.toFixed(), reason });
-        res.status(202).json({ ok: true, pending: true, request });
+      // Cộng dồn các lần điều chỉnh TRỰC TIẾP (không qua duyệt) của người này trong 24 giờ — chống chia nhỏ để lách ngưỡng
+      const used = await db.one<{ per_user: string; total: string }>(
+        `SELECT COALESCE(sum(abs((detail->>'usdtValue')::numeric)) FILTER (WHERE target_id = $2), 0)::text AS per_user,
+                COALESCE(sum(abs((detail->>'usdtValue')::numeric)), 0)::text AS total
+         FROM admin_audit_log
+         WHERE action = 'BALANCE_ADJUST' AND admin_id = $1 AND detail->>'requestId' IS NULL AND created_at > now() - interval '24 hours'`,
+        [admin.id, id],
+      );
+      const limit = config.adjustApprovalUsdt;
+      const abs = usdtValue.abs();
+      const cumulative = abs.plus(used!.per_user).gte(limit) || abs.plus(used!.total).gte(limit * ADJUST_DAILY_TOTAL_MULTIPLIER);
+      // Từ ngưỡng trở lên (một lần hoặc cộng dồn 24 giờ): tạo yêu cầu, người Tài chính KHÁC phải duyệt (nguyên tắc 2 người)
+      if (abs.gte(limit) || cumulative) {
+        const request = await createAdjustRequest(db, admin, {
+          userId: id,
+          email: u.email,
+          asset,
+          amount,
+          usdtValue: usdtValue.toFixed(),
+          reason: abs.lt(limit) ? `${reason} (cộng dồn 24 giờ vượt ngưỡng duyệt)` : reason,
+        });
+        res.status(202).json({ ok: true, pending: true, request, cumulative: abs.lt(limit) });
         return;
       }
       const after = await db.tx((tx) => applyBalanceAdjust(tx, admin, { userId: id, email: u.email, asset, amount, usdtValue: usdtValue.toFixed(), reason }));
@@ -542,6 +615,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/orders',
+    need('admin.view'),
     ah(async (req, res) => {
       const q = z
         .object({
@@ -600,6 +674,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/orders/:id/events',
+    need('admin.view'),
     ah(async (req, res) => {
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id <= 0) throw badRequest('ID', 'Mã lệnh không hợp lệ');
@@ -611,6 +686,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/adjust-requests',
+    need('admin.view'),
     ah(async (req, res) => {
       const { status } = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'ALL']).default('PENDING') }).parse(req.query);
       const rows = await db.many<AdjustRequestRow>(
@@ -680,6 +756,7 @@ export function adminRoutes(deps: AdminDeps) {
 
   r.get(
     '/market',
+    need('admin.view'),
     ah(async (_req, res) => {
       res.json({
         market: market.status(),
@@ -886,5 +963,8 @@ export function adminRoutes(deps: AdminDeps) {
     res.json(recentLogs(limit));
   });
 
+
+  // Mặc định cấm: route nào chưa khai báo need(...) thì không cho khởi động
+  assertRoutesGuarded(r);
   return r;
 }

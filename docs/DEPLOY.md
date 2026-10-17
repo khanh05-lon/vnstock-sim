@@ -174,7 +174,9 @@ và gửi cảnh báo.
 - [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA
 - [ ] Đủ người cho nguyên tắc 2 người: ≥ 2 Quản trị hệ thống (duyệt khôi phục dữ liệu), ≥ 2 Tài chính (duyệt điều chỉnh số dư lớn — đề xuất của CSKH chỉ cần 1),
       Vận hành thị trường + Rủi ro & giám sát (đề xuất và duyệt chéo chỉnh giá lớn / niêm yết / tạm ngừng toàn sàn); mỗi người một tài khoản, không dùng chung
-- [ ] Quản trị hệ thống chỉ cấp đúng vai trò cần thiết (Quản trị → Người dùng → Đổi vai trò); định kỳ rà soát danh sách nhân viên
+- [ ] Quản trị hệ thống chỉ cấp đúng vai trò cần thiết (Quản trị → Người dùng → Đổi vai trò); định kỳ rà soát danh sách nhân viên.
+      Khi đã có từ 2 Quản trị hệ thống, mọi lần cấp / đổi vai trò nhân viên cần người còn lại duyệt — nên tạo ngay Quản trị hệ thống thứ hai
+      lúc khởi tạo (khi chỉ có 1 người, cấp vai trò có hiệu lực ngay và nhật ký đánh dấu bootstrap)
 - [ ] Nhân viên CSKH dùng vai trò "Nhân viên CSKH" (không cấp quyền quản trị), đã bật 2FA; có người trực khu CSKH và nhận cảnh báo "yêu cầu hỗ trợ quá hạn" qua `ALERT_EMAILS`
 - [ ] Tường lửa chỉ mở 22/80/443; SSH đăng nhập bằng khoá, tắt đăng nhập mật khẩu
 - [ ] SMTP thật đã cấu hình, `REQUIRE_EMAIL_VERIFICATION=true`
