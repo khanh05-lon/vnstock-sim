@@ -1,4 +1,4 @@
-import { RULES, applyRules, type RulesPatch, type TradingRules } from '@vss/shared';
+import { RULES, applyRules, type EmergencyHalt, type RulesPatch, type TradingRules } from '@vss/shared';
 import type { Queryable } from '../db';
 import type { SpotEngine } from '../trading/engine';
 
@@ -17,6 +17,8 @@ export interface SystemStatus {
   haltedSymbols: string[];
   /** Đang bảo trì (vd. khôi phục dữ liệu): API tạm từ chối mọi thao tác */
   maintenance: string | null;
+  /** Đang dừng khẩn chưa được xác nhận: thời điểm tự mở lại (ISO) */
+  emergencyUntil: string | null;
   /** Biểu phí và tham số sàn đang áp dụng — giao diện dùng để tính trước */
   rules: TradingRules;
 }
@@ -38,6 +40,8 @@ export class AdminStore {
   rulesPatch: RulesPatch = {};
   /** Lý do bảo trì (chỉ trong bộ nhớ — khởi động lại là hết) */
   maintenance: string | null = null;
+  /** Dừng khẩn toàn sàn do 1 người, chưa có người thứ hai xác nhận (null = không có / đã xác nhận) */
+  emergency: EmergencyHalt | null = null;
 
   constructor(
     private db: Queryable,
@@ -47,9 +51,10 @@ export class AdminStore {
   async load() {
     const meta = await this.db.many<{ key: string; value: unknown }>('SELECT key, value FROM market_meta WHERE key LIKE $1', ['admin.%']);
     const get = (k: string) => meta.find((m) => m.key === k)?.value;
-    const halt = get(KEY_HALT) as { halted?: boolean; reason?: string } | undefined;
+    const halt = get(KEY_HALT) as { halted?: boolean; reason?: string; emergency?: EmergencyHalt | null } | undefined;
     this.engine.control.haltAll = !!halt?.halted;
     this.engine.control.haltReason = halt?.reason ?? '';
+    this.emergency = halt?.halted ? (halt.emergency ?? null) : null;
     this.engine.control.haltedSymbols.clear();
     for (const s of (get(KEY_SYMBOLS) as string[] | undefined) ?? []) this.engine.control.haltedSymbols.add(s);
     this.announcement = (get(KEY_ANNOUNCEMENT) as Announcement | undefined) ?? null;
@@ -67,6 +72,7 @@ export class AdminStore {
       haltReason: this.engine.control.haltReason,
       haltedSymbols: [...this.engine.control.haltedSymbols].sort(),
       maintenance: this.maintenance,
+      emergencyUntil: this.emergency?.expiresAt ?? null,
       rules: JSON.parse(JSON.stringify(RULES)),
     };
   }
@@ -78,10 +84,12 @@ export class AdminStore {
     );
   }
 
-  async setHalt(halted: boolean, reason: string) {
+  /** emergency: dừng khẩn chưa xác nhận (tự mở lại khi quá hạn); null = tạm ngừng chính thức hoặc mở lại */
+  async setHalt(halted: boolean, reason: string, emergency: EmergencyHalt | null = null) {
     this.engine.control.haltAll = halted;
     this.engine.control.haltReason = halted ? reason : '';
-    await this.save(KEY_HALT, { halted, reason: this.engine.control.haltReason });
+    this.emergency = halted ? emergency : null;
+    await this.save(KEY_HALT, { halted, reason: this.engine.control.haltReason, emergency: this.emergency });
   }
 
   async setSymbolHalt(symbol: string, halted: boolean) {

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { EMERGENCY_HALT_MIN } from '@vss/shared';
 import { useAdminAction, useAdminMarket, useAdminMe } from '../../lib/admin';
+import { useAuth } from '../../store/auth';
 import { cn, fmtTime } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
@@ -17,6 +19,10 @@ export function MarketOps() {
   const { can } = useAdminMe();
   const act = useAdminAction();
   const [haltOpen, setHaltOpen] = useState(false);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const meId = useAuth((s) => s.user?.id);
   const [symbol, setSymbol] = useState('');
   const [text, setText] = useState('');
   const [level, setLevel] = useState<'info' | 'warning' | 'critical'>('info');
@@ -57,20 +63,51 @@ export function MarketOps() {
           Tạm ngừng thì người dùng không đặt / sửa được lệnh và lệnh đang chờ không được khớp; vẫn huỷ lệnh và xem thị trường được. Mọi trình duyệt thấy banner đỏ ngay lập tức.
         </p>
         {st.tradingHalted && <p className="mt-2 text-down">Lý do: {st.haltReason}</p>}
-        {can('market.manage') && (
-          <div className="mt-3">
-            {st.tradingHalted ? (
-              <button className="btn btn-up" onClick={() => void act('/admin/market/halt', 'POST', { halted: false }, 'Đã mở lại nhận lệnh')}>
-                Mở lại nhận lệnh
-              </button>
-            ) : (
-              <button className="btn btn-down" onClick={() => setHaltOpen(true)}>
-                Đề xuất tạm ngừng toàn sàn
-              </button>
-            )}
-            {!st.tradingHalted && <p className="mt-2 text-[12px] text-tx-3">Tạm ngừng toàn sàn cần người thứ hai duyệt. Sự cố ở 1 cặp: tạm ngừng riêng cặp đó bên dưới (có hiệu lực ngay).</p>}
+        {data.emergency && (
+          <div className="mt-3 rounded-lg border border-down/40 bg-down/10 p-3 text-[13px]">
+            <b className="text-down">ĐANG DỪNG KHẨN</b> — bởi {data.emergency.by} lúc {fmtTime(data.emergency.at)}. Lý do: {data.emergency.reason}.
+            <div className="mt-0.5 text-tx-2">
+              Tự mở lại lúc {fmtTime(data.emergency.expiresAt)} nếu không có người thứ hai xác nhận (còn{' '}
+              {Math.max(0, Math.ceil((Date.parse(data.emergency.expiresAt) - Date.now()) / 60_000))} phút).
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {can('market.approve') &&
+                (data.emergency.byId !== meId ? (
+                  <button className="btn btn-down h-8" onClick={() => void act('/admin/market/emergency-halt/confirm', 'POST', {}, 'Đã xác nhận dừng sàn')}>
+                    Xác nhận dừng
+                  </button>
+                ) : (
+                  <span className="self-center text-[12px] text-tx-3">Chờ người khác xác nhận</span>
+                ))}
+              {can('market.halt') && (
+                <button className="btn btn-ghost h-8" onClick={() => setCancelOpen(true)}>
+                  Huỷ dừng khẩn (báo nhầm)
+                </button>
+              )}
+            </div>
           </div>
         )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!st.tradingHalted && can('market.halt') && (
+            <button className="btn btn-down" onClick={() => setEmergencyOpen(true)}>
+              Dừng khẩn ngay
+            </button>
+          )}
+          {!st.tradingHalted && can('market.manage') && (
+            <button className="btn btn-ghost" onClick={() => setHaltOpen(true)}>
+              Đề xuất tạm ngừng toàn sàn
+            </button>
+          )}
+          {st.tradingHalted && !data.emergency && can('market.manage') && (
+            <button className="btn btn-up" onClick={() => setResumeOpen(true)}>
+              Đề xuất mở lại sàn
+            </button>
+          )}
+        </div>
+        <p className="mt-2 text-[12px] text-tx-3">
+          Dừng khẩn: 1 người, có hiệu lực ngay, tự mở lại sau {EMERGENCY_HALT_MIN} phút nếu không có người thứ hai xác nhận. Tạm ngừng / mở lại thông thường cần người thứ hai
+          duyệt. Sự cố ở 1 cặp: tạm ngừng riêng cặp đó bên dưới (có hiệu lực ngay).
+        </p>
       </Section>
 
       <Section title="Tạm ngừng giao dịch theo cặp">
@@ -168,6 +205,39 @@ export function MarketOps() {
 
       <RulesEditor />
 
+      <ReasonModal
+        open={emergencyOpen}
+        title="Dừng khẩn toàn sàn"
+        description={`Có hiệu lực NGAY: người dùng không đặt / sửa được lệnh, lệnh chờ không khớp. Người có thẩm quyền khác nhận email để xác nhận; không ai xác nhận thì sàn tự mở lại sau ${EMERGENCY_HALT_MIN} phút.`}
+        confirmLabel="Dừng khẩn"
+        danger
+        placeholder="Ví dụ: nguồn giá trả về giá sai, nghi bị tấn công…"
+        onClose={() => setEmergencyOpen(false)}
+        onConfirm={async (reason) => {
+          if (await act('/admin/market/emergency-halt', 'POST', { reason }, 'Đã dừng khẩn toàn sàn')) setEmergencyOpen(false);
+        }}
+      />
+      <ReasonModal
+        open={cancelOpen}
+        title="Huỷ dừng khẩn"
+        description="Sàn nhận lệnh lại ngay. Chỉ dùng khi dừng khẩn là báo động nhầm."
+        confirmLabel="Huỷ dừng khẩn"
+        onClose={() => setCancelOpen(false)}
+        onConfirm={async (reason) => {
+          if (await act('/admin/market/emergency-halt/cancel', 'POST', { reason }, 'Đã huỷ dừng khẩn, sàn nhận lệnh lại')) setCancelOpen(false);
+        }}
+      />
+      <ReasonModal
+        open={resumeOpen}
+        title="Đề xuất mở lại sàn"
+        description="Một người khác (Vận hành thị trường hoặc Rủi ro & giám sát) duyệt thì sàn mới nhận lệnh lại."
+        confirmLabel="Gửi đề xuất"
+        placeholder="Ví dụ: đã khắc phục nguồn giá, đã kiểm tra số dư…"
+        onClose={() => setResumeOpen(false)}
+        onConfirm={async (reason) => {
+          if (await act('/admin/market/halt', 'POST', { halted: false, reason }, 'Đã gửi đề xuất mở lại sàn')) setResumeOpen(false);
+        }}
+      />
       <ReasonModal
         open={haltOpen}
         title="Đề xuất tạm ngừng nhận lệnh toàn sàn"

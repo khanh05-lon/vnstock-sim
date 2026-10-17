@@ -4,12 +4,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { ADJUST_DAILY_TOTAL_MULTIPLIER, Big, ROLE_LABEL, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
+import { ADJUST_DAILY_TOTAL_MULTIPLIER, Big, EMERGENCY_HALT_MIN, ROLE_LABEL, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
 import { config } from '../config';
 import { markEmailVerified, markPasswordChanged } from '../lib/auth';
 import { listAuthEvents } from '../lib/authEvents';
 import { listOrderEvents } from '../trading/orderEvents';
-import { accountLockedEmail, roleChangedEmail, twoFactorChangedEmail } from '../lib/emails';
+import { accountLockedEmail, emergencyHaltEmail, roleChangedEmail, twoFactorChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { utcDay } from '../portfolio/nav';
@@ -19,6 +19,9 @@ import { accountView, navOf } from '../trading/account';
 import { toLedgerDTO, toOrderDTO, type BalanceRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { exportBackup, serializeBackup } from './backup';
 import { Approvals, mountApprovals } from './approvals';
+import { expireEmergencyIfDue } from './emergency';
+import { mountFraud } from './fraud';
+import { mountReconcile } from './reconcile';
 import { notifyStaff } from './notify';
 import { assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
@@ -49,6 +52,7 @@ export const TABLES: { name: string; group: string; desc: string }[] = [
   { name: 'market_meta', group: 'Vận hành', desc: 'Cấu hình vận hành (ngừng giao dịch, thông báo, biểu phí)' },
   { name: 'admin_audit_log', group: 'Vận hành', desc: 'Nhật ký thao tác quản trị (chỉ ghi thêm)' },
   { name: 'approval_requests', group: 'Vận hành', desc: 'Đề xuất thao tác lớn chờ người thứ hai duyệt' },
+  { name: 'reconciliation_runs', group: 'Vận hành', desc: 'Kết quả đối soát số dư ↔ sổ cái ↔ khớp lệnh hằng ngày' },
   { name: 'system_alerts', group: 'Vận hành', desc: 'Lịch sử cảnh báo vận hành (giám sát tự động)' },
 ];
 
@@ -110,6 +114,8 @@ export function adminRoutes(deps: AdminDeps) {
   // Tham số giao dịch, danh mục mã, khôi phục dữ liệu
   mountMarketAdmin(r, deps, broadcast, approvals);
   mountPriceControl(r, deps, approvals);
+  mountFraud(r, deps);
+  mountReconcile(r, deps);
 
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();
@@ -772,10 +778,12 @@ export function adminRoutes(deps: AdminDeps) {
     '/market',
     need('admin.view'),
     ah(async (_req, res) => {
+      await expireEmergencyIfDue({ db, store, io });
       res.json({
         market: market.status(),
         source: market.opts.feed,
         status: store.status(),
+        emergency: store.emergency,
         rules: RULES,
         symbols: market.rows().map((s) => ({ symbol: s.symbol, baseAsset: s.baseAsset, name: s.name, status: s.status })),
       });
@@ -802,10 +810,18 @@ export function adminRoutes(deps: AdminDeps) {
         res.status(202).json({ ok: true, pending: true, request });
         return;
       }
-      await store.setHalt(false, '');
-      await audit(db, admin, 'TRADING_RESUME', 'market', null, { reason: body.reason ?? '' });
-      broadcast();
-      res.json(store.status());
+      // Mở lại sàn: cũng phải có người thứ hai duyệt (mở lại khi sự cố chưa xử lý xong cũng nguy hiểm như dừng sai)
+      if (!engine.control.haltAll) throw badRequest('NOT_HALTED', 'Sàn đang nhận lệnh bình thường');
+      if (store.emergency) throw badRequest('EMERGENCY', 'Sàn đang dừng khẩn: hãy xác nhận hoặc huỷ dừng khẩn');
+      if (!body.reason || body.reason.length < 3) throw badRequest('REASON', 'Nhập lý do mở lại (tối thiểu 3 ký tự)');
+      const request = await approvals.create(admin, {
+        kind: 'MARKET_RESUME',
+        target: null,
+        payload: { haltReason: engine.control.haltReason },
+        summary: `Mở lại nhận lệnh và khớp lệnh toàn sàn (đang ngừng vì: ${engine.control.haltReason || 'không rõ'})`,
+        reason: body.reason,
+      });
+      res.status(202).json({ ok: true, pending: true, request });
     }),
   );
   approvals.register('MARKET_HALT', async (admin, req) => {
@@ -814,6 +830,70 @@ export function adminRoutes(deps: AdminDeps) {
     broadcast();
     return { halted: true };
   });
+  approvals.register('MARKET_RESUME', async (admin, req) => {
+    if (!engine.control.haltAll) throw badRequest('NOT_HALTED', 'Sàn đã được mở lại');
+    if (store.emergency) throw badRequest('EMERGENCY', 'Sàn đang dừng khẩn: hãy xác nhận hoặc huỷ dừng khẩn');
+    const was = engine.control.haltReason;
+    await store.setHalt(false, '');
+    await audit(db, admin, 'TRADING_RESUME', 'market', null, { reason: req.reason, haltReason: was, approvalId: req.id, requestedBy: req.requestedByEmail });
+    broadcast();
+    return { halted: false };
+  });
+
+  /* ---- dừng khẩn: 1 người dừng ngay, người thứ hai xác nhận; không ai xác nhận thì tự mở lại ---- */
+
+  /** Sự cố cần dừng ngay toàn sàn mà không chờ duyệt — tự hết hiệu lực sau EMERGENCY_HALT_MIN phút nếu không ai xác nhận */
+  r.post(
+    '/market/emergency-halt',
+    need('market.halt'),
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
+      if (engine.control.haltAll) throw badRequest('ALREADY_HALTED', 'Sàn đang tạm ngừng nhận lệnh');
+      const at = new Date();
+      const emergency = { by: admin.email, byId: admin.id, reason, at: at.toISOString(), expiresAt: new Date(at.getTime() + EMERGENCY_HALT_MIN * 60_000).toISOString() };
+      await store.setHalt(true, `Dừng khẩn: ${reason}`, emergency);
+      await audit(db, admin, 'TRADING_EMERGENCY_HALT', 'market', null, { reason, expiresAt: emergency.expiresAt });
+      broadcast();
+      // Báo người có thể xác nhận (Vận hành thị trường / Rủi ro khác)
+      await notifyStaff(db, mailer, 'market.approve', [admin.id], (name) => emergencyHaltEmail(name, emergency), { emergency: true }).catch(() => undefined);
+      res.json({ ok: true, emergency });
+    }),
+  );
+
+  /** Người thứ hai xác nhận → thành tạm ngừng chính thức (mở lại phải qua đề xuất + duyệt) */
+  r.post(
+    '/market/emergency-halt/confirm',
+    need('market.approve'),
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      await expireEmergencyIfDue({ db, store, io });
+      const e = store.emergency;
+      if (!e) throw badRequest('NO_EMERGENCY', 'Không có dừng khẩn nào đang chờ xác nhận');
+      if (e.byId === admin.id) throw badRequest('SELF', 'Người dừng khẩn không tự xác nhận được — cần một người khác');
+      await store.setHalt(true, engine.control.haltReason, null);
+      await audit(db, admin, 'TRADING_HALT_CONFIRM', 'market', null, { startedBy: e.by, reason: e.reason, at: e.at });
+      broadcast();
+      res.json(store.status());
+    }),
+  );
+
+  /** Báo động nhầm: huỷ dừng khẩn chưa xác nhận → mở lại ngay */
+  r.post(
+    '/market/emergency-halt/cancel',
+    need('market.halt'),
+    ah(async (req, res) => {
+      const { admin } = req as AdminRequest;
+      const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
+      await expireEmergencyIfDue({ db, store, io });
+      const e = store.emergency;
+      if (!e) throw badRequest('NO_EMERGENCY', 'Không có dừng khẩn nào đang chờ xác nhận (đã xác nhận thì mở lại phải qua đề xuất)');
+      await store.setHalt(false, '');
+      await audit(db, admin, 'TRADING_EMERGENCY_CANCEL', 'market', null, { reason, startedBy: e.by, emergencyReason: e.reason });
+      broadcast();
+      res.json(store.status());
+    }),
+  );
 
   r.post(
     '/market/symbols/:symbol/halt',

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, CheckCheck, Coins, Database, Gauge, Headset, LayoutDashboard, ListOrdered, ScrollText, ShieldCheck, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
+import { Activity, CheckCheck, Coins, Database, Gauge, Headset, Landmark, LayoutDashboard, ListOrdered, ScrollText, ShieldAlert, ShieldCheck, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
 import { AdjustRequests } from '../components/admin/AdjustRequests';
 import { OperationApprovals } from '../components/admin/OperationApprovals';
 import { DataStorage } from '../components/admin/DataStorage';
+import { FinanceReports } from '../components/admin/FinanceReports';
+import { FraudMonitor } from '../components/admin/FraudMonitor';
 import { Logs } from '../components/admin/Logs';
 import { MarketOps } from '../components/admin/MarketOps';
 import { Monitor } from '../components/admin/Monitor';
@@ -27,6 +29,8 @@ const TABS = [
   { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Nguồn giá, tạm ngừng giao dịch, thông báo, biểu phí', perms: ['admin.view'] },
   { id: 'prices', label: 'Giá thị trường', icon: SlidersHorizontal, hint: 'Giá thực tế (Binance) hoặc giá điều chỉnh cho từng cặp: đặt giá, chạy kịch bản', perms: ['admin.view'] },
   { id: 'symbols', label: 'Cặp giao dịch', icon: Coins, hint: 'Đề xuất niêm yết / huỷ niêm yết, tạm ngừng cặp', perms: ['admin.view'] },
+  { id: 'fraud', label: 'Giám sát gian lận', icon: ShieldAlert, hint: 'Nhiều tài khoản cùng IP, tự đặt lại liên tục, spam lệnh — loại khỏi bảng xếp hạng', perms: ['risk.monitor'] },
+  { id: 'finance', label: 'Tài chính & đối soát', icon: Landmark, hint: 'Doanh thu phí, đối soát số dư ↔ sổ cái ↔ khớp lệnh hằng ngày', perms: ['finance.view'] },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục', perms: ['system.view'] },
   { id: 'monitor', label: 'Giám sát', icon: Gauge, hint: 'Chỉ số vận hành, cảnh báo tự động', perms: ['system.view'] },
   { id: 'logs', label: 'Nhật ký', icon: ScrollText, hint: 'Nhật ký quản trị & log máy chủ', perms: ['audit.view', 'system.view'] },
@@ -127,6 +131,8 @@ export default function AdminPage() {
         {tab === 'market' && <MarketOps />}
         {tab === 'prices' && <PriceControl />}
         {tab === 'symbols' && <Symbols />}
+        {tab === 'fraud' && <FraudMonitor />}
+        {tab === 'finance' && <FinanceReports />}
         {tab === 'data' && <DataStorage />}
         {tab === 'monitor' && <Monitor />}
         {tab === 'logs' && <Logs />}

@@ -62,6 +62,9 @@ Người nhắn có thể là chủ tài khoản hoặc kẻ đã chiếm mật 
 | Quản trị viên / CSKH đã làm gì, đã xem hồ sơ khách nào? | Quản trị → **Nhật ký** — bảng `admin_audit_log` (`USER_VIEW`, `ORDER_CANCEL`, `USER_LOCK`, `BALANCE_ADJUST_*`…) |
 | Nhân viên có giao dịch "biết trước" kịch bản giá không? | Nhân viên không đặt / sửa lệnh được khi cặp ở giá điều chỉnh (lỗi `STAFF_MANUAL_PRICE`); lệnh chờ sẵn của nhân viên bị huỷ lúc chỉnh giá. Nhật ký `PRICE_SET` / `PRICE_MODE_MANUAL` ghi `staffRecentOrders` — nhân viên đặt lệnh cặp đó trong 60 phút trước |
 | Lệnh khớp lúc cặp đang dùng giá điều chỉnh? Ai chỉnh, giá bao nhiêu, lý do gì? | Quản trị → **Giá thị trường** → biểu tượng lịch sử của cặp; hoặc **Nhật ký** (`PRICE_MODE_MANUAL`, `PRICE_SET`, `PRICE_MODE_LIVE`) — so thời điểm với giờ khớp trong nhật ký lệnh |
+| Sàn bị dừng / mở lại lúc nào, ai làm? | Quản trị → **Nhật ký** (`TRADING_EMERGENCY_HALT`, `TRADING_HALT_CONFIRM`, `TRADING_EMERGENCY_CANCEL`, `TRADING_EMERGENCY_EXPIRED`, `TRADING_HALT`, `TRADING_RESUME`) |
+| Khách nghi có người dùng nhiều tài khoản / gian lận bảng xếp hạng? | Quản trị → **Giám sát gian lận** (Rủi ro & giám sát); loại khỏi xếp hạng ghi `LEADERBOARD_BAN` |
+| Số dư khách có bị cộng / trừ sai không? | Quản trị → **Tài chính & đối soát**: chạy đối soát, xem chỗ lệch giữa số dư, sổ cái và khớp lệnh |
 | Ai đề xuất, ai duyệt khoản bồi hoàn? | Quản trị → **Duyệt điều chỉnh**; dòng sổ cái của khách ghi rõ số yêu cầu, người đề xuất, người duyệt |
 | Đã trao đổi gì với khách? | Khu CSKH → yêu cầu hỗ trợ — bảng `support_messages` |
 

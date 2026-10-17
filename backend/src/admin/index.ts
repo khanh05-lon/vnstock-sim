@@ -7,6 +7,9 @@ import { verifyToken } from '../lib/auth';
 import { AppError } from '../lib/errors';
 import { createUserAccount } from '../seed/seed';
 import type { AdminDeps } from './common';
+import { log } from '../lib/logger';
+import { expireEmergencyIfDue } from './emergency';
+import { startReconcileSchedule } from './reconcile';
 import { adminRoutes } from './routes';
 import { AdminStore } from './store';
 
@@ -126,5 +129,13 @@ export async function installAdmin(deps: Omit<AdminDeps, 'store'> & { app: Expre
 
   const { app: _app, ...rest } = deps;
   app.use('/api/admin', adminRoutes({ ...rest, store }));
+
+  // Dừng khẩn quá hạn không ai xác nhận → tự mở lại sàn
+  const emergencyTimer = setInterval(() => {
+    expireEmergencyIfDue({ db, store, io }).catch((err) => log.error('[admin] lỗi kiểm tra dừng khẩn', { err }));
+  }, 15_000);
+  emergencyTimer.unref();
+  // Đối soát số dư ↔ sổ cái ↔ khớp lệnh hằng ngày
+  startReconcileSchedule(db, deps.mailer);
   return store;
 }

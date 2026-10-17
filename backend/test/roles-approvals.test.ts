@@ -162,7 +162,7 @@ describe('Phân quyền & duyệt 2 người (API)', () => {
     expect((await call('POST', `/users/${u.cskh!.id}/role`, 'admin1', { role: 'GOD' })).status).toBe(400);
   });
 
-  it('tạm ngừng toàn sàn: đề xuất → người khác duyệt mới ngừng; mở lại có hiệu lực ngay', async () => {
+  it('tạm ngừng toàn sàn: đề xuất → người khác duyệt mới ngừng; mở lại cũng phải duyệt', async () => {
     const r = await call<{ pending: boolean; request: ApprovalDTO }>('POST', '/market/halt', 'ops', { halted: true, reason: 'Sự cố nguồn giá' });
     expect(r.status).toBe(202);
     expect(engine.control.haltAll).toBe(false);
@@ -172,7 +172,11 @@ describe('Phân quyền & duyệt 2 người (API)', () => {
     expect(ok.body).toMatchObject({ status: 'APPROVED', decidedByEmail: u.risk!.email });
     expect(engine.control.haltAll).toBe(true);
     expect(engine.control.haltReason).toBe('Sự cố nguồn giá');
-    expect((await call('POST', '/market/halt', 'ops', { halted: false })).status).toBe(200);
+    expect((await call('POST', '/market/halt', 'ops', { halted: false })).body.error.code).toBe('REASON');
+    const resume = await call<{ request: ApprovalDTO }>('POST', '/market/halt', 'ops', { halted: false, reason: 'Đã xử lý nguồn giá' });
+    expect(resume.status).toBe(202);
+    expect(engine.control.haltAll).toBe(true);
+    expect((await call<ApprovalDTO>('POST', `/approvals/${resume.body.request.id}/approve`, 'ops2', {})).body.status).toBe('APPROVED');
     expect(engine.control.haltAll).toBe(false);
   });
 

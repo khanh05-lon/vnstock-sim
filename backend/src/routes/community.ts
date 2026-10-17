@@ -39,7 +39,7 @@ export function communityRoutes(db: Database, nav: NavService, market: UsdtPrice
       `SELECT u.id, u.full_name, u.display_name, u.show_on_leaderboard,
               (SELECT count(*)::int FROM fills t WHERE t.user_id = u.id) AS trades,
               (SELECT count(*)::int FROM fills t WHERE t.user_id = u.id AND ($1::date IS NULL OR (t.executed_at AT TIME ZONE 'UTC')::date > $1::date)) AS period_trades
-       FROM users u WHERE u.role = 'USER' AND u.status = 'ACTIVE'`,
+       FROM users u WHERE u.role = 'USER' AND u.status = 'ACTIVE' AND u.leaderboard_banned_at IS NULL`,
       [since],
     );
     const navs = await nav.current(null);

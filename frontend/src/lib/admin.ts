@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { PRICE_ACTION_LABEL, can as roleCan, type ApprovalDTO, type Permission } from '@vss/shared';
+import { PRICE_ACTION_LABEL, can as roleCan, type ApprovalDTO, type EmergencyHalt, type FeeRevenueReport, type FraudReport, type Permission, type ReconRunDTO } from '@vss/shared';
 import type { AccountDTO, AdminPriceRow, AuthEventDTO, LedgerDTO, OrderDTO, PriceHistoryItem, RulesPatch, SymbolFilters, TradingRules, UserRole } from '@vss/shared';
 import { useAuth } from '../store/auth';
 import { api, ApiError, errMsg } from './api';
@@ -12,6 +12,8 @@ export interface SystemStatus {
   haltedSymbols: string[];
   /** Đang bảo trì (vd. khôi phục dữ liệu) */
   maintenance: string | null;
+  /** Đang dừng khẩn chưa xác nhận: thời điểm tự mở lại */
+  emergencyUntil?: string | null;
   /** Biểu phí đang áp dụng */
   rules: TradingRules;
 }
@@ -91,6 +93,8 @@ export interface AdminMarket {
   market: { feed: 'LIVE' | 'SIM'; source: string; serverTime: number };
   source: string;
   status: SystemStatus;
+  /** Dừng khẩn chưa có người thứ hai xác nhận */
+  emergency: EmergencyHalt | null;
   rules: TradingRules;
   symbols: { symbol: string; baseAsset: string; name: string; status: string }[];
 }
@@ -232,6 +236,16 @@ export function useAdminMe(): AdminMe {
     can: (p) => roleCan(role, p),
   };
 }
+
+/** Báo cáo giám sát gian lận bảng xếp hạng */
+export const useFraudReport = () =>
+  useQuery({ queryKey: ['admin', 'fraud'], queryFn: () => api<FraudReport>('/admin/fraud'), refetchInterval: 60_000 });
+
+export const useFeeRevenue = (days: number) =>
+  useQuery({ queryKey: ['admin', 'finance', 'revenue', days], queryFn: () => api<FeeRevenueReport>(`/admin/finance/revenue?days=${days}`) });
+
+export const useReconRuns = () =>
+  useQuery({ queryKey: ['admin', 'finance', 'recon'], queryFn: () => api<ReconRunDTO[]>('/admin/finance/reconciliations') });
 
 /** Đề xuất thao tác lớn chờ người thứ hai duyệt */
 export const useApprovals = (status: 'PENDING' | 'ALL') =>
@@ -380,6 +394,13 @@ export const AUDIT_LABEL: Record<string, string> = {
   ORDER_CANCEL: 'Huỷ lệnh hộ',
   TRADING_HALT: 'Tạm ngừng nhận lệnh',
   TRADING_RESUME: 'Mở lại nhận lệnh',
+  TRADING_EMERGENCY_HALT: 'Dừng khẩn toàn sàn',
+  TRADING_HALT_CONFIRM: 'Xác nhận dừng khẩn',
+  TRADING_EMERGENCY_CANCEL: 'Huỷ dừng khẩn (báo nhầm)',
+  TRADING_EMERGENCY_EXPIRED: 'Dừng khẩn tự hết hiệu lực',
+  LEADERBOARD_BAN: 'Loại khỏi bảng xếp hạng',
+  LEADERBOARD_UNBAN: 'Đưa lại vào bảng xếp hạng',
+  RECONCILE_RUN: 'Chạy đối soát',
   SYMBOL_HALT: 'Tạm ngừng cặp',
   SYMBOL_RESUME: 'Mở lại cặp',
   ANNOUNCEMENT_SET: 'Đăng thông báo',

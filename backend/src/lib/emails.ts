@@ -221,3 +221,30 @@ export function roleChangedEmail(
     { label: 'Xem nhật ký quản trị', url: `${config.publicUrl}/admin?tab=logs` },
   );
 }
+
+/** Báo người có thể xác nhận: có người vừa dừng khẩn toàn sàn */
+export function emergencyHaltEmail(name: string, e: { by: string; reason: string; expiresAt: string }): EmailContent {
+  return layout(
+    `KHẨN: sàn vừa bị dừng khẩn, cần xác nhận — ${BRAND}`,
+    hello(name),
+    [
+      `${e.by} vừa dừng khẩn toàn sàn. Lý do: ${e.reason}.`,
+      `Nếu không có người thứ hai xác nhận, sàn sẽ tự mở lại lúc ${vnTime(e.expiresAt)} (giờ Việt Nam).`,
+      'Kiểm tra sự cố: đúng là cần dừng thì bấm "Xác nhận dừng"; báo động nhầm thì bấm "Huỷ dừng khẩn".',
+    ],
+    { label: 'Mở trang vận hành thị trường', url: `${config.publicUrl}/admin?tab=market` },
+  );
+}
+
+/** Báo Tài chính / Kiểm toán: đối soát phát hiện lệch số dư */
+export function reconIssuesEmail(name: string, run: { id: number; issueCount: number; balancesChecked: number; startedAt: string }): EmailContent {
+  return layout(
+    `Đối soát #${run.id} phát hiện ${run.issueCount} chỗ lệch — ${BRAND}`,
+    hello(name),
+    [
+      `Lần đối soát lúc ${vnTime(run.startedAt)} (giờ Việt Nam) kiểm tra ${run.balancesChecked} số dư và phát hiện ${run.issueCount} chỗ lệch giữa số dư, sổ cái và khớp lệnh.`,
+      'Lệch nghĩa là có khoản tiền được cộng / trừ mà không ghi sổ (lỗi bộ khớp lệnh hoặc sửa trực tiếp CSDL). Kiểm tra ngay, đối chiếu nhật ký quản trị trước khi điều chỉnh.',
+    ],
+    { label: 'Xem kết quả đối soát', url: `${config.publicUrl}/admin?tab=finance` },
+  );
+}

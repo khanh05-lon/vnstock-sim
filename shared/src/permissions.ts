@@ -43,7 +43,11 @@ export type Permission =
   /** Khu chăm sóc khách hàng */
   | 'support.desk'
   /** Giao yêu cầu hỗ trợ cho nhân viên khác */
-  | 'support.lead';
+  | 'support.lead'
+  /** Xem báo cáo giám sát gian lận (đa tài khoản, đặt lại liên tục, spam lệnh) */
+  | 'risk.monitor'
+  /** Xem doanh thu phí, chạy / xem đối soát số dư */
+  | 'finance.view';
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   USER: [],
@@ -64,9 +68,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'support.lead',
   ],
   MARKET_OPS: ['admin.view', 'orders.cancel', 'market.manage', 'market.halt', 'market.approve', 'system.announce'],
-  FINANCE: ['admin.view', 'users.view', 'finance.adjust', 'finance.approve'],
-  RISK: ['admin.view', 'users.view', 'users.lock', 'orders.cancel', 'market.halt', 'market.approve', 'audit.view', 'support.desk'],
-  AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view'],
+  FINANCE: ['admin.view', 'users.view', 'finance.adjust', 'finance.approve', 'finance.view'],
+  RISK: ['admin.view', 'users.view', 'users.lock', 'orders.cancel', 'market.halt', 'market.approve', 'audit.view', 'support.desk', 'risk.monitor'],
+  AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view', 'risk.monitor', 'finance.view'],
 };
 
 export const can = (role: string | null | undefined, perm: Permission): boolean =>
@@ -93,6 +97,8 @@ export const PERMISSION_DENIED: Record<Permission, string> = {
   'audit.view': 'Vai trò của bạn không được xem nhật ký quản trị',
   'support.desk': 'Chỉ nhân viên CSKH, Rủi ro hoặc Quản trị hệ thống được vào khu CSKH',
   'support.lead': 'Chỉ Quản trị hệ thống được giao yêu cầu cho nhân viên khác',
+  'risk.monitor': 'Chỉ Rủi ro & giám sát hoặc Kiểm toán được xem báo cáo gian lận',
+  'finance.view': 'Chỉ Tài chính hoặc Kiểm toán được xem doanh thu phí và đối soát',
 };
 
 /** Vai trò có quyền này (vd. danh sách người được giao yêu cầu hỗ trợ) */
@@ -111,7 +117,7 @@ export const ROLE_DESC: Record<UserRole, string> = {
 
 /* ---------------------------- hàng chờ duyệt (2 người) ---------------------------- */
 
-export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET';
+export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'MARKET_RESUME' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'FAILED';
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
@@ -119,6 +125,7 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   SYMBOL_LIST: 'Niêm yết cặp',
   SYMBOL_DELIST: 'Huỷ niêm yết cặp',
   MARKET_HALT: 'Tạm ngừng toàn sàn',
+  MARKET_RESUME: 'Mở lại sàn',
   DATA_RESTORE: 'Khôi phục dữ liệu',
   ROLE_SET: 'Cấp / đổi vai trò nhân viên',
   ACCOUNT_RESET: 'Đặt lại tài khoản khách',
@@ -139,6 +146,7 @@ export const APPROVAL_PERMISSION: Record<ApprovalKind, Permission> = {
   SYMBOL_LIST: 'market.approve',
   SYMBOL_DELIST: 'market.approve',
   MARKET_HALT: 'market.approve',
+  MARKET_RESUME: 'market.approve',
   DATA_RESTORE: 'data.approve',
   ROLE_SET: 'staff.manage',
   ACCOUNT_RESET: 'finance.approve',
@@ -150,6 +158,7 @@ export const APPROVAL_TTL_MIN: Record<ApprovalKind, number> = {
   SYMBOL_LIST: 24 * 60,
   SYMBOL_DELIST: 24 * 60,
   MARKET_HALT: 30,
+  MARKET_RESUME: 60,
   DATA_RESTORE: 120,
   ROLE_SET: 24 * 60,
   ACCOUNT_RESET: 24 * 60,
@@ -174,4 +183,99 @@ export interface ApprovalDTO {
   result: Record<string, unknown> | null;
   expiresAt: string;
   createdAt: string;
+}
+
+/* ---------------------------- dừng khẩn toàn sàn ---------------------------- */
+
+/** Dừng khẩn: 1 người làm được ngay, tự mở lại sau chừng này phút nếu không có người thứ hai xác nhận */
+export const EMERGENCY_HALT_MIN = 15;
+
+export interface EmergencyHalt {
+  by: string;
+  byId: string;
+  reason: string;
+  at: string;
+  expiresAt: string;
+}
+
+/* ---------------------------- giám sát gian lận ---------------------------- */
+
+export const FRAUD_RULES = {
+  /** Xét đăng nhập / đặt lại trong chừng này ngày */
+  windowDays: 30,
+  /** Từ chừng này tài khoản trở lên đăng nhập cùng 1 IP → nghi đa tài khoản */
+  sameIpMin: 2,
+  /** Tự đặt lại tài khoản từ chừng này lần trở lên → nghi "làm lại tới khi đẹp" để leo bảng xếp hạng */
+  resetMin: 3,
+  /** Cửa sổ xét spam lệnh (phút) */
+  spamWindowMin: 60,
+  /** Đặt từ chừng này lệnh trong cửa sổ → spam */
+  spamPlaceMin: 100,
+  /** Hoặc: đặt ≥ spamCancelMinPlaces lệnh và huỷ ≥ tỉ lệ này */
+  spamCancelMinPlaces: 30,
+  spamCancelRatio: 0.9,
+} as const;
+
+export interface FraudAccount {
+  id: string;
+  email: string;
+  role: UserRole;
+  status: string;
+  leaderboardBanned: boolean;
+}
+
+export interface FraudReport {
+  generatedAt: string;
+  sameIp: { ip: string; accounts: FraudAccount[]; lastSeen: string }[];
+  frequentResets: { account: FraudAccount; resets: number; last: string }[];
+  orderSpam: { account: FraudAccount; placed: number; cancelled: number; cancelRatio: number }[];
+  /** Tài khoản đang bị loại khỏi bảng xếp hạng */
+  banned: (FraudAccount & { reason: string | null; at: string | null })[];
+}
+
+/* ---------------------------- đối soát & doanh thu ---------------------------- */
+
+export type ReconIssueKind = 'LEDGER_MISMATCH' | 'LAST_BALANCE_MISMATCH' | 'LOCKED_WITHOUT_ORDERS' | 'FEE_MISMATCH';
+
+export const RECON_ISSUE_LABEL: Record<ReconIssueKind, string> = {
+  LEDGER_MISMATCH: 'Tổng sổ cái ≠ số dư',
+  LAST_BALANCE_MISMATCH: 'Số dư sau giao dịch cuối ≠ số dư hiện tại',
+  LOCKED_WITHOUT_ORDERS: 'Có tiền đang khoá nhưng không có lệnh mở',
+  FEE_MISMATCH: 'Phí trong sổ cái ≠ phí trong khớp lệnh',
+};
+
+export interface ReconIssue {
+  kind: ReconIssueKind;
+  userId?: string;
+  email?: string;
+  asset: string;
+  expected: string;
+  actual: string;
+}
+
+export interface ReconRunDTO {
+  id: number;
+  startedAt: string;
+  finishedAt: string;
+  ok: boolean;
+  balancesChecked: number;
+  issues: ReconIssue[];
+  issueCount: number;
+  triggeredBy: string;
+}
+
+export interface FeeRevenueDay {
+  day: string;
+  fills: number;
+  volumeUsdt: string;
+  feeUsdt: string;
+  makerFeeUsdt: string;
+  takerFeeUsdt: string;
+}
+
+export interface FeeRevenueReport {
+  days: FeeRevenueDay[];
+  bySymbol: { symbol: string; fills: number; volumeUsdt: string; feeUsdt: string }[];
+  totalFeeUsdt: string;
+  totalVolumeUsdt: string;
 }

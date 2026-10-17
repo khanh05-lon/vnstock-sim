@@ -173,7 +173,8 @@ và gửi cảnh báo.
 - [ ] `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, `POSTGRES_PASSWORD` là chuỗi ngẫu nhiên, không commit lên Git (`.env` đã nằm trong `.gitignore`)
 - [ ] Quản trị viên đã đổi mật khẩu mặc định và bật 2FA
 - [ ] Đủ người cho nguyên tắc 2 người: ≥ 2 Quản trị hệ thống (duyệt khôi phục dữ liệu), ≥ 2 Tài chính (duyệt điều chỉnh số dư lớn — đề xuất của CSKH chỉ cần 1),
-      Vận hành thị trường + Rủi ro & giám sát (đề xuất và duyệt chéo chỉnh giá lớn / niêm yết / tạm ngừng toàn sàn); mỗi người một tài khoản, không dùng chung
+      Vận hành thị trường + Rủi ro & giám sát (đề xuất và duyệt chéo chỉnh giá lớn / niêm yết / tạm ngừng, mở lại sàn; xác nhận dừng khẩn trong 15 phút); mỗi người một tài khoản, không dùng chung
+- [ ] Có người trực nhận email "dừng khẩn" (không ai xác nhận trong 15 phút thì sàn tự mở lại) và email "đối soát phát hiện lệch" (Tài chính / Kiểm toán)
 - [ ] Quản trị hệ thống chỉ cấp đúng vai trò cần thiết (Quản trị → Người dùng → Đổi vai trò); định kỳ rà soát danh sách nhân viên.
       Khi đã có từ 2 Quản trị hệ thống, mọi lần cấp / đổi vai trò nhân viên cần người còn lại duyệt — nên tạo ngay Quản trị hệ thống thứ hai
       lúc khởi tạo (khi chỉ có 1 người, cấp vai trò có hiệu lực ngay và nhật ký đánh dấu bootstrap)
