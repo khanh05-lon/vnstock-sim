@@ -8,5 +8,4 @@
 .claude
 backend/data
 backups
-data-service/.venv
 docs

@@ -95,7 +95,8 @@ export default function TradePage() {
         <OrderForm symbol={symbol} />
       </section>
 
-      <section className={`panel min-h-[320px] flex-col xl:flex ${mobileTab === 'trades' ? 'flex' : 'hidden'}`} aria-label="Giao dịch thị trường">
+      {/* Cao đúng bằng hàng của form đặt lệnh (h-0 + min-h-full: không tự kéo dài hàng lưới), danh sách cuộn bên trong */}
+      <section className={`panel h-[400px] min-h-0 flex-col xl:flex xl:h-0 xl:min-h-full ${mobileTab === 'trades' ? 'flex' : 'hidden'}`} aria-label="Giao dịch thị trường">
         <div className="px-3 pt-2 text-[13px] font-semibold">Giao dịch thị trường</div>
         <TradeTape symbol={symbol} />
       </section>

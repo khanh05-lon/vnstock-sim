@@ -1,10 +1,10 @@
-# Triển khai VNStock Sim lên Internet
+# Triển khai VNCoin lên Internet
 
-Tài liệu này hướng dẫn đưa VNStock Sim (sàn **mô phỏng**, vốn ảo) lên một máy chủ có tên miền và HTTPS.
+Tài liệu này hướng dẫn đưa VNCoin (sàn coin **mô phỏng**, vốn ảo) lên một máy chủ có tên miền và HTTPS.
 Cách khuyến nghị: **1 VPS + Docker Compose** (PostgreSQL + app + Caddy tự cấp chứng chỉ HTTPS).
 
-> ⚠️ VNStock Sim chỉ dùng vốn ảo. Không dùng để nhận tiền thật của nhà đầu tư — muốn giao dịch tiền thật phải là
-> công ty chứng khoán được Uỷ ban Chứng khoán Nhà nước cấp phép và kết nối hệ thống của Sở giao dịch.
+> ⚠️ VNCoin chỉ dùng vốn ảo. Không nhận tiền hay tài sản mã hoá thật của người dùng, không nạp rút on-chain.
+> Vận hành sàn giao dịch tài sản mã hoá bằng tiền thật cần giấy phép theo quy định pháp luật nơi hoạt động.
 
 ## 1. Kiến trúc khi chạy thật
 
@@ -16,12 +16,12 @@ Người dùng ──HTTPS 443──▶ Caddy (tự xin/gia hạn chứng chỉ 
                               │
                 ┌─────────────┴─────────────┐
                 ▼                           ▼
-        PostgreSQL 16 (volume pgdata)   data-service :8001 (tuỳ chọn, giá thật)
+        PostgreSQL 16 (volume pgdata)   Binance API công khai (REST + WebSocket, gọi ra ngoài)
                 ▲
         backup (tuỳ chọn): pg_dump mỗi ngày → ./backups
 ```
 
-- Chỉ chạy **1 bản app** (trạng thái bảng giá và bộ khớp lệnh nằm trong bộ nhớ). Muốn chịu tải lớn hơn thì tăng CPU/RAM.
+- Chỉ chạy **1 bản app** (sổ lệnh, giá và bộ khớp lệnh nằm trong bộ nhớ). Muốn chịu tải lớn hơn thì tăng CPU/RAM.
 - Khảo sát tải (xem mục 22 tài liệu nghiệp vụ): PGlite nhúng chỉ chịu ~26–33 thao tác lệnh/giây — **production phải dùng PostgreSQL** (docker compose đã cấu hình sẵn).
 
 ## 2. Chuẩn bị
@@ -29,7 +29,7 @@ Người dùng ──HTTPS 443──▶ Caddy (tự xin/gia hạn chứng chỉ 
 | Hạng mục | Gợi ý |
 | --- | --- |
 | VPS | 2 vCPU, 2–4 GB RAM, 30 GB SSD, Ubuntu 22.04/24.04 (Viettel IDC, VNPT, FPT Cloud, DigitalOcean, Vultr…) |
-| Tên miền | Tạo bản ghi **A** trỏ `vnstock.ten-mien.vn` → IP của VPS (chờ DNS cập nhật vài phút) |
+| Tên miền | Tạo bản ghi **A** trỏ `vncoin.ten-mien.vn` → IP của VPS (chờ DNS cập nhật vài phút) |
 | Cổng mở | 22 (SSH), 80 và 443 (web). **Không** mở 4000, 5432 ra Internet |
 | Email gửi đi (SMTP) | Gmail + Mật khẩu ứng dụng, Brevo, Amazon SES, Mailgun… — cần cho quên mật khẩu, xác thực email, cảnh báo |
 
@@ -54,7 +54,7 @@ nano .env              # sửa DOMAIN, PUBLIC_URL, ADMIN_EMAIL, ADMIN_PASSWORD, 
 # 5) Chạy
 docker compose up -d --build
 docker compose ps                     # db, app, caddy đều "healthy"/"running"
-curl https://vnstock.ten-mien.vn/api/health
+curl https://vncoin.ten-mien.vn/api/health
 ```
 
 Sau khi chạy:
@@ -72,8 +72,7 @@ Sau khi chạy:
 | `JWT_SECRET` | ✔ | Khoá ký phiên đăng nhập (≥ 32 ký tự). Đổi khoá = mọi người phải đăng nhập lại |
 | `DATA_ENCRYPTION_KEY` | nên có | Mã hoá khoá 2FA trong CSDL. **Mất khoá → người dùng phải bật lại 2FA** |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | ✔ | Tài khoản quản trị tạo ở lần chạy đầu |
-| `MARKET_MODE` | | `REAL_HOURS` (theo giờ HOSE) hoặc `SIMULATED_24_7` |
-| `MARKET_PROVIDER` | | `mock` (giả lập) hoặc `vnstock` (giá thật, xem mục 7) |
+| `MARKET_FEED` | | `binance` (mặc định, giá thật, xem mục 7) hoặc `sim` (chỉ giả lập, chạy offline) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | nên có | Gửi email. Để trống → nội dung email chỉ ghi ra log |
 | `REQUIRE_EMAIL_VERIFICATION` | | `true` = phải xác thực email mới được đặt lệnh |
 | `REQUIRE_STAFF_2FA` | | Nhân viên (mọi vai trò) phải bật 2FA mới vào khu vực nhân viên — mặc định bật khi `NODE_ENV=production` |
@@ -159,14 +158,15 @@ Webhook Telegram: tạo bot với @BotFather, đặt
 
 ## 7. Giá thật (tuỳ chọn)
 
-```bash
-# .env: MARKET_PROVIDER=vnstock, MARKET_MODE=REAL_HOURS
-docker compose --profile vnstock up -d --build
-```
+Mặc định (`MARKET_FEED=binance`) app lấy giá, sổ lệnh 20 mức, giao dịch và nến từ API công khai của Binance, không cần khoá API:
 
-data-service gọi API web công khai của VCI. Trước khi mở cho đông người dùng, hãy **xin phép / mua gói dữ liệu**
-từ nhà cung cấp (điều khoản sử dụng dữ liệu giá là trách nhiệm của đơn vị vận hành). Mất nguồn → app tự chuyển sang giả lập
-và gửi cảnh báo.
+- REST: `BINANCE_REST_URLS` (mặc định `https://data-api.binance.vision`, dự phòng `https://api.binance.com`).
+- WebSocket: `BINANCE_WS_URL` (mặc định `wss://data-stream.binance.vision`).
+
+Máy chủ phải gọi ra được các địa chỉ trên (cổng 443). Một số nhà cung cấp VPS ở Mỹ bị Binance chặn theo vùng; kiểm tra bằng
+`curl https://data-api.binance.vision/api/v3/ping`. Mất dữ liệu quá `BINANCE_SIM_AFTER_MS` (mặc định 5 giây) thì app tự chuyển
+sang giá giả lập, giao diện hiện nhãn "Giả lập" và gửi cảnh báo; có lại kết nối thì tự quay về giá thật.
+Trước khi mở cho đông người dùng, đọc điều khoản sử dụng dữ liệu thị trường của Binance.
 
 ## 8. Danh sách kiểm tra bảo mật
 
@@ -205,6 +205,6 @@ Chạy nền bằng systemd hoặc pm2 (`pm2 start "npm start" --name vnstock`),
 | --- | --- |
 | Tên miền, nhà cung cấp VPS | Chi phí ~150.000–400.000đ/tháng cho cấu hình gợi ý |
 | Nhà cung cấp email (SMTP) | Gmail giới hạn ~500 email/ngày; dịch vụ chuyên dụng ổn định hơn |
-| Chế độ thị trường | Mô phỏng 24/7 (luyện tập mọi lúc) hay theo giờ HOSE (giống thật) |
-| Dùng giá thật | Cần thoả thuận sử dụng dữ liệu với nhà cung cấp |
+| Nguồn giá | Giá thật Binance (cần máy chủ gọi được Binance, đọc điều khoản dữ liệu) hay chỉ giả lập (`MARKET_FEED=sim`) |
+| Danh sách cặp giao dịch | Mặc định 30 cặp USDT lớn; Quản trị → Cặp giao dịch để niêm yết thêm hoặc huỷ niêm yết |
 | Pháp lý | Điều khoản, chính sách bảo mật dữ liệu cá nhân (Nghị định 13/2023/NĐ-CP) cần luật sư rà soát |

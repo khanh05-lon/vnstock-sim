@@ -3,7 +3,6 @@ dist
 .env
 backend/data*
 *.log
-data-service/.venv
 __pycache__
 # bản sao lưu Postgres do docker compose --profile backup tạo ra
 backups

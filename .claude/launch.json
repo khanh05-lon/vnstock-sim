@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "vnstock-api",
+      "name": "vncoin-api",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "--prefix",
@@ -13,7 +13,7 @@
       "port": 4000
     },
     {
-      "name": "vnstock-web",
+      "name": "vncoin-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "--prefix",
@@ -22,14 +22,6 @@
         "dev"
       ],
       "port": 5173
-    },
-    {
-      "name": "vnstock-data",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "data-service/run.mjs"
-      ],
-      "port": 8001
     }
   ]
 }

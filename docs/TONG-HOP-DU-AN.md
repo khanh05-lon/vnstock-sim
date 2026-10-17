@@ -19,7 +19,7 @@ Muốn tra chi tiết kỹ thuật cho người viết code thì xem thêm [CLAU
 - Nhà đầu tư: đăng ký, nhận vốn ảo, đặt lệnh, xem ví / lãi lỗ, lên bảng xếp hạng, nhắn CSKH.
 - Nhân viên: trang `/admin` (quản trị theo vai trò) và `/cskh` (chăm sóc khách hàng).
 
-Lúc đầu dự án là **VNStock Sim**, một sàn chứng khoán Việt Nam mô phỏng (HOSE/HNX, VNĐ, T+2, ký quỹ). Từ migration `200_crypto_spot.sql` dự án chuyển hẳn sang sàn coin. Một số ghi chú cũ trong README và CLAUDE.md vẫn nói về chứng khoán, cần đối chiếu code.
+Lúc đầu dự án là **VNStock Sim**, một sàn chứng khoán Việt Nam mô phỏng (HOSE/HNX, VNĐ, T+2, ký quỹ). Từ migration `200_crypto_spot.sql` dự án chuyển hẳn sang sàn coin. Đợt 10 đã gỡ nốt phần còn lại của bản cũ (`data-service` Python, cấu hình `MARKET_PROVIDER` / `MARKET_MODE`) và viết lại README, CLAUDE.md cho sàn coin.
 
 ## 2. Kiến trúc
 
@@ -30,9 +30,8 @@ Monorepo dùng npm workspaces:
 | `shared/` | Quy tắc chung FE + BE: số thập phân, bộ lọc Binance, lệnh, phí, phân quyền, giá điều chỉnh, CSKH | TypeScript, zod |
 | `backend/` | API `:4000`, realtime, khớp lệnh, quản trị | Express, Socket.io, PGlite (dev/test) hoặc PostgreSQL (`DATABASE_URL`) |
 | `frontend/` | Web `:5173` | React 18, Vite, Tailwind v4, TanStack Query, Zustand, lightweight-charts |
-| `data-service/` | Dịch vụ giá chứng khoán (di sản bản cũ) | Python |
 | `deploy/`, `Dockerfile`, `docker-compose.yml` | Triển khai: Docker Compose + Caddy HTTPS | |
-| `.github/workflows` | CI: typecheck + test PGlite + build; test data-service; build Docker; test PostgreSQL 16 | GitHub Actions |
+| `.github/workflows` | CI: typecheck + test PGlite + build; build Docker; test PostgreSQL 16 | GitHub Actions |
 
 ### Backend, các module chính
 
@@ -238,6 +237,13 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 - Bật bằng `ANTHROPIC_API_KEY` trong `backend/.env`; không có khoá thì chỉ nhắn nhân viên.
 - Giới hạn 15 câu / 10 phút, 80 câu / ngày mỗi khách.
 
+### Đợt 10: dọn bản chứng khoán cũ, tài liệu
+
+- Xoá thư mục `data-service/` (Python, giá chứng khoán VCI), job CI Python, service `data-service` trong `docker-compose.yml`, các script `dev:vnstock` / `data-service*`.
+- `backend/.env.example`, `.env.docker.example`, `docs/DEPLOY.md`: thay `MARKET_MODE` / `MARKET_PROVIDER` / `VNSTOCK_*` / `SETTLEMENT_DAYS` bằng `MARKET_FEED` và `BINANCE_*`; email mẫu `@vncoin.local`.
+- Viết lại `README.md` và `CLAUDE.md` theo nghiệp vụ sàn coin Spot. Tên CSDL / volume `vnstock` trong Docker giữ nguyên để không ảnh hưởng máy chủ đã triển khai.
+- Trang giao dịch: sửa thanh trạng thái đè lên form đặt lệnh (`<main>` của `AppShell` tự cuộn).
+
 ## 5. Tab quản trị (`/admin`)
 
 | Tab | Quyền cần |
@@ -289,7 +295,7 @@ File test backend:
 
 - **Độ lệch giá tích luỹ khi mất kết nối Binance**: cặp giả lập có thể trôi xa giá thật, cần cơ chế kéo về khi có lại nguồn.
 - **Bảo mật nhân viên**: giới hạn IP được vào `/admin`, phiên đăng nhập nhân viên ngắn hơn.
-- **README và tài liệu nghiệp vụ** (Claude Doc "Tài liệu nghiệp vụ VNStock Sim") vẫn mô tả sàn chứng khoán cũ.
+- **Tài liệu nghiệp vụ** (Claude Doc "Tài liệu nghiệp vụ VNStock Sim") vẫn mô tả sàn chứng khoán cũ; README và CLAUDE.md đã cập nhật ở đợt 10.
 - **Nến của giá điều chỉnh** chỉ giữ trong bộ nhớ; khởi động lại máy chủ thì mất.
 - **Khởi tạo khi chỉ có 1 ADMIN**: cấp vai trò không cần duyệt. Đây là cố ý, nhưng nên có 2 ADMIN sớm.
 - **Khôi phục dữ liệu bằng dòng lệnh (CLI)** bỏ qua duyệt 2 người; chỉ người có quyền máy chủ mới chạy được.

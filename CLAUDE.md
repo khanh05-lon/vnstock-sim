@@ -1,9 +1,9 @@
-# VNStock Sim — ghi chú cho AI
+# VNCoin — ghi chú cho AI
 
-Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Socket.io + PGlite), `frontend/` (React + Vite + Tailwind v4).
+Sàn coin **Spot mô phỏng** kiểu Binance (paper trading, 10.000 USDT ảo / tài khoản), giá thật từ Binance. Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Socket.io + PGlite), `frontend/` (React + Vite + Tailwind v4).
 
-> Từ migration `200_crypto_spot.sql` dự án là **sàn coin Spot (VNCoin)**, giá từ Binance, số tiền dạng chuỗi thập phân (NUMERIC). Các ghi chú bên dưới
-> về VNĐ, HOSE/HNX, T+2, ký quỹ, sự kiện quyền là của phiên bản sàn chứng khoán cũ — đối chiếu code trước khi làm theo.
+> Dự án khởi đầu là sàn chứng khoán VN (VNStock Sim). Migration `200_crypto_spot.sql` đã xoá toàn bộ bảng và nghiệp vụ chứng khoán;
+> migration 001 → 100 chỉ còn là lịch sử, không viết code dựa vào các bảng cũ (`stocks`, `holdings`, `trades`, `transactions_ledger`…).
 
 ## Trách nhiệm, dấu vết & CSKH (migration 210)
 
@@ -26,37 +26,36 @@ Monorepo npm workspaces: `shared/` (quy tắc + zod), `backend/` (Express + Sock
 
 ## Lệnh
 
-- `npm run dev` (root) — chạy API :4000 và web :5173 (Vite proxy `/api`, `/socket.io` sang :4000)
-- `npm test` — vitest backend (`backend/test`, PGlite in-memory, ~50s) rồi frontend (`frontend/src/**/*.test.ts(x)`, jsdom)
-- Test backend trên PostgreSQL thật: `TEST_DATABASE_URL=postgres://... npm run test -w backend` (mỗi test 1 schema riêng; 3 test chỉ chạy khi có Postgres). Không có Postgres cài sẵn thì dùng gói npm `embedded-postgres` ngoài repo.
+- `npm run dev` (root) — chạy API :4000 và web :5173 (Vite proxy `/api`, `/socket.io` sang :4000); `npm run dev:mobile` mở web cho máy khác trong LAN
+- `npm test` — vitest backend (`backend/test`, PGlite in-memory) rồi frontend (`frontend/src/**/*.test.ts(x)`, jsdom)
+- Test backend trên PostgreSQL thật: `TEST_DATABASE_URL=postgres://... npm run test -w backend` (mỗi test 1 schema riêng; 3 test chỉ chạy khi có Postgres). Không có Postgres cài sẵn thì dùng gói npm `embedded-postgres` ngoài repo, dừng bằng `pg_ctl stop -m fast`.
 - `npm run typecheck` — tsc FE + BE
-- `npm run dev:vnstock` — như `dev` + data-service :8001 (cần `MARKET_PROVIDER=vnstock` trong `backend/.env`); `npm run test:data-service` — unittest Python
-- Xoá `backend/data/` để seed lại toàn bộ dữ liệu
+- `npm run symbols:update -w backend` — cập nhật `backend/src/market/fallbackSymbols.json` (bộ lọc + giá dự phòng khi khởi động offline)
+- Xoá `backend/data/` để seed lại toàn bộ dữ liệu. PGlite báo `RuntimeError: Aborted` lúc khởi động = thư mục data hỏng, đổi tên thư mục rồi chạy lại.
 
 ## Quy ước quan trọng
 
-- Tiền và giá là **số nguyên VNĐ** (BIGINT). FE hiển thị giá theo nghìn đồng (`fmtPrice`: 98500 → "98.50"); input giá nhận "98.5" hoặc "98500" (`parsePriceInput`).
-- Mọi quy tắc giao dịch (biên độ, bước giá, lô, phí, thuế, loại lệnh theo sàn) nằm trong `shared/src/index.ts` — sửa ở đó, không hard-code ở FE/BE.
+- **Số thập phân**: giá, khối lượng, số dư là `NUMERIC(36,18)` trong CSDL (PGlite và pg đều trả **chuỗi**), API và DTO truyền **chuỗi thập phân** như Binance. Tính toán bằng `big.js` qua `shared/src/decimal.ts` (`Big`, `floorStep`, `ceilStep`, `roundDp`, `isMultiple`, `sum`…); **không dùng `number` của JS cho tiền**. Ngoại lệ: số liệu phân tích (NAV, báo cáo, nến) dùng number.
+- Mọi quy tắc giao dịch nằm trong `shared/src/`: `filters.ts` (`validateOrder(info, input, avgPrice)` dùng chung — FE báo lỗi khi nhập, BE từ chối lệnh; `maxBuyQty`, `fmtStep`), `orders.ts` (loại lệnh, TIF, trạng thái, schema zod), `rules.ts` (`RULES`: phí maker / taker, giảm phí BNB, vốn ban đầu, `commissionOf`, `stopTriggered`), `market.ts` (`SymbolInfo`, `DEFAULT_SYMBOLS` 30 cặp USDT). Sửa ở đó, không hard-code ở FE/BE.
+- Bộ lọc của cặp (`symbols.filters` JSONB) lấy từ `exchangeInfo` của Binance: `tickSize`, `stepSize`, `minQty`/`maxQty` (+ bản market), `minNotional`/`maxNotional`, hệ số `PERCENT_PRICE_BY_SIDE`, `MAX_NUM_ORDERS` 200, `MAX_NUM_ALGO_ORDERS` 5. FE hiển thị giá / khối lượng đúng số chữ số lẻ của tick / step (`fmtPrice(v, tick)`, `fmtQty(v, step)` trong `frontend/src/lib/format.ts`).
+- Ví: `balances (user_id, asset, free, locked, cost_usdt)` có CHECK `free >= 0 AND locked >= 0`. Thao tác số dư chỉ qua `trading/wallet.ts` (`lockFunds`, `unlockFunds`, `credit`, `debitLocked`, `debitFree`, `ledger`) trong `db.tx` có `FOR UPDATE`. Lệnh mua khoá quote, lệnh bán khoá base; số khoá ghi ở `orders.locked_asset` / `locked_amount` và trả lại khi lệnh kết thúc. Giá vốn bình quân theo `cost_usdt`; lãi lỗ đã thực hiện ghi ở `fills.realized_pnl`.
+- Phí maker / taker được **chốt vào từng lệnh** (`orders.maker_fee`, `taker_fee`) lúc đặt; tính phí lệnh cũ phải dùng giá trị chốt, không dùng `RULES` hiện tại. Phí thu bằng tài sản nhận về, hoặc bằng BNB (giảm 25%) khi `accounts.pay_fee_with_bnb` và đủ BNB (`planFee`).
+- `RULES` sửa được lúc chạy: `applyRules(patch)` ghi đè tại chỗ (giữ tham chiếu), mặc định trong `DEFAULT_RULES`, bản quản trị lưu ở `market_meta` key `admin.rules`, FE nhận qua `/api/system`.
+- Khớp lệnh ảo (`trading/engine.ts`, `SpotEngine`): lệnh vào là taker, ăn sổ lệnh thật qua `market.consumeBook(symbol, takerSide, {qty | quote}, limit, dryRun)` — phần đã ăn được nhớ tới khi sổ lệnh cập nhật; `FOK` chạy `dryRun` trước. Lệnh chờ là maker, khớp ở đúng giá đặt trong `onTick` khi sổ lệnh cắt qua hoặc giao dịch thật đi qua (khối lượng ≤ khối lượng giao dịch thật). Stop / take-profit chưa kích hoạt có `is_working = false`, kích hoạt theo giá khớp gần nhất thì thành lệnh limit. OCO: `order_lists`, một chân khớp / kích hoạt thì huỷ chân kia trong cùng transaction. Sửa lệnh = cancel-replace. Người dùng không khớp với nhau.
+- `MarketService` (`market/marketService.ts`) giữ trạng thái từng cặp (filters, ticker 24h, sổ lệnh, giá TB 5 phút, giao dịch gần nhất, nến) và chạy vòng flush mỗi `MARKET_FLUSH_MS`: `hooks.onTick(changed, trades)` (engine + cảnh báo giá, gắn trong `index.ts`) rồi phát `depth` / `trades` / `kline` (room `sym:XXX`), `tickers` (≤ 1 lần / giây), `feed`, `symbols`. Sự kiện riêng người dùng (`order`, `fill`, `account`) qua `Notifier` ở `socket.ts` (room `user:ID`).
+- Nguồn giá: `MARKET_FEED=binance|sim`. `binance/rest.ts` (thử lần lượt `BINANCE_REST_URLS`, đếm trọng số) + `binance/stream.ts` (WebSocket gộp luồng, backoff, nối lại trước mốc 24 giờ). Mất dữ liệu quá `BINANCE_SIM_AFTER_MS` → `simFeed.ts` giả lập tiếp từ giá thật cuối, `feed` = `SIM`. Test dùng `MARKET_FEED=sim`, `market.forcePrice()` hoặc `FakeMarket` (`backend/test/helpers/fakeMarket.ts`).
+- Ngày giao dịch theo **00:00 UTC** (`nav_daily`, báo cáo, bảng xếp hạng). `portfolio/nav.ts` chụp định kỳ 5 phút, lần chụp cuối của ngày UTC là số chốt ngày. NAV tính bằng USDT (`navOf` ở `trading/account.ts`).
+- Thời gian nến là epoch giây UTC; FE cộng độ lệch múi giờ của máy (lightweight-charts hiển thị theo UTC).
 - `Database` (`backend/src/db.ts`) tuần tự hoá mọi truy vấn bằng mutex. Trong `db.tx(fn)` chỉ dùng `tx`, **không gọi `db.*`** (sẽ deadlock).
-- PGlite trả INT8 dạng number (khi an toàn), DATE dạng chuỗi `YYYY-MM-DD`, TIMESTAMPTZ dạng `Date`.
-- Thời gian nến trả về là epoch giây UTC; FE cộng +7h cho khung trong ngày (lightweight-charts hiển thị theo UTC).
-- Bất biến danh mục: `qty_total = qty_available + qty_hold + qty_pending` (có CHECK constraint).
-- `MarketService` phát sự kiện `board/indices/trades/candles/session`; `TradingEngine` gắn qua `market.hooks`. Lệnh của người dùng ăn thanh khoản sổ lệnh qua `consumeBook` và ghi nhận vào thị trường qua `recordTrade`.
-- Màu bảng điện dùng token Tailwind: `text-ceil/up/ref/down/floor`; theme tối/sáng bằng `data-theme` trên `<html>` (biến CSS trong `frontend/src/index.css`). Class động phải lấy từ map có sẵn (`toneText`, `toneBg`) để Tailwind quét được.
+- PGlite trả INT8 dạng number (khi an toàn), NUMERIC dạng chuỗi, DATE dạng chuỗi `YYYY-MM-DD`, TIMESTAMPTZ dạng `Date`. `Database.open()` không truyền thư mục (in-memory, dùng trong test) trả DATE dạng `Date` — trong test dùng `::text` khi so ngày.
+- Màu tăng / giảm dùng token Tailwind `text-up` / `text-down` (`text-ref` vàng trung tính, `text-brand` màu thương hiệu); theme tối/sáng bằng `data-theme` trên `<html>` (biến CSS trong `frontend/src/index.css`). Class động phải lấy từ map có sẵn (`toneText`, `toneBg`) để Tailwind quét được.
 - Generic `Tabs`/`UnderlineTabs` dùng `NoInfer<T>` — truyền `value` có kiểu union cụ thể.
-- Nguồn giá: `MARKET_PROVIDER=mock|vnstock`. `RealProvider` (`backend/src/market/vnstock/`) có `live` thay đổi động: khi `live`, MarketService poll cả ngoài phiên liên tục, không warm-up mô phỏng, phiên ATO/ATC chờ giá khớp thật (`pendingAuction`). Mất nguồn → tự uỷ quyền cho MockProvider. GT của VCI tính theo triệu đồng (data-service đổi sang đồng).
-- `Database.open()` không truyền thư mục (PGlite in-memory, dùng trong test) trả cột DATE dạng `Date` thay vì chuỗi — trong test dùng `::text` khi so ngày.
+- Các trang trong `AppShell` cuộn bên trong `<main>` (`overflow-y-auto`); trang tự quản lý cuộn (Admin, Legal) thì đặt `flex-1 overflow-y-auto` ở gốc.
 - Quản trị: `backend/src/admin/` — `installAdmin()` phải gọi TRƯỚC các route `/api` khác (middleware chặn tài khoản bị khoá + cập nhật `last_seen_at`). `AdminStore` giữ trong RAM danh sách TK bị khoá, cờ tạm ngừng (`engine.control`), thông báo; lưu bền trong `market_meta` (key `admin.*`). Mọi thao tác quản trị phải gọi `audit()`.
-- Ngày nghỉ lễ là trạng thái module trong `lib/calendar.ts` (`setHolidays`) — test dùng lịch phải tự `setHolidays([])`.
 - JWT có claim `ms` (thời điểm cấp, mili-giây) để thu hồi đúng token cấp cùng giây với lần đổi mật khẩu.
 - Vé tạm đăng nhập 2FA là JWT có claim `purpose: 'mfa'`; `verifyToken` từ chối mọi token có `purpose` — token mục đích khác không bao giờ dùng làm phiên đăng nhập.
-- `RULES` sửa được lúc chạy: `applyRules(patch)` ghi đè tại chỗ (giữ tham chiếu), mặc định trong `DEFAULT_RULES`, bản quản trị lưu ở `market_meta` key `admin.rules`, FE nhận qua `/api/system`. Phí / thuế được chốt vào từng lệnh (`orders.fee_rate`, `tax_rate`) — tính tiền của lệnh cũ phải dùng giá trị chốt, không dùng `RULES` hiện tại.
-- Hàm bước giá / biên độ (`tickSize`, `priceBand`, `roundToTick`…) nhận `Exchange | {exchange, type}` — với ETF / CW / BOND phải truyền cả `type`. Chỉ số chỉ tính mã `type = 'STOCK'`.
-- Tiền bán về T+2 nằm ở `accounts.cash_pending` + bảng `cash_settlements`, không cộng thẳng vào `cash_balance`. Nợ ký quỹ: `loan_balance` + `loan_interest`; NAV = tiền + chờ về + CK + quyền − nợ (`navOf` ở BE, `navOfAccount` ở FE).
-- Hook ngày mới của `MarketService`: settle → `engine.carryOver()` (lệnh GTD) → `corp.processDay()` → `margin.accrueInterest()`; cuối ngày: `expireAll` → `cond.expire` → `nav.snapshotAll`. Thêm nghiệp vụ theo ngày thì gắn vào đây trong `index.ts`.
 - Với Postgres thật (pool nhiều kết nối) các UPDATE bắn không chờ (`void db.many(...)`) có thể về đích lệch thứ tự — luôn `await`, và cập nhật một chiều dùng `GREATEST`/`LEAST` (PGlite tuần tự hoá nên không lộ lỗi này).
-- Tham số SQL số thực (tỷ lệ chia tách…) phải ép `$n::float8`, nếu không Postgres suy ra BIGINT từ cột và báo lỗi.
-- Sao lưu JSON (`admin/backup.ts`, `BACKUP_TABLES`): thêm bảng dữ liệu người dùng mới thì phải thêm vào danh sách này (theo thứ tự khoá ngoại). Đổi cấu trúc bảng thì thêm bước chuyển đổi cho bản sao lưu cũ trong `restoreBackup` (xem ví dụ `watchlist_lists`).
-- Loại lệnh theo sàn nằm trong `RULES.orderTypes` (HOSE MP, HNX MTL/MOK/MAK). Kiểm tra "lệnh thị trường" bằng `isMarketOrder()`, chọn lệnh thị trường của sàn bằng `marketOrderTypeFor()` — không so sánh cứng `=== 'MP'`. CSDL có CHECK `orders_order_type_check`: thêm loại lệnh phải có migration.
-- Mọi khoản tiền cộng vào `cash_balance` (cổ tức, coupon, đáo hạn, lãi tiền gửi, quản trị viên cộng vốn) phải gọi `repayDebt(tx, userId)` trong cùng transaction.
-- `tradingRoutes` gắn `requireAuth` cho cả router ở `/api` → router công khai hoặc router mới phải `app.use` TRƯỚC nó trong `index.ts` (xem `communityRoutes`, `watchlistRoutes`, `alertRoutes`).
+- Sao lưu JSON (`admin/backup.ts`, `BACKUP_TABLES`; app `vncoin-sim` version 3, từ chối bản `vnstock-sim` cũ): thêm bảng dữ liệu người dùng mới thì phải thêm vào danh sách này (theo thứ tự khoá ngoại). Đổi cấu trúc bảng thì thêm bước chuyển đổi cho bản sao lưu cũ trong `restoreBackup`.
+- CSDL có CHECK cho loại lệnh / TIF / trạng thái: thêm loại lệnh phải có migration.
+- `tradingRoutes` gắn `requireAuth` cho cả router ở `/api` → router công khai hoặc router mới phải `app.use` TRƯỚC nó trong `index.ts` (xem `communityRoutes`, `watchlistRoutes`, `alertRoutes`, `supportRoutes`).
+- Không chạy prettier lên cả file (repo không có cấu hình). Không commit `package-lock.json` khi nó chỉ khác ký tự xuống dòng.

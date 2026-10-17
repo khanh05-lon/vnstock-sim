@@ -1,4 +1,4 @@
-# VNStock Sim — chạy production trên 1 máy chủ: PostgreSQL + app + Caddy (HTTPS tự động)
+# VNCoin — chạy production trên 1 máy chủ: PostgreSQL + app + Caddy (HTTPS tự động)
 #
 #   cp .env.docker.example .env        # điền tên miền, mật khẩu, khoá bí mật
 #   docker compose up -d --build       # chạy nền
@@ -6,7 +6,6 @@
 #
 # Tuỳ chọn:
 #   docker compose --profile backup up -d     # thêm dịch vụ sao lưu Postgres mỗi ngày vào ./backups
-#   docker compose --profile vnstock up -d    # thêm data-service lấy giá thật (đặt MARKET_PROVIDER=vnstock)
 # Chi tiết: docs/DEPLOY.md
 
 name: vnstock
@@ -41,7 +40,6 @@ services:
       # Đứng sau 1 proxy (Caddy) → lấy IP thật của người dùng từ X-Forwarded-For
       TRUST_PROXY: '1'
       PORT: '4000'
-      VNSTOCK_URL: http://data-service:8001
     # Chỉ mở cho chính máy chủ (để debug bằng curl); người dùng truy cập qua Caddy
     ports:
       - '127.0.0.1:4000:4000'
@@ -65,12 +63,6 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-
-  # Giá thật qua API web VCI (chỉ cần khi MARKET_PROVIDER=vnstock)
-  data-service:
-    profiles: ['vnstock']
-    build: ./data-service
-    restart: unless-stopped
 
   # Sao lưu Postgres mỗi ngày (pg_dump định dạng custom, đã nén — khôi phục bằng pg_restore), giữ BACKUP_KEEP_DAYS ngày
   backup:

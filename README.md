@@ -1,37 +1,39 @@
-# VNStock Sim — Sàn chứng khoán Việt Nam mô phỏng
+# VNCoin — Sàn giao dịch coin Spot mô phỏng
 
-Web chứng khoán đầy đủ chức năng ở chế độ **giao dịch ảo (paper trading)**: bảng giá realtime HOSE/HNX/UPCOM (cổ phiếu, ETF, chứng quyền, trái phiếu), biểu đồ nến chuyên nghiệp, đặt lệnh LO/MP/ATO/ATC, lô lẻ, lệnh nhiều ngày, lệnh điều kiện, khớp lệnh theo sổ lệnh, phí, thuế, thanh toán T+2, ứng trước, ký quỹ, sự kiện quyền, danh mục, biểu đồ tài sản, bảng xếp hạng và trang quản trị.
-Giao diện tham khảo **SSI iBoard** (màu bảng điện VN) và **Binance** (bố cục terminal giao dịch, nền tối, typography).
+Web giao dịch coin kiểu **Binance Spot** ở chế độ **giao dịch ảo (paper trading)**: giá, sổ lệnh, giao dịch và nến lấy **thật từ Binance** (trễ dưới 1 giây), mỗi tài khoản nhận **10.000 USDT ảo** để tập mua bán 30 cặp USDT lớn với đúng bộ lọc, loại lệnh, trạng thái lệnh và biểu phí của Binance.
 
-> ⚠️ Mặc định toàn bộ giá, chỉ số và thông tin doanh nghiệp là **dữ liệu giả lập** phục vụ học tập. Có thể bật **giá thật** (bảng giá + nến ngày HOSE/HNX/UPCOM) bằng `MARKET_PROVIDER=vnstock` — xem [Dữ liệu thị trường thật](#dữ-liệu-thị-trường-thật-vnstock). Dù dùng nguồn nào, giao dịch đều bằng vốn ảo và không phải khuyến nghị đầu tư.
+> ⚠️ Không có tiền hay coin thật, không nạp rút on-chain. Lệnh khớp với sổ lệnh thật của Binance nhưng **không được gửi lên Binance**. Mất kết nối Binance thì hệ thống tự chuyển sang giá giả lập (nhãn "Giả lập"). Nội dung không phải khuyến nghị đầu tư.
+
+Dự án khởi đầu là **VNStock Sim** (sàn chứng khoán Việt Nam mô phỏng). Từ migration `200_crypto_spot.sql` đã chuyển hẳn sang sàn coin; toàn bộ nghiệp vụ chứng khoán (HOSE/HNX, VNĐ, T+2, ký quỹ, sự kiện quyền, data-service Python) đã gỡ bỏ. Tổng hợp quá trình làm: [docs/TONG-HOP-DU-AN.md](docs/TONG-HOP-DU-AN.md).
 
 ## Tính năng
 
 | Trang | Nội dung |
 |---|---|
-| **Bảng giá** (`/`) | 4 thẻ chỉ số (VN-Index, VN30, HNX, UPCOM) có sparkline + độ rộng thị trường; bảng điện 3 bước giá mua/bán, khớp lệnh, tổng KL, cao/thấp, khối ngoại; nháy ô khi giá đổi; tab VN30/HOSE/HNX/UPCOM/**ETF/Chứng quyền/Trái phiếu**/Theo dõi (**nhiều danh sách theo dõi**: tạo, đổi tên, xoá), lọc ngành, tìm mã, sắp xếp cột |
-| **Giao dịch** (`/trade/:symbol`) | Header mã (TC/trần/sàn/mở/cao/thấp/KL/GT/NN) + thông tin chứng quyền (giá thực hiện, hoà vốn, ITM/OTM) hoặc trái phiếu (coupon, lợi suất); biểu đồ nến TradingView 1m→1M + MA20/MA50 + volume; sổ lệnh có thanh độ sâu; băng khớp lệnh realtime; form **lệnh thường** (loại lệnh theo sàn: HOSE LO/MP/ATO/ATC, HNX LO/MTL/MOK/MAK/ATC, UPCOM LO; lô chẵn / lô lẻ, lệnh nhiều ngày GTD, sức mua tính cả ứng trước và ký quỹ) và **lệnh điều kiện** (cắt lỗ, chốt lời, OCO, trailing stop, mua khi vượt đỉnh, bắt đáy); **cảnh báo giá** (giá, % thay đổi, khối lượng; báo trong ứng dụng + email); sửa & huỷ lệnh |
-| **Thị trường** (`/market`) | Biểu đồ chỉ số trong ngày/3T/1N/tất cả; độ rộng từng sàn; **heatmap treemap** theo ngành (diện tích = vốn hoá); top tăng/giảm/GTGD/khối ngoại; hiệu suất ngành |
-| **Bộ lọc** (`/bo-loc`) | Lọc cổ phiếu theo sàn, loại, ngành, P/E, P/B, vốn hoá, giá trị giao dịch, % thay đổi, VN30, được cho vay ký quỹ; 6 bộ lọc mẫu (giá trị, vốn hoá lớn, thanh khoản cao, tăng / giảm mạnh, ký quỹ); sắp xếp cột, xuất CSV |
-| **Tài sản** (`/portfolio`) | NAV (gồm tiền chờ về, quyền chờ nhận, trừ nợ vay), **biểu đồ lợi nhuận so với VN-Index**; tiền & ký quỹ (ứng trước tiền bán, bật ký quỹ, tỷ lệ ký quỹ, trả nợ); quyền cổ tức / đăng ký mua phát hành thêm; danh mục, donut phân bổ, khớp gần đây; đặt lại tài khoản |
-| **Xếp hạng** (`/xep-hang`) | Bảng xếp hạng lợi nhuận 1 tuần / 1 tháng / 3 tháng / toàn thời gian, tên hiển thị tự chọn hoặc che bớt, tuỳ chọn không tham gia |
-| **Lịch sử** (`/history`) | Lịch sử lệnh, lịch sử khớp (kèm tổng hợp lãi/lỗ), sao kê tiền (cổ tức, lãi tiền gửi, vay / trả nợ, phí ứng…), **báo cáo lãi lỗ theo tháng** (lãi lỗ đã thực hiện, phí, thuế, cổ tức, lãi tiền gửi, chi phí vốn, kết quả ròng); lọc; phân trang; xuất CSV |
-| **Tài khoản** | Đăng ký nhận 1 tỷ vốn ảo + **xác thực email**; **quên / đặt lại mật khẩu** qua email; **xác thực 2 lớp** (ứng dụng TOTP + 10 mã khôi phục); email tổng hợp lệnh khớp; tài khoản demo |
+| **Giới thiệu** (`/gioi-thieu`, khách vào `/` cũng thấy) | Landing page có bảng giá xem trước chạy dữ liệu thật, luật chơi theo phí và bộ lọc thật, hỏi đáp |
+| **Thị trường** (`/`, `/thi-truong`) | Danh sách cặp: giá, % 24h, cao / thấp, khối lượng, sparkline; tab Yêu thích (nhiều danh sách theo dõi), USDT, Tăng mạnh, Giảm mạnh, Khối lượng lớn; tìm kiếm |
+| **Giao dịch** (`/trade/:symbol`) | Bố cục kiểu Binance: header cặp (giá, % 24h, cao / thấp, KL 24h), biểu đồ nến TradingView 1m → 1M + MA7/25/99 + khối lượng, sổ lệnh 20 mức có gộp giá theo bội số tick, giao dịch thị trường realtime, danh sách cặp; form đặt lệnh **Giới hạn / Thị trường / Stop-limit / OCO** với cột Mua và Bán song song, thanh trượt 25–100% số dư, TIF (GTC / IOC / FOK), Post-only; lỗi bộ lọc báo ngay khi nhập; cảnh báo giá; tab Lệnh mở, Lịch sử lệnh, Lịch sử khớp, Tài sản |
+| **Ví** (`/vi`) | Tổng tài sản ước tính (USDT và BTC), lãi / lỗ hôm nay, bảng tài sản (khả dụng / đang khoá / giá vốn bình quân / giá trị USDT), biểu đồ NAV so với BTC, donut phân bổ, trả phí bằng BNB, đặt lại vốn ảo |
+| **Lịch sử** (`/lich-su`) | Lịch sử lệnh, lịch sử khớp (phí, lãi lỗ đã thực hiện), biến động số dư, báo cáo lãi lỗ theo tháng; lọc theo cặp và thời gian; xuất CSV |
+| **Xếp hạng** (`/xep-hang`) | ROI theo NAV USDT: 7 ngày / 30 ngày / 3 tháng / từ đầu; tên hiển thị tự chọn hoặc che bớt; tuỳ chọn không tham gia |
+| **Hỗ trợ** (`/ho-tro`, `/cskh`) | Hộp chat nổi với trợ lý AI (Claude) và nhân viên CSKH, vé hỗ trợ cho tài khoản bị khoá (`/ho-tro-khoa`); bàn làm việc CSKH cho nhân viên. Xem [docs/CSKH.md](docs/CSKH.md) |
+| **Tài khoản** | Đăng ký nhận 10.000 USDT ảo, xác thực email, quên / đặt lại mật khẩu, xác thực 2 lớp (TOTP + mã khôi phục), lịch sử đăng nhập, tài khoản demo |
 | **Quản trị** (`/admin`) | Xem mục [Quản trị & vận hành](#quản-trị--vận-hành) |
 
-Thêm: giao diện **tối/sáng**, responsive mobile, thông báo khớp lệnh / gọi ký quỹ realtime, đồng hồ & trạng thái phiên.
+Thêm: giao diện tối / sáng, responsive mobile, tiêu đề tab hiển thị giá như Binance, thông báo khớp lệnh realtime.
 
 ## Công nghệ
 
-- **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS v4, React Router, TanStack Query, Zustand, Socket.io client, TradingView Lightweight Charts v5, lucide-react, sonner
-- **Backend**: Node.js + Express + TypeScript (tsx), Socket.io, Zod, JWT + bcrypt, helmet, rate limit
-- **CSDL**: PostgreSQL nhúng **PGlite** cho dev (chạy ngay, không cần cài đặt); **PostgreSQL 16** thật khi đặt `DATABASE_URL` (đã chạy toàn bộ test + khảo sát tải trên Postgres 16)
+- **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS v4, React Router, TanStack Query, Zustand, Socket.io client, TradingView Lightweight Charts v5, motion, lucide-react, sonner
+- **Backend**: Node.js 24 + Express + TypeScript (tsx), Socket.io, Zod, JWT + bcrypt, helmet, rate limit; WebSocket có sẵn của Node để nhận luồng Binance (không thêm thư viện)
+- **CSDL**: PostgreSQL nhúng **PGlite** cho dev / test (chạy ngay, không cần cài); **PostgreSQL 16** khi đặt `DATABASE_URL`
+- **Số thập phân**: `big.js` trong `@vss/shared`; CSDL `NUMERIC(36,18)`; API truyền số dạng chuỗi như Binance (`"0.00012000"`)
 - **Triển khai**: Docker Compose (app + Postgres + Caddy HTTPS), CI GitHub Actions — xem [docs/DEPLOY.md](docs/DEPLOY.md)
-- **Chung**: package `@vss/shared` chứa quy tắc nghiệp vụ, kiểu dữ liệu và schema validate dùng cho cả FE và BE
+- **Chung**: package `@vss/shared` chứa bộ lọc, phí, kiểu dữ liệu, phân quyền và schema validate dùng cho cả FE và BE
 
 ## Chạy nhanh
 
-Yêu cầu Node.js ≥ 22.
+Yêu cầu Node.js ≥ 22 (khuyến nghị 24) và máy gọi được `data-api.binance.vision` (không được thì vẫn chạy bằng giá giả lập).
 
 ```bash
 npm install
@@ -39,221 +41,166 @@ cp backend/.env.example backend/.env   # rồi đổi JWT_SECRET
 npm run dev
 ```
 
-- Web: http://localhost:5173 · API: http://localhost:4000
-- Lần chạy đầu tự tạo dữ liệu: 92 mã, ~500 phiên lịch sử, 4 chỉ số và một tài khoản demo (email/mật khẩu nằm trong `backend/.env.example`). Ở trang đăng nhập có nút **"Trải nghiệm nhanh với tài khoản demo"**.
+- Web: http://localhost:5173 · API: http://localhost:4000. Mở web trên điện thoại cùng mạng LAN: `npm run dev:mobile`.
+- Lần chạy đầu tự tạo 30 cặp USDT (bộ lọc lấy thật từ `exchangeInfo`, offline thì dùng file dự phòng `backend/src/market/fallbackSymbols.json`), tài khoản demo, tài khoản quản trị và ở dev cả tài khoản nhân viên thử từng vai trò (email / mật khẩu mẫu trong `backend/.env.example`). Trang đăng nhập có nút **"Trải nghiệm nhanh với tài khoản demo"**.
 - Xoá thư mục `backend/data` để tạo lại dữ liệu từ đầu.
 
 Các lệnh khác:
 
 ```bash
-npm test            # test backend (khớp lệnh, ký quỹ, sự kiện quyền, bảo mật…) + frontend (vitest)
-TEST_DATABASE_URL=postgres://user:pass@localhost:5432/db npm run test -w backend   # chạy test backend trên PostgreSQL thật
-npm run test:data-service   # unit test chuẩn hoá dữ liệu của data-service (Python)
+npm test            # test backend (bộ lọc, phí, khớp lệnh Spot, OCO, phân quyền, đối soát…) + frontend (vitest)
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/db npm run test -w backend   # test backend trên PostgreSQL thật
 npm run typecheck   # kiểm tra kiểu FE + BE
 npm run build       # build frontend production
+npm run symbols:update -w backend   # cập nhật file bộ lọc dự phòng từ Binance
+npm run loadtest -w backend -- --users 30 --orders 20   # khảo sát tải máy chủ đang chạy
 ```
 
 ## Cấu hình (`backend/.env`)
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `MARKET_MODE` | `SIMULATED_24_7` | `SIMULATED_24_7`: thị trường chạy liên tục; `REAL_HOURS`: theo giờ HOSE (ATO 9:00–9:15, liên tục, nghỉ trưa 11:30–13:00, ATC 14:30–14:45) |
-| `MARKET_PROVIDER` | `mock` | `mock`: giá giả lập; `vnstock`: giá thật qua data-service (nên dùng cùng `MARKET_MODE=REAL_HOURS`) |
-| `VNSTOCK_URL` | `http://127.0.0.1:8001` | Địa chỉ data-service |
-| `VNSTOCK_POLL_MS` | `3000` | Chu kỳ lấy bảng giá trong khung 8:30–15:05 (ngoài giờ: mỗi phút) |
-| `VNSTOCK_STALE_MS` | `20000` | Quá thời gian này không lấy được dữ liệu thật → tự chuyển sang giả lập |
-| `VNSTOCK_HISTORY_DAYS` | `500` | Số phiên nến ngày nạp từ nguồn ở lần đầu |
-| `VNSTOCK_MAX_RPM` | `120` | Giới hạn số request backend gửi tới data-service mỗi phút |
-| `SETTLEMENT_DAYS` | `2` | Số ngày thanh toán T+N. Đặt `0` để bán được ngay sau khi mua (tiện test) |
-| `TICK_INTERVAL_MS` | `1000` | Chu kỳ cập nhật giá |
+| `MARKET_FEED` | `binance` | `binance`: dữ liệu thật, mất kết nối thì tự giả lập; `sim`: chỉ giả lập (offline, test) |
+| `BINANCE_REST_URLS` | `https://data-api.binance.vision,https://api.binance.com` | REST công khai, thử lần lượt |
+| `BINANCE_WS_URL` | `wss://data-stream.binance.vision` | WebSocket dữ liệu thị trường |
+| `BINANCE_SIM_AFTER_MS` | `5000` | Mất dữ liệu thật quá lâu thì chuyển sang giả lập |
+| `MARKET_FLUSH_MS` | `200` | Chu kỳ khớp lệnh chờ và phát dữ liệu cho client |
 | `JWT_SECRET` | — | Khoá ký token, đặt chuỗi ngẫu nhiên dài |
-| `DATA_DIR` | `./data/pgdata` | Nơi lưu CSDL |
-| `DEMO_EMAIL` / `DEMO_PASSWORD` | demo | Tài khoản demo được seed (để trống để tắt) |
+| `DATA_DIR` | `./data/pgdata` | Nơi lưu CSDL PGlite |
 | `DATABASE_URL` | — | Có giá trị → PostgreSQL thật thay PGlite |
+| `DEMO_EMAIL` / `DEMO_PASSWORD` | demo | Tài khoản demo được seed (để trống để tắt) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@vncoin.local` (dev) | Quản trị viên đầu tiên; bắt buộc tự đặt khi `NODE_ENV=production` |
 | `PUBLIC_URL`, `SMTP_*`, `MAIL_FROM` | — | Link và máy chủ gửi email (để trống: email chỉ ghi ra log) |
 | `DATA_ENCRYPTION_KEY` | — | Khoá mã hoá bí mật 2FA (≥ 32 ký tự, nên đặt khi chạy thật) |
 | `REQUIRE_EMAIL_VERIFICATION` | `false` | `true` = phải xác thực email mới được đặt lệnh |
+| `ADJUST_APPROVAL_USDT`, `PRICE_APPROVAL_PCT` | `1000`, `5` | Ngưỡng điều chỉnh số dư / chỉnh giá cần người thứ hai duyệt |
+| `ANTHROPIC_API_KEY`, `AI_MODEL` | —, `claude-haiku-5-5` | Trợ lý AI trong hộp chat (để trống: tắt) |
 | `BACKUP_DIR`, `METRICS_TOKEN`, `ALERT_EMAILS`, `ALERT_WEBHOOK_URL` | — | Sao lưu tự động trước khi khôi phục, endpoint Prometheus, nơi nhận cảnh báo |
 
 Danh sách đầy đủ và giải thích: [`backend/.env.example`](backend/.env.example).
 
-## Dữ liệu thị trường thật (vnstock)
+## Dữ liệu thị trường
 
-Backend có 2 nguồn dữ liệu cài đặt cùng interface `MarketDataProvider` ([`backend/src/market/types.ts`](backend/src/market/types.ts)):
-
-- **`MockProvider`** — giả lập (mặc định).
-- **`RealProvider`** ([`backend/src/market/vnstock`](backend/src/market/vnstock)) — lấy bảng giá thật định kỳ từ **data-service** (FastAPI, thư mục [`data-service/`](data-service)).
-
-Chạy (cần Python ≥ 3.10):
-
-```bash
-# trong backend/.env:  MARKET_PROVIDER=vnstock  và  MARKET_MODE=REAL_HOURS
-npm run data-service:setup   # lần đầu: tạo data-service/.venv, cài fastapi + uvicorn + httpx
-npm run dev:vnstock          # data-service :8001 + API :4000 + web :5173
-```
-
-Hoặc chạy riêng `npm run data-service` rồi `npm run dev`. Khi đang hiển thị giá thật, header có nhãn **"Giá thật"**; khi chạy giả lập là **"Giả lập"**. `GET /api/health` trả thêm `provider` và `feed` (`LIVE`/`SIM`).
-
-**Nguồn dữ liệu.** data-service gọi trực tiếp API công khai của VCI (trading.vietcap.com.vn) — chính là nguồn mặc định mà thư viện Python [vnstock](https://github.com/thinh-vu/vnstock) dùng, miễn phí, không cần key. Không cài gói `vnstock` vì dự án này trên PyPI đang ở trạng thái *quarantined* (không tải được). Muốn đổi nguồn chỉ cần sửa `data-service/app/vci.py` + `normalize.py`, schema trả cho backend giữ nguyên.
-
-| Endpoint data-service | Nội dung | Cache |
-|---|---|---|
-| `GET /board?symbols=FPT,HPG,…` | Bảng giá: TC/trần/sàn, mở/cao/thấp/khớp, KL & GT luỹ kế (khớp lệnh), 3 bước giá mua/bán, giá khớp ATO/ATC, khối ngoại, KL niêm yết | 2 giây |
-| `GET /history?symbols=FPT,VNINDEX&days=500` | Nến ngày cổ phiếu và chỉ số (`VNINDEX`, `VN30`, `HNXINDEX`, `UPCOMINDEX`) | 30 phút |
-| `GET /indices` | Giá trị 4 chỉ số (nến ngày gần nhất) | 10 giây |
-| `GET /health` | Trạng thái nguồn, số request tới nguồn trong 1 phút | — |
-
-data-service giới hạn ≤ 120 request/phút tới nguồn (`UPSTREAM_RPM`) và gộp các request trùng; backend chỉ gửi 1 request bảng giá mỗi `VNSTOCK_POLL_MS` (≈ 20 request/phút trong giờ giao dịch, 1 request/phút ngoài giờ).
-
-**Cách RealProvider dùng dữ liệu thật**
-
-- Lần đầu chạy (hoặc khi CSDL đang chứa lịch sử giả lập) nạp ~500 phiên nến ngày thật cho 92 mã + 4 chỉ số, thay toàn bộ lịch sử giả lập; các lần sau chỉ tải bù vài phiên (đánh dấu trong bảng `market_meta`). KL niêm yết cũng cập nhật theo nguồn.
-- Khởi động giữa phiên: đồng bộ thẳng trạng thái hiện tại của nguồn, không mô phỏng phần phiên đã qua. Sau đó mỗi lần KL luỹ kế tăng Δ → 1 giao dịch Δ tại giá khớp cuối (vẽ nến 1 phút, băng khớp lệnh, khớp lệnh LO của người dùng); tổng GT luôn khớp với nguồn.
-- Sổ lệnh lấy từ nguồn. Lệnh người dùng "ăn" thanh khoản thì phần đã ăn được trừ khỏi các bản cập nhật sau cho tới khi mức giá đó rời sổ lệnh.
-- ATO/ATC: không sinh KL giả; lệnh ATO/ATC của người dùng khớp theo giá khớp thật khi nguồn công bố (chờ tối đa 30 giây).
-- TC/trần/sàn theo nguồn (đã điều chỉnh khi có quyền); VN-Index, VN30, HNX-Index, UPCOM-Index lấy giá trị thật.
-- **Tự chuyển về giả lập** khi data-service lỗi hoặc quá `VNSTOCK_STALE_MS` không có dữ liệu (mô phỏng tiếp từ giá thật hiện tại); khi nguồn có lại thì đồng bộ về giá thật. Với `MARKET_MODE=SIMULATED_24_7`, ngoài giờ giao dịch (kể cả nghỉ trưa) cũng chạy giả lập.
-
-**Giới hạn**: chỉ 92 mã trong danh mục seed (độ rộng thị trường, tổng KL/GT trên thẻ chỉ số tính theo rổ này); tên, ngành, EPS/BVPS vẫn là số liệu seed; nến 1 phút chỉ có từ lúc server chạy; dữ liệu trễ vài giây; API của VCI là API web không chính thức nên có thể thay đổi. Khi chuyển một CSDL đang dùng giả lập sang `vnstock`, nên xoá `backend/data` để danh mục/giá vốn của tài khoản cũng theo giá thật.
-
-## Quản trị & vận hành
-
-- Trang **Quản trị** (`/admin`, chỉ hiện với tài khoản quản trị viên) gồm 10 mục: Tổng quan · Người dùng · Lệnh giao dịch · Thị trường (tạm ngừng, ngày nghỉ, **tham số giao dịch**: phí, thuế, biên độ, tỷ lệ ký quỹ…) · Mã chứng khoán (niêm yết / huỷ niêm yết, tỷ lệ ký quỹ từng mã) · Sự kiện quyền · Ký quỹ (hạn mức vay, tài khoản bị gọi ký quỹ) · Dữ liệu & sao lưu (tải và **khôi phục** JSON, có chạy thử) · Giám sát (chỉ số theo phút, cảnh báo) · Nhật ký.
-- Tài khoản quản trị đầu tiên được tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` (giá trị mẫu cho dev nằm trong `backend/.env.example`; khi `NODE_ENV=production` bắt buộc tự đặt).
-- Quản trị viên có thể: tạo / khoá / mở khoá / xoá tài khoản, cấp hoặc thu quyền, xác thực email hộ, tắt 2FA khi người dùng mất thiết bị, điều chỉnh vốn ảo, đặt lại tài khoản, huỷ hộ lệnh, tạm ngừng nhận lệnh (toàn hệ thống hoặc theo mã), đăng thông báo hệ thống, khai báo ngày nghỉ lễ, sửa tham số giao dịch (áp dụng ngay, lưu bền), thêm / huỷ niêm yết mã, nhập sự kiện quyền, cấp hạn mức ký quỹ, sao lưu / khôi phục dữ liệu, xem giám sát, nhật ký quản trị và log máy chủ. Mọi thao tác đều được ghi vào bảng `admin_audit_log`.
-- Giám sát: `GET /api/health`, `GET /api/metrics` (Prometheus, cần `METRICS_TOKEN`), cảnh báo tự động 30 giây/lần gửi email + webhook. Triển khai, sao lưu, danh sách kiểm tra bảo mật: [docs/DEPLOY.md](docs/DEPLOY.md).
-- Trang pháp lý mẫu: `/dieu-khoan`, `/chinh-sach-bao-mat` (bản demo, cần luật sư rà soát trước khi dùng thật).
-- Khảo sát chịu tải (máy chủ local đang chạy): `npm run loadtest -w backend -- --users 30 --orders 20`. Báo cáo JSON được ghi vào `backend/data/loadtest-*.json`. PGlite đạt khoảng 26–33 thao tác lệnh / giây; PostgreSQL 16 đạt ≈ 200 thao tác / giây, 0% lỗi với 100 người dùng đồng thời (chi tiết trong [docs/DEPLOY.md](docs/DEPLOY.md#sức-chịu-tải-đã-đo)).
+- **REST** ([`backend/src/market/binance/rest.ts`](backend/src/market/binance/rest.ts)): `exchangeInfo` (bộ lọc), `ticker/24hr`, `depth`, `klines`, `avgPrice`. Ưu tiên `data-api.binance.vision`, dự phòng `api.binance.com`; đếm trọng số request để không vượt giới hạn 6000 / phút.
+- **WebSocket** ([`binance/stream.ts`](backend/src/market/binance/stream.ts)): ghép luồng `!miniTicker@arr`, `<sym>@depth20@100ms`, `<sym>@aggTrade`, `<sym>@kline_1m` cho các cặp đang bật; tự nối lại với backoff, chủ động nối lại trước mốc ngắt 24 giờ của Binance.
+- **Giả lập** ([`simFeed.ts`](backend/src/market/simFeed.ts)): random walk quanh giá thật cuối cùng, sinh sổ lệnh đúng `tickSize` / `stepSize`. Chạy khi mất dữ liệu quá `BINANCE_SIM_AFTER_MS` hoặc khi `MARKET_FEED=sim`; có lại nguồn thì tự quay về giá thật. `GET /api/market/status` và sự kiện `feed` báo `LIVE` / `SIM`.
+- **Giá điều chỉnh**: quản trị viên có thể chuyển từng cặp sang chế độ `MANUAL` (giá do sàn điều chỉnh, có kịch bản) thay cho giá Binance; chỉnh lệch lớn cần người thứ hai duyệt.
+- **Nến**: có nguồn thật thì proxy `klines` của Binance (cache ngắn) và ghép nến đang chạy; giả lập thì tự tổng hợp từ nến 1 phút trong bộ nhớ.
+- **Danh sách cặp mặc định** (`DEFAULT_SYMBOLS` trong `shared`): BTC, ETH, BNB, SOL, XRP, DOGE, ADA, TRX, AVAX, LINK, DOT, TON, SUI, NEAR, LTC, BCH, UNI, AAVE, ATOM, APT, ARB, OP, INJ, FIL, PEPE, SHIB, WLD, FET, HBAR, ETC (cặp với USDT). Quản trị viên niêm yết thêm hoặc huỷ niêm yết được.
 
 ## Quy tắc nghiệp vụ
 
-Định nghĩa trong [`shared/src/index.ts`](shared/src/index.ts) (cần đối chiếu quy định hiện hành nếu dùng cho mục đích khác):
+Định nghĩa trong [`shared/src/`](shared/src) (`filters.ts`, `orders.ts`, `rules.ts`), dùng chung cho FE (báo lỗi khi nhập) và BE (từ chối lệnh). Theo tài liệu Binance Spot API:
 
-- Biên độ: HOSE ±7%, HNX ±10%, UPCOM ±15% — trần làm tròn xuống, sàn làm tròn lên theo bước giá
-- Bước giá cổ phiếu HOSE: < 10.000 → 10đ; 10.000–49.950 → 50đ; ≥ 50.000 → 100đ. HNX/UPCOM: 100đ. ETF / chứng quyền HOSE: 10đ; trái phiếu: 1đ
-- Biên độ chứng quyền tính theo biên độ của chứng khoán cơ sở chia tỷ lệ chuyển đổi; trái phiếu ±10%
-- Lô chẵn 100 CP; **lô lẻ** 1–99 CP chỉ đặt LO, khớp trên bảng lô lẻ riêng (không ăn sổ lệnh lô chẵn, không tham gia ATO/ATC); tối đa 500.000 CP/lệnh (HOSE), 1.000.000 (HNX/UPCOM)
-- **Lệnh nhiều ngày (GTD)**: chỉ LO, tối đa 30 ngày; đầu mỗi ngày kiểm tra lại biên độ mới, ngoài biên độ thì huỷ
-- **Lệnh điều kiện**: dừng (STOP), chạm giá (LIT), trailing stop theo %, cặp OCO; kiểm tra theo giá khớp trong phiên liên tục, kích hoạt thì đặt lệnh thật (MP, hoặc LO trần/sàn với UPCOM và lô lẻ); hiệu lực tối đa 90 ngày
-- Loại lệnh: HOSE `LO/MP/ATO/ATC`, HNX `LO/MTL/MOK/MAK/ATC`, UPCOM `LO`
-- Phí 0,15% mỗi chiều, thuế TNCN 0,1% khi bán; giá vốn bao gồm phí mua. Phí / thuế được chốt theo từng lệnh lúc đặt, đổi tham số không ảnh hưởng lệnh đang chờ
-- Lệnh mua phong toả `giá × KL + phí` (MP/ATO/ATC phong toả theo giá trần); lệnh bán phong toả cổ phiếu
-- Lệnh thị trường chỉ đặt trong phiên liên tục: **MP** (HOSE) và **MTL** (HNX) quét sổ lệnh, phần dư chuyển thành LO giá khớp cuối ± 1 bước giá (sửa / huỷ như LO); **MAK** khớp phần có thể rồi huỷ phần dư; **MOK** không khớp được toàn bộ thì huỷ cả lệnh; không có đối ứng thì huỷ
-- Cuối phiên, lệnh chưa khớp hết hiệu lực và được giải phóng phong toả
-- **Tiền bán về T+2** (`cash_pending`); **ứng trước** tính phí 0,04%/ngày; lệnh mua dùng lần lượt: tiền mặt → tự ứng trước (bật mặc định) → vay ký quỹ
-- **Ký quỹ** (phải tự bật + xác nhận rủi ro): chỉ mã có tỷ lệ cho vay, trong hạn mức; lãi 13%/năm tính hằng ngày; tỷ lệ ký quỹ < 40% → gọi ký quỹ (email + thông báo), < 30% → huỷ lệnh mua và bán giải chấp về 50%; tiền về tự trả lãi trước, gốc sau
-- **Lãi tiền gửi** 0,5%/năm trên tiền nhàn rỗi, trả vào ngày giao dịch đầu tháng
-- **Sự kiện quyền**: cổ tức tiền (thuế 5%), cổ tức cổ phiếu, chia tách, quyền mua — điều chỉnh giá tham chiếu và lịch sử giá ở ngày GDKHQ, huỷ lệnh GTD / điều kiện của mã, trả vào ngày thanh toán. Chứng quyền đáo hạn thanh toán bằng tiền theo giá cơ sở bình quân 5 phiên; trái phiếu trả coupon định kỳ và gốc khi đáo hạn
-- Mọi khoản tiền về (tiền bán T+2, cổ tức, lãi trái phiếu, thanh toán CW / TP đáo hạn, lãi tiền gửi, quản trị viên cộng vốn) đều tự trả nợ ký quỹ: lãi trước, gốc sau
-- Cảnh báo giá: báo 1 lần rồi dừng; từ chối điều kiện đã thoả ngay lúc tạo; tối đa 50 cảnh báo đang theo dõi; mã ngừng giao dịch thì tự huỷ
-- Tất cả tham số trên chỉnh được ở trang Quản trị
-- Không bán khống. Tiền dùng số nguyên VNĐ (BIGINT), mọi thay đổi tiền/CP nằm trong 1 transaction có khoá dòng
+- **Bộ lọc từng cặp** lấy thật từ `exchangeInfo`: `PRICE_FILTER` (giá là bội số `tickSize`), `LOT_SIZE` / `MARKET_LOT_SIZE` (`minQty`, `maxQty`, bội số `stepSize`), `NOTIONAL` (`minNotional`, ví dụ 5 USDT, áp dụng cả lệnh market), `PERCENT_PRICE_BY_SIDE` (giá lệnh trong khoảng hệ số so với giá trung bình 5 phút), `MAX_NUM_ORDERS` 200 và `MAX_NUM_ALGO_ORDERS` 5 mỗi cặp.
+- **Giao dịch 24/7**, không phiên, không biên độ, không T+2: khớp xong tài sản về ví ngay. Ngày chốt NAV và lãi lỗ theo **00:00 UTC**.
+- **Loại lệnh**: `LIMIT` (TIF `GTC` / `IOC` / `FOK`), `LIMIT_MAKER` (post-only, bị từ chối nếu khớp ngay), `MARKET` theo khối lượng coin hoặc theo số USDT (`quoteOrderQty`), `STOP_LOSS_LIMIT` và `TAKE_PROFIT_LIMIT` (kích hoạt theo giá khớp gần nhất), **OCO** (một chân `LIMIT_MAKER` + một chân `STOP_LOSS_LIMIT`; một chân khớp hoặc kích hoạt thì chân kia tự huỷ, số dư chỉ khoá một lần). Sửa lệnh theo kiểu cancel-replace (mất thứ tự hàng đợi).
+- **Trạng thái lệnh**: `NEW`, `PARTIALLY_FILLED`, `FILLED`, `CANCELED`, `EXPIRED`, `REJECTED`.
+- **Ví**: số dư theo từng tài sản gồm `free` và `locked`. Lệnh mua khoá USDT theo `giá × khối lượng` (market theo `quoteOrderQty` khoá đúng số USDT đó), lệnh bán khoá coin. Không bán khống, số dư luôn ≥ 0 (CHECK trong CSDL).
+- **Phí**: maker / taker 0,1%, thu bằng **tài sản nhận về** (mua BTC trừ phí bằng BTC, bán trừ bằng USDT); bật "trả phí bằng BNB" và đủ BNB thì giảm 25%. Phí chốt vào từng lệnh lúc đặt, đổi biểu phí không ảnh hưởng lệnh đang chờ.
+- **Cách khớp mô phỏng**: lệnh vào là taker, ăn dần từng mức giá của sổ lệnh thật (có trượt giá; phần đã ăn được nhớ tới khi sổ lệnh cập nhật). Lệnh limit đang chờ là maker: khớp ở đúng giá đặt khi sổ lệnh cắt qua hoặc giao dịch thật đi qua mức giá đó, khối lượng tối đa bằng khối lượng giao dịch thật lúc đó. Người dùng không khớp với nhau nên không cần chống tự khớp (STP). Lệnh của người dùng không làm thay đổi thị trường thật.
+- **Lãi lỗ** tính theo giá vốn bình quân từng coin (`balances.cost_usdt`), quy đổi USDT.
+- **Cảnh báo giá**: giá vượt lên, giá xuống dưới, % thay đổi 24h tăng / giảm; báo 1 lần rồi dừng.
+- **Đặt lại tài khoản**: huỷ lệnh, xoá số dư, cấp lại 10.000 USDT.
+- Biểu phí và danh sách cặp chỉnh được ở trang Quản trị (lưu bền trong `market_meta`).
+
+## Quản trị & vận hành
+
+- Trang **Quản trị** (`/admin`) chia tab theo **vai trò nhân viên** (Quản trị hệ thống, Vận hành thị trường, Tài chính, Rủi ro & giám sát, Kiểm toán, CSKH): tổng quan, người dùng (khoá / mở khoá, đổi vai trò, điều chỉnh số dư theo tài sản), lệnh, hàng chờ duyệt 2 người, tạm ngừng / dừng khẩn, giá thị trường (LIVE / MANUAL), cặp giao dịch, biểu phí, giám sát gian lận bảng xếp hạng, tài chính & đối soát, dữ liệu & sao lưu, giám sát vận hành, nhật ký. Bảng quyền chi tiết: [docs/TONG-HOP-DU-AN.md](docs/TONG-HOP-DU-AN.md#5-tab-quản-trị-admin).
+- Thao tác lớn (điều chỉnh số dư lớn, chỉnh giá lệch nhiều, niêm yết / tạm ngừng cặp, đổi vai trò, khôi phục dữ liệu, mở lại sàn) cần **người thứ hai duyệt**. Mọi thao tác ghi vào `admin_audit_log` (chỉ ghi thêm); mọi thay đổi trạng thái lệnh ghi vào `order_events`.
+- Tài khoản quản trị đầu tiên tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+- Giám sát: `GET /api/health`, `GET /api/metrics` (Prometheus, cần `METRICS_TOKEN`), cảnh báo tự động 30 giây / lần (kể cả mất nguồn giá Binance) gửi email + webhook. Triển khai, sao lưu, danh sách kiểm tra bảo mật: [docs/DEPLOY.md](docs/DEPLOY.md).
+- Trang pháp lý mẫu: `/dieu-khoan`, `/chinh-sach-bao-mat` (bản demo, cần luật sư rà soát trước khi dùng thật).
 
 ## Kiến trúc
 
 ```
-MockProvider ──poll()──▶ MarketService ──events──▶ Socket.io ──▶ React (Zustand store)
- (giá giả lập)     ▲     │ trạng thái giá, nến 1m,        board / indices / trades / candle
-RealProvider ──────┘     │
- │ (giá thật, tự về Mock khi lỗi)
- └─HTTP─▶ data-service (FastAPI) ──▶ VCI
-                         │ chỉ số, phiên, rollover ngày
-                         └─hooks──▶ TradingEngine ──▶ PGlite / PostgreSQL
-                                    │ đặt/sửa/huỷ, khớp lệnh, T+2      ▲
-                                    ├ ConditionalEngine (lệnh điều kiện)│
-                                    ├ MarginService (ký quỹ, lãi, giải chấp)
-                                    ├ CorporateService (sự kiện quyền, CW, TP)
-                                    └ NavService (NAV cuối ngày, xếp hạng)
-Express REST /api/* ─────────────────────────────────────────────────┘
+Binance REST + WS ──▶ MarketService ──events──▶ Socket.io ──▶ React (Zustand store)
+ (exchangeInfo,        │ sổ lệnh, ticker 24h, giá TB 5 phút,     tickers / feed / symbols
+  depth, aggTrade,     │ giao dịch, nến; SimFeed khi mất nguồn   depth / trades / kline (theo cặp)
+  kline, miniTicker)   │                                         order / fill / account (theo người dùng)
+                       └─hooks.onTick──▶ SpotEngine ──▶ PGlite / PostgreSQL
+                                         │ đặt / sửa / huỷ, khớp taker + maker,  ▲
+                                         │ stop, OCO, phí, ví (free / locked)    │
+                                         ├ PriceAlerts, NAV 00:00 UTC, xếp hạng  │
+                                         └ order_events, ledger                  │
+Express REST /api/* ─────────────────────────────────────────────────────────────┘
 ```
 
-- **Nguồn dữ liệu**: chọn bằng `MARKET_PROVIDER` (`createProvider` trong `backend/src/index.ts`). Muốn thêm nguồn khác (SSI FastConnect, DNSE…) chỉ cần cài đặt `MarketDataProvider` hoặc thay phần gọi nguồn trong data-service.
-- **PostgreSQL thật / Supabase**: đặt `DATABASE_URL` — `Database` trong `backend/src/db.ts` tự dùng client `pg` (giao diện `many/one/exec/tx` giữ nguyên), migration `backend/migrations/*.sql` tự chạy khi khởi động.
+- `MarketService` chạy vòng flush mỗi `MARKET_FLUSH_MS`: gọi `hooks.onTick(changed, trades)` để engine kích hoạt stop và khớp lệnh chờ, rồi phát dữ liệu cho client.
+- **PostgreSQL thật**: đặt `DATABASE_URL` — `Database` trong `backend/src/db.ts` tự dùng client `pg` (giao diện `many/one/exec/tx` giữ nguyên), migration `backend/migrations/*.sql` tự chạy khi khởi động.
 
-### Sơ đồ dữ liệu
+### Sơ đồ dữ liệu (rút gọn)
 
 ```mermaid
 erDiagram
   users ||--|| accounts : has
+  users ||--o{ balances : holds
   users ||--o{ orders : places
-  users ||--o{ trades : owns
-  users ||--o{ holdings : holds
-  users ||--o{ settlement_lots : awaits
-  users ||--o{ transactions_ledger : records
+  users ||--o{ fills : owns
+  users ||--o{ ledger : records
+  users ||--o{ nav_daily : snapshots
   users ||--o{ watchlist_lists : owns
   watchlist_lists ||--o{ watchlists : contains
   users ||--o{ price_alerts : sets
-  users ||--o{ conditional_orders : sets
-  users ||--o{ cash_settlements : awaits
-  users ||--o{ nav_daily : snapshots
-  users ||--o{ ca_entitlements : entitled
-  corporate_actions ||--o{ ca_entitlements : creates
-  stocks ||--o| warrants : "CW"
-  stocks ||--o| bonds : "BOND"
-  orders ||--o{ trades : fills
-  stocks ||--o{ ohlcv_daily : has
-  stocks ||--o{ ohlcv_intraday : has
-  stocks ||--|| price_snapshots : state
-  accounts { bigint cash_balance bigint cash_hold bigint cash_pending bigint loan_balance bigint loan_interest bigint initial_capital }
-  orders { text side text order_type bigint price int qty int filled_qty text status bigint hold_amount }
-  holdings { int qty_total int qty_available int qty_hold int qty_pending bigint total_cost }
+  order_lists ||--o{ orders : "OCO"
+  orders ||--o{ fills : fills
+  orders ||--o{ order_events : logs
+  symbols ||--o{ orders : trades
+  accounts { numeric initial_usdt numeric contributed_usdt bool pay_fee_with_bnb }
+  balances { text asset numeric free numeric locked numeric cost_usdt }
+  orders { text type text side text time_in_force numeric price numeric stop_price numeric orig_qty numeric executed_qty text status text locked_asset numeric locked_amount }
+  fills { numeric price numeric qty numeric quote_qty numeric commission text commission_asset bool is_maker numeric realized_pnl }
+  symbols { text symbol text base_asset text quote_asset jsonb filters text status text price_mode }
 ```
 
 ## API
 
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
-| POST | `/api/auth/register` · `/login` · `/login/2fa` · `/demo` | Đăng ký / đăng nhập (có 2FA → `{ mfaRequired, mfaToken }`, gửi tiếp mã ở `/login/2fa`) / tài khoản demo → `{ token, user }` |
-| GET | `/api/auth/me` · PUT `/api/auth/preferences` · POST `/api/auth/change-password` | Thông tin / tuỳ chọn (email khớp lệnh, tên hiển thị, xếp hạng) / đổi mật khẩu |
+| POST | `/api/auth/register` · `/login` · `/login/2fa` · `/demo` | Đăng ký / đăng nhập (có 2FA → `{ mfaRequired, mfaToken }`) / tài khoản demo → `{ token, user }` |
+| GET | `/api/auth/me` · `/activity` · PUT `/preferences` · POST `/change-password` | Thông tin, lịch sử đăng nhập, tuỳ chọn, đổi mật khẩu |
 | POST | `/api/auth/forgot-password` · `/reset-password` · `/verify-email` · `/resend-verification` | Quên mật khẩu, xác thực email |
 | GET/POST | `/api/auth/2fa` · `/2fa/setup` · `/2fa/enable` · `/2fa/disable` · `/2fa/recovery-codes` | Xác thực 2 lớp |
-| GET | `/api/market/session` · `/stocks` · `/stocks/:symbol` · `/indices` | Phiên, bảng giá, chi tiết mã (kèm khớp gần nhất), chỉ số |
-| GET | `/api/market/stocks/:symbol/candles?tf=1m\|5m\|15m\|1h\|1D\|1W\|1M` | Nến |
-| GET | `/api/market/indices/:code/history?tf=1m\|1D` | Lịch sử chỉ số |
-| GET | `/api/account` · `/api/portfolio` · `/api/portfolio/nav?range=` · POST `/api/account/reset` | Tài khoản, danh mục, lịch sử NAV + VN-Index, đặt lại |
-| GET/POST | `/api/account/advance` · PUT `/api/account/settings` | Xem / ứng trước tiền bán, bật tắt tự ứng |
-| POST | `/api/account/margin` · `/api/account/margin/repay` · GET `/api/account/buying-power?symbol&price` | Bật ký quỹ, trả nợ, sức mua theo mã |
-| GET/POST | `/api/orders?scope=open\|today\|all` | Danh sách / đặt lệnh (`validUntil` cho lệnh nhiều ngày) |
-| PATCH/DELETE | `/api/orders/:id` | Sửa / huỷ lệnh |
-| GET/POST/DELETE | `/api/conditional-orders` | Lệnh điều kiện |
-| GET | `/api/corporate-actions` · `/api/entitlements` · POST `/api/corporate-actions/:id/subscribe` | Sự kiện quyền, quyền được nhận, đăng ký mua |
+| GET | `/api/market/status` · `/symbols` · `/symbols/:symbol` · `/tickers` | Nguồn giá (LIVE / SIM), danh sách cặp + bộ lọc, ticker 24h |
+| GET | `/api/market/depth/:symbol` · `/trades/:symbol` · `/klines/:symbol?interval=1m\|…\|1M` | Sổ lệnh, giao dịch gần nhất, nến |
+| GET | `/api/account` · `/account/nav?range=7D\|1M\|3M\|1Y\|ALL` · PUT `/account/settings` · POST `/account/reset` | Số dư + tổng tài sản ước tính, lịch sử NAV so với BTC, trả phí bằng BNB, đặt lại |
+| POST | `/api/orders` · `/api/orders/oco` | Đặt lệnh (LIMIT / MARKET / LIMIT_MAKER / STOP_LOSS_LIMIT / TAKE_PROFIT_LIMIT), đặt OCO |
+| GET | `/api/openOrders` · `/api/orders` · `/api/orderLists/:id` · `/api/orders/:id/events` | Lệnh mở, lịch sử lệnh, OCO, nhật ký một lệnh |
+| PUT/DELETE | `/api/orders/:id` · DELETE `/api/orderLists/:id` · DELETE `/api/openOrders?symbol=` | Sửa (cancel-replace) / huỷ lệnh, huỷ OCO, huỷ tất cả theo cặp |
+| GET | `/api/myTrades` · `/api/ledger` · `/api/reports/monthly?year=` | Lịch sử khớp, biến động số dư, báo cáo lãi lỗ theo tháng |
+| GET/POST/PATCH/DELETE | `/api/watchlists` · `/api/watchlists/:id` · `/api/watchlists/:id/symbols[/:symbol]` | Danh sách theo dõi |
+| GET/POST/DELETE | `/api/alerts` · `/api/alerts/:id` | Cảnh báo giá |
 | GET | `/api/leaderboard?period=1W\|1M\|3M\|ALL` | Bảng xếp hạng (công khai) |
-| GET | `/api/health` · `/api/metrics` · `/api/system` | Sức khoẻ, Prometheus, trạng thái hệ thống + tham số giao dịch |
-| * | `/api/admin/*` | Quản trị (chỉ ADMIN) |
-| GET | `/api/trades` · `/api/ledger` | Lịch sử khớp, sao kê (lọc `from`, `to`, `symbol`, `side`) |
-| GET/POST | `/api/watchlists` · PATCH/DELETE `/api/watchlists/:id` | Các danh sách theo dõi (tối đa 10 danh sách × 100 mã) |
-| POST/DELETE | `/api/watchlists/:id/symbols` · `/api/watchlists/:id/symbols/:symbol` | Thêm / bỏ mã khỏi 1 danh sách |
-| GET/POST/DELETE | `/api/watchlist` | API cũ: thao tác trên danh sách đầu tiên |
-| GET/POST/DELETE | `/api/alerts?scope=active\|all&symbol=` · `/api/alerts/:id` | Cảnh báo giá |
-| GET | `/api/reports/monthly?year=` | Báo cáo lãi lỗ theo tháng |
+| GET/POST | `/api/support/ai` · `/support/ai/chat` · `/support/tickets[/:id[/messages\|rate\|close]]` | Trợ lý AI, vé hỗ trợ |
+| GET | `/api/health` · `/api/metrics` · `/api/system` | Sức khoẻ, Prometheus, trạng thái hệ thống + biểu phí |
+| * | `/api/admin/*` | Quản trị (theo quyền nhân viên) |
 
-Socket.io: `board`, `indices`, `session`, `symbols`, `system` (mọi client); `trades`, `candle` (sau khi `symbol:subscribe`); `order`, `fill`, `account`, `conditional`, `margin`, `alert` (riêng người dùng, xác thực bằng `auth.token`).
+Socket.io: `tickers`, `feed`, `symbols`, `system` (mọi client); `depth`, `trades`, `kline` (sau khi gửi `symbol:subscribe`); `order`, `fill`, `account`, `alert`, `support` (riêng người dùng, xác thực bằng `auth.token`).
 
 ## Cấu trúc thư mục
 
 ```
 vnstock-sim/
-├─ data-service/              FastAPI lấy bảng giá + nến ngày thật (app/vci.py, app/normalize.py, tests/)
-├─ shared/src/index.ts        quy tắc giá, kiểu, schema zod dùng chung
+├─ shared/src/                decimal, market, orders, filters, rules (phí), account, permissions, priceControl, support
 ├─ backend/
-│  ├─ migrations/             001_init … 100_watchlists_alerts (tự chạy khi khởi động)
-│  ├─ src/market/             MockProvider, MarketService (giá, nến, chỉ số, phiên); instruments.ts (ETF/CW/TP); vnstock/ = RealProvider
-│  ├─ src/trading/            TradingEngine (khớp lệnh, lô lẻ, GTD, T+2), conditional.ts, margin.ts, cash.ts, priceAlerts.ts, DTO
-│  ├─ src/corporate/          sự kiện quyền, đáo hạn chứng quyền / trái phiếu
-│  ├─ src/portfolio/          NAV hằng ngày, bảng xếp hạng, báo cáo lãi lỗ theo tháng
+│  ├─ migrations/             001 … 100 (bản chứng khoán cũ), 200_crypto_spot … 250 (tự chạy khi khởi động)
+│  ├─ src/market/             binance/ (REST, WS), simFeed, marketService, symbols (+ fallbackSymbols.json)
+│  ├─ src/trading/            SpotEngine, wallet, account, orderEvents, priceAlerts, DTO
+│  ├─ src/portfolio/          NAV hằng ngày (USDT), bảng xếp hạng, báo cáo lãi lỗ theo tháng
+│  ├─ src/support/            CSKH, trợ lý AI (Claude API)
+│  ├─ src/admin/              API quản trị, phân quyền, duyệt 2 người, giá điều chỉnh, đối soát, sao lưu / khôi phục
 │  ├─ src/ops/                metrics, cảnh báo, email tổng hợp khớp lệnh
-│  ├─ src/admin/              API quản trị, sao lưu / khôi phục
-│  ├─ src/lib/                auth, totp (2FA), mã hoá, email, lịch nghỉ
-│  ├─ src/routes/             auth, market, trading, corporate, community, watchlists, alerts
-│  ├─ src/seed/               danh sách mã, sinh lịch sử, tài khoản demo
-│  ├─ scripts/                loadtest.ts, backup.ts (sao lưu / khôi phục bằng dòng lệnh)
+│  ├─ src/lib/                auth, totp (2FA), mã hoá, email
+│  ├─ src/routes/             auth, market, trading, community, watchlists, alerts, support
+│  ├─ scripts/                loadtest.ts, backup.ts, update-symbols.ts
 │  └─ test/                   vitest (PGlite hoặc TEST_DATABASE_URL)
 ├─ frontend/src/
-│  ├─ pages/                  Board, Trade, Market, Screener (bộ lọc), Portfolio, History, Leaderboard, Admin, Auth, quên / đặt lại mật khẩu, xác thực email, pháp lý
-│  ├─ components/             board, trade, chart, market, portfolio, admin, auth, layout, common
-│  ├─ store/                  zustand (market, auth, ui/ticket)
-│  ├─ hooks/ lib/             realtime socket, api, queries, format, instruments
+│  ├─ pages/                  Landing, Markets, Trade, Wallet, History, Leaderboard, Support, SupportDesk, Admin, Auth, pháp lý
+│  ├─ components/             trade, chart, portfolio, landing, support, admin, auth, layout, common
+│  ├─ store/                  zustand (market, auth, ui)
+│  ├─ hooks/ lib/             realtime socket, api, queries, format
 │  └─ **/*.test.ts(x)         vitest + Testing Library (jsdom)
 ├─ deploy/ Dockerfile docker-compose.yml   triển khai (xem docs/DEPLOY.md)
-└─ .github/workflows/ci.yml   test PGlite + PostgreSQL 16, data-service, build Docker
+└─ .github/workflows/ci.yml   test PGlite + PostgreSQL 16, build Docker
 ```
