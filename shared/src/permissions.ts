@@ -47,11 +47,15 @@ export type Permission =
   /** Xem báo cáo giám sát gian lận (đa tài khoản, đặt lại liên tục, spam lệnh) */
   | 'risk.monitor'
   /** Xem doanh thu phí, chạy / xem đối soát số dư */
-  | 'finance.view';
+  | 'finance.view'
+  /** Duyệt / từ chối đơn xin làm thương nhân P2P, tạm ngừng thương nhân, trừ tiền cọc */
+  | 'p2p.review'
+  /** Xử lý khiếu nại đơn P2P (khu CSKH) */
+  | 'p2p.appeal';
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   USER: [],
-  SUPPORT: ['support.desk'],
+  SUPPORT: ['support.desk', 'p2p.appeal'],
   ADMIN: [
     'admin.view',
     'users.view',
@@ -69,7 +73,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
   MARKET_OPS: ['admin.view', 'orders.cancel', 'market.manage', 'market.halt', 'market.approve', 'system.announce'],
   FINANCE: ['admin.view', 'users.view', 'finance.adjust', 'finance.approve', 'finance.view'],
-  RISK: ['admin.view', 'users.view', 'users.lock', 'orders.cancel', 'market.halt', 'market.approve', 'audit.view', 'support.desk', 'risk.monitor'],
+  RISK: ['admin.view', 'users.view', 'users.lock', 'orders.cancel', 'market.halt', 'market.approve', 'audit.view', 'support.desk', 'risk.monitor', 'p2p.review', 'p2p.appeal'],
   AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view', 'risk.monitor', 'finance.view'],
 };
 
@@ -99,6 +103,8 @@ export const PERMISSION_DENIED: Record<Permission, string> = {
   'support.lead': 'Chỉ Quản trị hệ thống được giao yêu cầu cho nhân viên khác',
   'risk.monitor': 'Chỉ Rủi ro & giám sát hoặc Kiểm toán được xem báo cáo gian lận',
   'finance.view': 'Chỉ Tài chính hoặc Kiểm toán được xem doanh thu phí và đối soát',
+  'p2p.review': 'Chỉ Rủi ro & giám sát được duyệt và quản lý thương nhân P2P',
+  'p2p.appeal': 'Chỉ nhân viên CSKH hoặc Rủi ro & giám sát được xử lý khiếu nại P2P',
 };
 
 /** Vai trò có quyền này (vd. danh sách người được giao yêu cầu hỗ trợ) */
@@ -107,11 +113,11 @@ export const rolesWith = (perm: Permission): StaffRole[] =>
 
 export const ROLE_DESC: Record<UserRole, string> = {
   USER: 'Giao dịch bằng tài khoản của mình, không có quyền quản trị.',
-  SUPPORT: 'Khu CSKH: trả lời yêu cầu, xem hồ sơ khách qua yêu cầu, huỷ hộ lệnh, khoá khẩn, đề xuất bồi hoàn.',
+  SUPPORT: 'Khu CSKH: trả lời yêu cầu, xem hồ sơ khách qua yêu cầu, huỷ hộ lệnh, khoá khẩn, đề xuất bồi hoàn, xử lý khiếu nại P2P.',
   ADMIN: 'Nhân viên & phân quyền, tài khoản người dùng, sao lưu / khôi phục, giám sát, nhật ký. Không chỉnh tiền, không chỉnh giá.',
   MARKET_OPS: 'Cặp giao dịch, giá, biểu phí, thông báo, tạm ngừng; niêm yết / chỉnh giá lớn / tạm ngừng toàn sàn phải có người duyệt.',
   FINANCE: 'Điều chỉnh / đặt lại số dư; duyệt đề xuất bồi hoàn và điều chỉnh lớn của người khác.',
-  RISK: 'Khoá tài khoản, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký; duyệt đề xuất thị trường của người khác.',
+  RISK: 'Khoá tài khoản, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký; duyệt đề xuất thị trường của người khác; duyệt thương nhân P2P, xử lý khiếu nại P2P.',
   AUDITOR: 'Chỉ đọc: tổng quan, người dùng, lệnh, nhật ký, giám sát. Không thao tác được gì.',
 };
 

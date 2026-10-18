@@ -11,3 +11,4 @@ export * from './account';
 export * from './support';
 export * from './priceControl';
 export * from './permissions';
+export * from './p2p';

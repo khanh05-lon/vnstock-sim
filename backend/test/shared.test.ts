@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adPrice,
   applyRules,
+  can,
+  createAdSchema,
+  effectiveLimits,
+  fiatForQty,
+  placeP2POrderSchema,
+  priceInBand,
+  qtyForFiat,
+  refPriceVnd,
+  validateP2POrderAmount,
   bnbRate,
   ceilStep,
   commissionOf,
@@ -156,5 +166,52 @@ describe('Phí giao dịch', () => {
     expect(RULES.takerFee).toBe('0.002');
     applyRules(null);
     expect(RULES.takerFee).toBe('0.001');
+  });
+});
+
+describe('P2P: giá và hạn mức', () => {
+  it('giá tham chiếu VNĐ: USDT theo tỷ giá, coin khác = giá USDT × tỷ giá', () => {
+    expect(refPriceVnd('USDT', null, '26000')).toBe('26000');
+    expect(refPriceVnd('BTC', '80000.5', '26000')).toBe('2080013000');
+    expect(refPriceVnd('ETH', null, '26000')).toBeNull();
+  });
+
+  it('giá quảng cáo cố định / thả nổi và biên giá', () => {
+    expect(adPrice({ priceType: 'FIXED', fixedPrice: '26500', floatRatio: null }, '26000')).toBe('26500');
+    expect(adPrice({ priceType: 'FLOATING', fixedPrice: null, floatRatio: '101.5' }, '26000')).toBe('26390');
+    expect(priceInBand('31200', '26000', 20)).toBe(true);
+    expect(priceInBand('31201', '26000', 20)).toBe(false);
+    expect(priceInBand('20799', '26000', 20)).toBe(false);
+  });
+
+  it('quy đổi VNĐ ↔ coin làm tròn theo độ chính xác của coin', () => {
+    expect(qtyForFiat('1000000', '26390', 'USDT')).toBe('37.89');
+    expect(qtyForFiat('1000000', '2080013000', 'BTC')).toBe('0.00048');
+    expect(fiatForQty('37.89', '26390')).toBe('999918');
+    expect(fiatForQty('0.1', '26390.5')).toBe('2640');
+  });
+
+  it('hạn mức thực tế bị giới hạn bởi số lượng còn lại', () => {
+    const ad = { minFiat: '500000', maxFiat: '50000000', availableQty: '100' };
+    expect(effectiveLimits(ad, '26000')).toEqual({ min: '500000', max: '2600000' });
+    expect(validateP2POrderAmount('400000', '15.38', ad, '26000')).toMatch(/tối thiểu/);
+    expect(validateP2POrderAmount('2600001', '100', ad, '26000')).toMatch(/tối đa/);
+    expect(validateP2POrderAmount('1000000', '38.46', ad, '26000')).toBeNull();
+  });
+
+  it('schema quảng cáo: giá cố định bắt buộc, hạn mức tối đa ≥ tối thiểu', () => {
+    const base = { side: 'SELL', asset: 'USDT', totalQty: '100', minFiat: '500000', maxFiat: '2000000', payMinutes: 15, paymentMethodIds: [1] };
+    expect(createAdSchema.safeParse({ ...base, priceType: 'FIXED' }).success).toBe(false);
+    expect(createAdSchema.safeParse({ ...base, priceType: 'FIXED', fixedPrice: '26300' }).success).toBe(true);
+    expect(createAdSchema.safeParse({ ...base, priceType: 'FIXED', fixedPrice: '26300', maxFiat: '100000' }).success).toBe(false);
+    expect(placeP2POrderSchema.safeParse({ adId: 1 }).success).toBe(false);
+    expect(placeP2POrderSchema.safeParse({ adId: 1, fiatAmount: '500000', qty: '1' }).success).toBe(false);
+  });
+
+  it('quyền P2P: Rủi ro duyệt thương nhân, CSKH và Rủi ro xử lý khiếu nại', () => {
+    expect(can('RISK', 'p2p.review')).toBe(true);
+    expect(can('SUPPORT', 'p2p.review')).toBe(false);
+    expect(can('SUPPORT', 'p2p.appeal')).toBe(true);
+    expect(can('ADMIN', 'p2p.appeal')).toBe(false);
   });
 });

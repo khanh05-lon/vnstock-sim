@@ -31,13 +31,14 @@ export interface AccountDTO {
   takerFee: Dec;
 }
 
-export type LedgerType = 'RESET' | 'TRADE' | 'FEE' | 'ADJUST';
+export type LedgerType = 'RESET' | 'TRADE' | 'FEE' | 'ADJUST' | 'P2P';
 
 export const LEDGER_LABEL: Record<LedgerType, string> = {
   RESET: 'Cấp vốn ảo',
   TRADE: 'Giao dịch',
   FEE: 'Phí giao dịch',
   ADJUST: 'Điều chỉnh',
+  P2P: 'Giao dịch P2P',
 };
 
 export interface LedgerDTO {
