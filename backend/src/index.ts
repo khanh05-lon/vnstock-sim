@@ -36,6 +36,10 @@ import { seedDemoUser } from './seed/seed';
 import { attachSocket, socketNotifier } from './socket';
 import { SpotEngine } from './trading/engine';
 import { PriceAlertService } from './trading/priceAlerts';
+import { BankService } from './p2p/bank';
+import { p2pRoutes } from './p2p/routes';
+import { seedDevMerchants } from './p2p/seed';
+import { P2PService } from './p2p/service';
 
 async function main() {
   const started = Date.now();
@@ -113,6 +117,15 @@ async function main() {
   support.notifyCustomer = (userId, ev) => io.to(`user:${userId}`).emit('support', ev);
   support.notifyStaff = (ev) => io.to('staff').emit('support:staff', ev);
   await engine.load();
+  // Chợ P2P + ngân hàng giả lập: khách ở phòng user:<id>, nhân viên xử lý khiếu nại ở phòng "staff"
+  const bank = new BankService(db);
+  const p2p = new P2PService(db, market, {
+    user: (userId, payload) => io.to(`user:${userId}`).emit('p2p', payload),
+    staff: (payload) => io.to('staff').emit('p2p:staff', payload),
+    account: (userId) => io.to(`user:${userId}`).emit('account'),
+  });
+  engine.userCleanup.push((userId, reason) => p2p.onUserCleanup(userId, reason));
+  engine.resetGuards.push((userId) => p2p.assertCanReset(userId));
   const nav = new NavService(db, market);
   const priceAlerts = new PriceAlertService(db, {
     info: (s) => market.info(s),
@@ -138,6 +151,7 @@ async function main() {
     io,
     db,
     market,
+    p2p,
     engine,
     mailer,
     alerts,
@@ -157,7 +171,7 @@ async function main() {
       if (approved) await support.postSystem(r.ticketId, `Số dư của bạn đã được điều chỉnh ${r.amount} ${r.asset}`, false);
     },
   });
-  app.use('/api/support-desk', deskRoutes({ db, io, market, engine, store, mailer, support }));
+  app.use('/api/support-desk', deskRoutes({ db, io, market, engine, store, mailer, support, p2p }));
 
   // Chỉ số Prometheus: cần METRICS_TOKEN (production không có token → tắt)
   app.get('/api/metrics', (req, res, next) => {
@@ -193,6 +207,7 @@ async function main() {
   const assistant = new SupportAssistant(db, market, config.ai.apiKey ? claudeBackend(config.ai.apiKey, config.ai.model) : null);
   log.info(`[ai] trợ lý hỗ trợ: ${assistant.enabled ? `bật (${config.ai.model})` : 'tắt — chưa đặt ANTHROPIC_API_KEY'}`);
   app.use('/api', supportRoutes(support, assistant));
+  app.use('/api', p2pRoutes(p2p, bank));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);
@@ -216,6 +231,8 @@ async function main() {
   metrics.startSampling();
   alerts.start();
   support.start();
+  p2p.start();
+  await seedDevMerchants(db, p2p).catch((err) => log.error('[p2p] lỗi tạo thương nhân mẫu', { err }));
   if (!config.alertEmails.length && !config.alertWebhookUrl) log.warn('[alert] chưa cấu hình ALERT_EMAILS / ALERT_WEBHOOK_URL, cảnh báo chỉ ghi log và hiện ở trang Quản trị');
 
   server.listen(config.port, () => {
@@ -236,6 +253,7 @@ async function main() {
     nav.stop();
     alerts.stop();
     support.stop();
+    p2p.stop();
     metrics.stopSampling();
     await digest.flush().catch(() => undefined);
     await market.stop();

@@ -92,9 +92,11 @@ export async function ledger(
   balanceAfter: Dec,
   orderId: number | null,
   note: string | null,
+  /** Đơn P2P liên quan (ledger.p2p_order_id) */
+  p2pOrderId: number | null = null,
 ) {
   if (new Big(amount).eq(0)) return;
-  await tx.many('INSERT INTO ledger (user_id, asset, type, amount, balance_after, order_id, note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
+  await tx.many('INSERT INTO ledger (user_id, asset, type, amount, balance_after, order_id, note, p2p_order_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [
     userId,
     asset,
     type,
@@ -102,6 +104,7 @@ export async function ledger(
     balanceAfter,
     orderId,
     note,
+    p2pOrderId,
   ]);
 }
 

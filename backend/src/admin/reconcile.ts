@@ -72,22 +72,49 @@ export async function runReconciliation(db: Queryable, triggeredBy: string): Pro
   );
   for (const o of orphan) issues.push({ kind: 'LEDGER_MISMATCH', userId: o.user_id, email: o.email, asset: o.asset, expected: o.s, actual: '0' });
 
-  const locked = await db.many<{ user_id: string; email: string; asset: string; locked: string }>(
-    `SELECT b.user_id::text AS user_id, u.email, b.asset, b.locked::text AS locked FROM balances b JOIN users u ON u.id = b.user_id
-     WHERE b.locked > 0 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.user_id = b.user_id AND o.status IN ('NEW', 'PARTIALLY_FILLED'))`,
+  // Số dư khoá = tổng mọi nguồn khoá: lệnh Spot đang mở, quảng cáo bán P2P, coin ký quỹ của đơn P2P đang chạy, tiền cọc thương nhân
+  const locked = await db.many<{ user_id: string; email: string; asset: string; locked: string; expected: string }>(
+    `WITH src AS (
+       SELECT user_id, locked_asset AS asset, locked_amount AS amt FROM orders WHERE status IN ('NEW', 'PARTIALLY_FILLED')
+       UNION ALL SELECT merchant_id, asset, locked_amount FROM p2p_ads WHERE status <> 'CLOSED'
+       UNION ALL SELECT seller_id, asset, escrow_amount FROM p2p_orders WHERE status IN ('PENDING_PAYMENT', 'PAID', 'APPEAL')
+       UNION ALL SELECT user_id, 'USDT', deposit_usdt FROM p2p_merchants
+     ), exp AS (SELECT user_id, asset, sum(amt) AS s FROM src GROUP BY user_id, asset)
+     SELECT b.user_id::text AS user_id, u.email, b.asset, b.locked::text AS locked, COALESCE(exp.s, 0)::text AS expected
+     FROM balances b JOIN users u ON u.id = b.user_id
+     LEFT JOIN exp ON exp.user_id = b.user_id AND exp.asset = b.asset
+     WHERE abs(b.locked - COALESCE(exp.s, 0)) > 0.000000000001`,
   );
-  for (const l of locked) issues.push({ kind: 'LOCKED_WITHOUT_ORDERS', userId: l.user_id, email: l.email, asset: l.asset, expected: '0', actual: l.locked });
+  for (const l of locked) {
+    const kind = new Big(l.expected).eq(0) ? 'LOCKED_WITHOUT_ORDERS' : 'LOCKED_MISMATCH';
+    issues.push({ kind, userId: l.user_id, email: l.email, asset: l.asset, expected: l.expected, actual: l.locked });
+  }
 
   // Phí: tổng phí ghi sổ cái = tổng phí trong bảng khớp lệnh (theo tài sản trả phí)
   const fees = await db.many<{ asset: string; ledger_fee: string; fill_fee: string }>(
     `WITH lf AS (SELECT asset, -sum(amount) AS s FROM ledger WHERE type = 'FEE' GROUP BY asset),
-          ff AS (SELECT commission_asset AS asset, sum(commission) AS s FROM fills GROUP BY commission_asset)
+          ff AS (SELECT asset, sum(s) AS s FROM (
+                   SELECT commission_asset AS asset, sum(commission) AS s FROM fills GROUP BY commission_asset
+                   UNION ALL SELECT asset, sum(fee) FROM p2p_orders WHERE status = 'COMPLETED' GROUP BY asset
+                 ) x GROUP BY asset)
      SELECT COALESCE(lf.asset, ff.asset) AS asset, COALESCE(lf.s, 0)::text AS ledger_fee, COALESCE(ff.s, 0)::text AS fill_fee
      FROM lf FULL OUTER JOIN ff ON ff.asset = lf.asset`,
   );
   for (const f of fees) {
     if (differs(f.ledger_fee, f.fill_fee)) issues.push({ kind: 'FEE_MISMATCH', asset: f.asset, expected: f.fill_fee, actual: f.ledger_fee });
   }
+
+  // Ngân hàng giả lập: số dư = tổng nhận − tổng chuyển
+  const bank = await db.many<{ user_id: string; email: string; balance: string; flows: string }>(
+    `WITH f AS (
+       SELECT to_user AS uid, amount AS a FROM bank_transfers WHERE to_user IS NOT NULL
+       UNION ALL SELECT from_user, -amount FROM bank_transfers WHERE from_user IS NOT NULL
+     ), s AS (SELECT uid, sum(a) AS s FROM f GROUP BY uid)
+     SELECT b.user_id::text AS user_id, u.email, b.balance_vnd::text AS balance, COALESCE(s.s, 0)::text AS flows
+     FROM bank_accounts b JOIN users u ON u.id = b.user_id LEFT JOIN s ON s.uid = b.user_id
+     WHERE b.balance_vnd <> COALESCE(s.s, 0)`,
+  );
+  for (const b of bank) issues.push({ kind: 'BANK_MISMATCH', userId: b.user_id, email: b.email, asset: 'VND', expected: b.flows, actual: b.balance });
 
   const row = await db.one<RunRow>(
     `INSERT INTO reconciliation_runs (started_at, finished_at, ok, balances_checked, issue_count, issues, triggered_by)

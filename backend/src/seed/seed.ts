@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { RULES } from '@vss/shared';
 import type { Database, Queryable } from '../db';
 import { log } from '../lib/logger';
+import { grantBankCapital } from '../p2p/bank';
 
 /** Tạo tài khoản mới kèm vốn ảo ban đầu (USDT) */
 export async function createUserAccount(tx: Queryable, email: string, passwordHash: string, fullName: string) {
@@ -32,6 +33,8 @@ export async function grantInitialCapital(tx: Queryable, userId: string, note: s
     usdt,
     note,
   ]);
+  // Tài khoản ngân hàng giả lập (VNĐ ảo, nằm ngoài sàn) dùng để thanh toán P2P
+  await grantBankCapital(tx, userId, note);
 }
 
 /** Tài khoản demo dùng chung (chỉ dùng cho dev): 10.000 USDT, email coi như đã xác thực */

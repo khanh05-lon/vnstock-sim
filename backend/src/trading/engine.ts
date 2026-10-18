@@ -82,6 +82,8 @@ export class SpotEngine {
 
   /** Dọn dữ liệu của tính năng khác khi tài khoản bị đặt lại / khoá / xoá */
   readonly userCleanup: ((userId: string, reason: string) => Promise<unknown>)[] = [];
+  /** Kiểm tra trước khi đặt lại tài khoản (ném lỗi để chặn, vd. còn đơn P2P đang chạy) */
+  readonly resetGuards: ((userId: string) => Promise<void>)[] = [];
 
   /** Cờ vận hành do quản trị viên đặt: ngừng nhận lệnh + ngừng khớp (toàn sàn hoặc theo cặp) */
   readonly control = { haltAll: false, haltReason: '', haltedSymbols: new Set<string>() };
@@ -530,6 +532,7 @@ export class SpotEngine {
 
   /** Đặt lại tài khoản ảo về vốn ban đầu */
   async resetAccount(userId: string): Promise<void> {
+    for (const g of this.resetGuards) await g(userId);
     for (const fn of this.userCleanup) await fn(userId, 'Đặt lại tài khoản');
     for (const m of this.open.values()) for (const [id, r] of m) if (r.userId === userId) m.delete(id);
     await this.db.tx(async (tx) => {

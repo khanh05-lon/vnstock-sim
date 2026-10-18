@@ -22,6 +22,7 @@ import { Approvals, mountApprovals } from './approvals';
 import { expireEmergencyIfDue } from './emergency';
 import { mountFraud } from './fraud';
 import { mountReconcile } from './reconcile';
+import { mountP2PAdmin } from './p2p';
 import { notifyStaff } from './notify';
 import { assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
 import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
@@ -116,6 +117,7 @@ export function adminRoutes(deps: AdminDeps) {
   mountPriceControl(r, deps, approvals);
   mountFraud(r, deps);
   mountReconcile(r, deps);
+  mountP2PAdmin(r, deps);
 
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();

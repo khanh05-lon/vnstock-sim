@@ -28,10 +28,8 @@ export type BankName = (typeof BANK_NAMES)[number];
 export const P2P_RULES = {
   /** Tỷ giá tham chiếu 1 USDT = ? VNĐ (giá tham chiếu coin khác = giá USDT của coin × tỷ giá) */
   usdtVnd: '26000' as Dec,
-  /** Phí thương nhân (maker), thu bằng coin của đơn */
+  /** Phí thương nhân (maker), thu bằng coin của đơn. Khách (taker) miễn phí như Binance P2P */
   makerFee: '0.002' as Dec,
-  /** Phí khách (taker) — Binance P2P miễn phí cho khách */
-  takerFee: '0' as Dec,
   /** Tiền cọc thương nhân (USDT, khoá trong ví) */
   merchantDepositUsdt: '2000' as Dec,
   /** Điều kiện xin làm thương nhân */
@@ -72,7 +70,6 @@ export const p2pRulesPatchSchema = z
       .refine((s) => Number(s) >= 1000 && Number(s) <= 1_000_000, 'Tỷ giá USDT/VNĐ từ 1.000 đến 1.000.000')
       .optional(),
     makerFee: decStr('Phí không hợp lệ').refine((s) => Number(s) <= 0.01, 'Phí thương nhân từ 0 đến 1%').optional(),
-    takerFee: decStr('Phí không hợp lệ').refine((s) => Number(s) <= 0.01, 'Phí khách từ 0 đến 1%').optional(),
     merchantDepositUsdt: decStr('Tiền cọc không hợp lệ').refine((s) => Number(s) <= 1_000_000, 'Tiền cọc tối đa 1.000.000 USDT').optional(),
     minAccountDays: z.number().int().min(0).max(365).optional(),
     minCompletedOrders: z.number().int().min(0).max(10_000).optional(),

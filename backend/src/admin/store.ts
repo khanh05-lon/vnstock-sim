@@ -1,4 +1,4 @@
-import { RULES, applyRules, type EmergencyHalt, type RulesPatch, type TradingRules } from '@vss/shared';
+import { RULES, applyP2PRules, applyRules, type EmergencyHalt, type P2PRulesPatch, type RulesPatch, type TradingRules } from '@vss/shared';
 import type { Queryable } from '../db';
 import type { SpotEngine } from '../trading/engine';
 
@@ -27,6 +27,7 @@ const KEY_HALT = 'admin.halt';
 const KEY_SYMBOLS = 'admin.halted_symbols';
 const KEY_ANNOUNCEMENT = 'admin.announcement';
 const KEY_RULES = 'admin.rules';
+const KEY_P2P_RULES = 'admin.p2pRules';
 
 /**
  * Cấu hình vận hành do quản trị viên đặt, lưu trong bảng market_meta (key → JSON)
@@ -38,6 +39,8 @@ export class AdminStore {
   announcement: Announcement | null = null;
   /** Các tham số quản trị viên đã chỉnh so với mặc định */
   rulesPatch: RulesPatch = {};
+  /** Tham số P2P quản trị viên đã chỉnh so với mặc định */
+  p2pRulesPatch: P2PRulesPatch = {};
   /** Lý do bảo trì (chỉ trong bộ nhớ — khởi động lại là hết) */
   maintenance: string | null = null;
   /** Dừng khẩn toàn sàn do 1 người, chưa có người thứ hai xác nhận (null = không có / đã xác nhận) */
@@ -60,6 +63,8 @@ export class AdminStore {
     this.announcement = (get(KEY_ANNOUNCEMENT) as Announcement | undefined) ?? null;
     this.rulesPatch = (get(KEY_RULES) as RulesPatch | undefined) ?? {};
     applyRules(this.rulesPatch);
+    this.p2pRulesPatch = (get(KEY_P2P_RULES) as P2PRulesPatch | undefined) ?? {};
+    applyP2PRules(this.p2pRulesPatch);
 
     this.locked.clear();
     for (const r of await this.db.many<{ id: string }>(`SELECT id FROM users WHERE status = 'LOCKED'`)) this.locked.add(r.id);
@@ -109,5 +114,13 @@ export class AdminStore {
     applyRules(next);
     this.rulesPatch = next;
     await this.save(KEY_RULES, next);
+  }
+
+  /** Chỉnh tham số P2P: tỷ giá tham chiếu, phí thương nhân, tiền cọc, điều kiện (null = khôi phục mặc định) */
+  async setP2PRules(patch: P2PRulesPatch | null) {
+    const next = patch == null ? {} : { ...this.p2pRulesPatch, ...patch };
+    applyP2PRules(next);
+    this.p2pRulesPatch = next;
+    await this.save(KEY_P2P_RULES, next);
   }
 }

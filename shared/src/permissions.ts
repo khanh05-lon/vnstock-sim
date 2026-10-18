@@ -241,12 +241,14 @@ export interface FraudReport {
 
 /* ---------------------------- đối soát & doanh thu ---------------------------- */
 
-export type ReconIssueKind = 'LEDGER_MISMATCH' | 'LAST_BALANCE_MISMATCH' | 'LOCKED_WITHOUT_ORDERS' | 'FEE_MISMATCH';
+export type ReconIssueKind = 'LEDGER_MISMATCH' | 'LAST_BALANCE_MISMATCH' | 'LOCKED_WITHOUT_ORDERS' | 'LOCKED_MISMATCH' | 'FEE_MISMATCH' | 'BANK_MISMATCH';
 
 export const RECON_ISSUE_LABEL: Record<ReconIssueKind, string> = {
   LEDGER_MISMATCH: 'Tổng sổ cái ≠ số dư',
   LAST_BALANCE_MISMATCH: 'Số dư sau giao dịch cuối ≠ số dư hiện tại',
   LOCKED_WITHOUT_ORDERS: 'Có tiền đang khoá nhưng không có lệnh mở',
+  LOCKED_MISMATCH: 'Số dư khoá khác tổng khoá của lệnh Spot, quảng cáo P2P, ký quỹ đơn P2P và tiền cọc thương nhân',
+  BANK_MISMATCH: 'Số dư ngân hàng giả lập khác tổng tiền vào / ra trong sao kê',
   FEE_MISMATCH: 'Phí trong sổ cái ≠ phí trong khớp lệnh',
 };
 

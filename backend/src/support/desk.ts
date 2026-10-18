@@ -8,6 +8,8 @@ import { ah, badRequest, notFound } from '../lib/errors';
 import { accountView } from '../trading/account';
 import { toFillDTO, toLedgerDTO, toOrderDTO, type FillRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { listOrderEvents } from '../trading/orderEvents';
+import { mountP2PDesk } from '../p2p/deskRoutes';
+import type { P2PService } from '../p2p/service';
 import type { SupportService } from './service';
 
 const idOf = (raw: string | undefined, what = 'yêu cầu') => {
@@ -21,7 +23,7 @@ const idOf = (raw: string | undefined, what = 'yêu cầu') => {
  * Nhân viên chỉ xem được dữ liệu của khách THÔNG QUA yêu cầu hỗ trợ khách đã gửi (quyền tối thiểu),
  * mỗi lần xem được ghi nhật ký; mọi thao tác nghiệp vụ ghi nhật ký quản trị + tin nhắn hệ thống trong yêu cầu.
  */
-export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engine' | 'store' | 'mailer'> & { support: SupportService }) {
+export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engine' | 'store' | 'mailer'> & { support: SupportService; p2p?: P2PService }) {
   const { db, market, engine, support } = deps;
   const r = Router();
   r.use(...staffGuard(db, 'support.desk'));
@@ -218,5 +220,7 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
     }),
   );
 
+  // Khiếu nại đơn P2P (quyền p2p.appeal)
+  if (deps.p2p) mountP2PDesk(r, { db, p2p: deps.p2p });
   return r;
 }
