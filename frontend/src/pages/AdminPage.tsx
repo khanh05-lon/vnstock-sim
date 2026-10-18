@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, CheckCheck, Coins, Database, Gauge, Headset, Landmark, LayoutDashboard, ListOrdered, ScrollText, ShieldAlert, ShieldCheck, SlidersHorizontal, Users as UsersIcon } from 'lucide-react';
+import { Activity, CheckCheck, Coins, Database, Gauge, Headset, Landmark, LayoutDashboard, ListOrdered, ScrollText, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, Users as UsersIcon } from 'lucide-react';
 import { AdjustRequests } from '../components/admin/AdjustRequests';
 import { OperationApprovals } from '../components/admin/OperationApprovals';
 import { DataStorage } from '../components/admin/DataStorage';
@@ -10,6 +10,7 @@ import { Logs } from '../components/admin/Logs';
 import { MarketOps } from '../components/admin/MarketOps';
 import { Monitor } from '../components/admin/Monitor';
 import { Orders } from '../components/admin/Orders';
+import { P2PMerchants } from '../components/admin/P2PMerchants';
 import { Overview } from '../components/admin/Overview';
 import { PriceControl } from '../components/admin/PriceControl';
 import { Symbols } from '../components/admin/Symbols';
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'market', label: 'Vận hành thị trường', icon: Activity, hint: 'Nguồn giá, tạm ngừng giao dịch, thông báo, biểu phí', perms: ['admin.view'] },
   { id: 'prices', label: 'Giá thị trường', icon: SlidersHorizontal, hint: 'Giá thực tế (Binance) hoặc giá điều chỉnh cho từng cặp: đặt giá, chạy kịch bản', perms: ['admin.view'] },
   { id: 'symbols', label: 'Cặp giao dịch', icon: Coins, hint: 'Đề xuất niêm yết / huỷ niêm yết, tạm ngừng cặp', perms: ['admin.view'] },
+  { id: 'p2p', label: 'Thương nhân P2P', icon: Store, hint: 'Duyệt đơn xin làm thương nhân, tạm ngừng, trừ cọc; tham số chợ P2P (tỷ giá, phí, điều kiện)', perms: ['p2p.review', 'market.manage'] },
   { id: 'fraud', label: 'Giám sát gian lận', icon: ShieldAlert, hint: 'Nhiều tài khoản cùng IP, tự đặt lại liên tục, spam lệnh — loại khỏi bảng xếp hạng', perms: ['risk.monitor'] },
   { id: 'finance', label: 'Tài chính & đối soát', icon: Landmark, hint: 'Doanh thu phí, đối soát số dư ↔ sổ cái ↔ khớp lệnh hằng ngày', perms: ['finance.view'] },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục', perms: ['system.view'] },
@@ -131,6 +133,7 @@ export default function AdminPage() {
         {tab === 'market' && <MarketOps />}
         {tab === 'prices' && <PriceControl />}
         {tab === 'symbols' && <Symbols />}
+        {tab === 'p2p' && <P2PMerchants />}
         {tab === 'fraud' && <FraudMonitor />}
         {tab === 'finance' && <FinanceReports />}
         {tab === 'data' && <DataStorage />}

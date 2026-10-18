@@ -14,10 +14,10 @@ export async function seedDevMerchants(db: Database, p2p: P2PService) {
   const password = process.env.DEV_STAFF_PASSWORD;
   if (process.env.NODE_ENV === 'production' || !password) return;
   const domain = (process.env.ADMIN_EMAIL || 'admin@vncoin.local').split('@')[1] || 'vncoin.local';
-  const merchants: { name: string; fullName: string; bank: string; usdtSell: string; usdtBuy: string; sellRatio: string; buyRatio: string; btc?: string }[] = [
-    { name: 'merchant1', fullName: 'Thương nhân An Phát', bank: 'Vietcombank', usdtSell: '5000', usdtBuy: '3000', sellRatio: '101.20', buyRatio: '99.40', btc: '0.05' },
-    { name: 'merchant2', fullName: 'Thương nhân Bình Minh', bank: 'Techcombank', usdtSell: '4000', usdtBuy: '2500', sellRatio: '101.50', buyRatio: '99.10' },
-    { name: 'merchant3', fullName: 'Thương nhân Cát Tường', bank: 'MB Bank', usdtSell: '3000', usdtBuy: '2000', sellRatio: '100.90', buyRatio: '98.90' },
+  const merchants: { name: string; fullName: string; display: string; bank: string; usdtSell: string; usdtBuy: string; sellRatio: string; buyRatio: string; btc?: string }[] = [
+    { name: 'merchant1', fullName: 'Thương nhân An Phát', display: 'AnPhat OTC', bank: 'Vietcombank', usdtSell: '5000', usdtBuy: '3000', sellRatio: '101.20', buyRatio: '99.40', btc: '0.05' },
+    { name: 'merchant2', fullName: 'Thương nhân Bình Minh', display: 'BinhMinh Crypto', bank: 'Techcombank', usdtSell: '4000', usdtBuy: '2500', sellRatio: '101.50', buyRatio: '99.10' },
+    { name: 'merchant3', fullName: 'Thương nhân Cát Tường', display: 'CatTuong Exchange', bank: 'MB Bank', usdtSell: '3000', usdtBuy: '2000', sellRatio: '100.90', buyRatio: '98.90' },
   ];
   const hash = await bcrypt.hash(password, 10);
   const created: string[] = [];
@@ -26,7 +26,7 @@ export async function seedDevMerchants(db: Database, p2p: P2PService) {
     if (await db.one('SELECT 1 FROM users WHERE email = $1', [email])) continue;
     const userId = await db.tx(async (tx) => {
       const user = await createUserAccount(tx, email, hash, m.fullName);
-      await tx.many(`UPDATE users SET email_verified_at = now(), created_at = now() - interval '90 days' WHERE id = $1`, [user.id]);
+      await tx.many(`UPDATE users SET email_verified_at = now(), display_name = $2, created_at = now() - interval '90 days' WHERE id = $1`, [user.id, m.display]);
       // Coin để bán (dev): ghi sổ cái như quản trị viên điều chỉnh để đối soát vẫn khớp
       if (m.btc) {
         const after = await credit(tx, user.id, 'BTC', m.btc);

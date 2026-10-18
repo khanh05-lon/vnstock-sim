@@ -68,6 +68,7 @@ Monorepo dùng npm workspaces:
 | **230** | Vai trò chi tiết + `approval_requests` (duyệt 2 người) |
 | **240** | Duyệt 2 người cho đổi vai trò (ROLE_SET) và đặt lại tài khoản (ACCOUNT_RESET) |
 | **250** | MARKET_RESUME, `users.leaderboard_banned_at`, bảng `reconciliation_runs` |
+| **260** | Chợ P2P + ngân hàng giả lập: `bank_accounts`, `bank_transfers`, `p2p_merchants`, `p2p_payment_methods`, `p2p_ads`, `p2p_orders`, `p2p_messages`; ledger loại `P2P` |
 
 ### Các trang web
 
@@ -80,6 +81,9 @@ Monorepo dùng npm workspaces:
 | `/vi` | Ví, số dư, lãi lỗ |
 | `/lich-su` | Lịch sử lệnh / khớp |
 | `/xep-hang` | Bảng xếp hạng |
+| `/p2p`, `/p2p/don`, `/p2p/don/:id` | Chợ P2P, đơn P2P của tôi, chi tiết đơn (chat, chuyển khoản, nhả coin, khiếu nại) |
+| `/p2p/thuong-nhan` | Trung tâm thương nhân: điều kiện, nộp đơn, quảng cáo, phương thức thanh toán |
+| `/ngan-hang` | Ngân hàng giả lập (VNĐ ảo ngoài sàn) |
 | `/ho-tro` | Chat CSKH cho khách |
 | `/ho-tro-khoa` | Hỗ trợ cho tài khoản bị khoá (vé hỗ trợ) |
 | `/cskh` | Bàn làm việc nhân viên CSKH |
@@ -244,6 +248,15 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 - Viết lại `README.md` và `CLAUDE.md` theo nghiệp vụ sàn coin Spot. Tên CSDL / volume `vnstock` trong Docker giữ nguyên để không ảnh hưởng máy chủ đã triển khai.
 - Trang giao dịch: sửa thanh trạng thái đè lên form đặt lệnh (`<main>` của `AppShell` tự cuộn).
 
+### Đợt 11: thương nhân P2P
+
+- Chợ P2P theo Binance P2P / OKX P2P: thương nhân (khách hàng được duyệt, cọc 2.000 USDT) đăng quảng cáo mua / bán USDT, BTC, ETH, BNB bằng VNĐ; giá cố định hoặc thả nổi theo giá tham chiếu (giá Binance × tỷ giá sàn đặt), biên ±20%.
+- Đơn có ký quỹ coin của bên bán; người mua chuyển khoản qua ngân hàng giả lập rồi báo đã thanh toán; bên bán xác nhận và nhả coin; quá hạn tự huỷ; khách huỷ quá 3 lần / ngày bị khoá P2P tới 00:00 UTC.
+- Khiếu nại: CSKH / Rủi ro phân xử ở `/cskh` → Khiếu nại P2P với bằng chứng sao kê giữa hai bên; trừ cọc thương nhân có lỗi để bồi thường.
+- Quyền mới `p2p.review` (Rủi ro), `p2p.appeal` (CSKH, Rủi ro). Nhân viên không dùng được P2P. Tham số P2P do Vận hành thị trường chỉnh.
+- Đối soát mở rộng: khoá số dư phải bằng đúng tổng khoá Spot + P2P; phí P2P; số dư ngân hàng = sao kê.
+- Tài liệu: [P2P.md](P2P.md).
+
 ## 5. Tab quản trị (`/admin`)
 
 | Tab | Quyền cần |
@@ -255,6 +268,7 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 | Vận hành thị trường (nguồn giá, tạm ngừng, dừng khẩn, thông báo, biểu phí) | admin.view |
 | Giá thị trường (LIVE / MANUAL, kịch bản) | admin.view |
 | Cặp giao dịch (niêm yết, huỷ niêm yết, tạm ngừng cặp) | admin.view |
+| Thương nhân P2P (duyệt, tạm ngừng, trừ cọc; tham số P2P) | p2p.review / market.manage |
 | Giám sát gian lận | risk.monitor |
 | Tài chính & đối soát | finance.view |
 | Dữ liệu & sao lưu | system.view |
@@ -282,14 +296,14 @@ Nút thao tác trong từng tab ẩn / hiện theo quyền của người đang 
 
 | Bộ test | Kết quả |
 |---|---|
-| Backend trên PGlite | 113 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
+| Backend trên PGlite | 132 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
 | Backend trên PostgreSQL 16 | 111/111 (đợt 8, chưa chạy lại cho đợt 9) |
 | Frontend | 19/19 |
 | CI GitHub Actions (4 bước) | Đạt cho mọi lần đẩy |
 
 File test backend:
 - `spot-engine`, `market`, `auth`, `db`, `shared`, `watchlists-alerts`, `ops`;
-- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`.
+- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`.
 
 ## 8. Còn thiếu / việc nên làm tiếp
 

@@ -38,7 +38,7 @@ import { AppError, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { publicName } from '../portfolio/nav';
 import { balanceOf, credit, debitFree, debitLocked, ledger, lockFunds, unlockFunds } from '../trading/wallet';
-import { bankAccountOf } from './bank';
+import { bankAccountOf, holderNameOf } from './bank';
 
 /*
  * Chợ P2P (theo Binance P2P): thương nhân đăng quảng cáo, khách đặt đơn, coin của bên bán nằm trong ký quỹ,
@@ -486,9 +486,9 @@ export class P2PService {
     if (!bank) throw badRequest('NO_BANK', 'Bạn chưa có tài khoản ngân hàng giả lập');
     const r = await this.db.one<{ id: string | number }>(
       'INSERT INTO p2p_payment_methods (user_id, bank_name, account_no, holder_name) VALUES ($1, $2, $3, $4) RETURNING id',
-      [userId, input.bankName, bank.account_no, input.holderName.toUpperCase()],
+      [userId, input.bankName, bank.account_no, holderNameOf(input.holderName)],
     );
-    return { id: idNum(r!.id), bankName: input.bankName, accountNo: bank.account_no, holderName: input.holderName.toUpperCase() };
+    return { id: idNum(r!.id), bankName: input.bankName, accountNo: bank.account_no, holderName: holderNameOf(input.holderName) };
   }
 
   async removePaymentMethod(userId: string, id: number): Promise<void> {
@@ -814,14 +814,14 @@ export class P2PService {
       return id;
     });
     const o = await this.orderRow(orderId);
-    this.touch(o!, 'created');
+    this.touch(o!, 'created', takerId);
     return this.toOrderDTO(o!, takerId);
   }
 
-  private touch(o: P2POrderRow, kind: string) {
+  /** Báo 2 bên; người vừa tự thao tác nhận kind 'self' (giao diện chỉ làm mới, không hiện thông báo) */
+  private touch(o: P2POrderRow, kind: string, actorId: string | null = null) {
     const orderId = idNum(o.id);
-    this.notify.user(o.buyer_id, { orderId, kind });
-    this.notify.user(o.seller_id, { orderId, kind });
+    for (const uid of [o.buyer_id, o.seller_id]) this.notify.user(uid, { orderId, kind: uid === actorId ? 'self' : kind });
     this.notify.account(o.buyer_id);
     this.notify.account(o.seller_id);
     if (o.status === 'APPEAL' || o.appeal_at) this.notify.staff({ orderId, kind });
@@ -852,7 +852,7 @@ export class P2PService {
       );
     });
     const o = (await this.orderRow(id))!;
-    this.touch(o, 'paid');
+    this.touch(o, 'paid', userId);
     return this.toOrderDTO(o, userId);
   }
 
@@ -869,7 +869,7 @@ export class P2PService {
       }
     });
     const o = (await this.orderRow(id))!;
-    this.touch(o, 'completed');
+    this.touch(o, 'completed', userId);
     return this.toOrderDTO(o, userId);
   }
 
@@ -882,7 +882,7 @@ export class P2PService {
       await this.cancelTx(tx, o, 'BUYER', reason || 'Người mua huỷ đơn');
     });
     const o = (await this.orderRow(id))!;
-    this.touch(o, 'cancelled');
+    this.touch(o, 'cancelled', userId);
     return this.toOrderDTO(o, userId);
   }
 
@@ -925,7 +925,7 @@ export class P2PService {
       );
     });
     const o = (await this.orderRow(id))!;
-    this.touch(o, 'appeal');
+    this.touch(o, 'appeal', userId);
     return this.toOrderDTO(o, userId);
   }
 
@@ -1028,7 +1028,7 @@ export class P2PService {
     const o = await this.orderRow(id);
     if (!o || (o.buyer_id !== userId && o.seller_id !== userId)) throw notFound('Không tìm thấy đơn P2P');
     await this.message(this.db, id, body, userId);
-    this.touch(o, 'message');
+    this.touch(o, 'message', userId);
     return (await this.messages(id)).at(-1)!;
   }
 

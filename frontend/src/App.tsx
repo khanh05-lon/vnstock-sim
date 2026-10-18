@@ -27,6 +27,11 @@ const LandingPage = lazy(() => import('./pages/LandingPage'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
 const LockedSupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.LockedSupportPage })));
 const SupportDeskPage = lazy(() => import('./pages/SupportDeskPage'));
+const P2PPage = lazy(() => import('./pages/P2PPage'));
+const P2POrdersPage = lazy(() => import('./pages/P2POrdersPage'));
+const P2POrderPage = lazy(() => import('./pages/P2POrderPage'));
+const MerchantCenterPage = lazy(() => import('./pages/MerchantCenterPage'));
+const BankPage = lazy(() => import('./pages/BankPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -86,6 +91,40 @@ export function App() {
               <Route path="trade" element={<TradePage />} />
               <Route path="trade/:symbol" element={<TradePage />} />
               <Route path="xep-hang" element={<LeaderboardPage />} />
+              {/* Chợ P2P: xem quảng cáo không cần đăng nhập */}
+              <Route path="p2p" element={<P2PPage />} />
+              <Route
+                path="p2p/don"
+                element={
+                  <RequireAuth>
+                    <P2POrdersPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="p2p/don/:id"
+                element={
+                  <RequireAuth>
+                    <P2POrderPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="p2p/thuong-nhan"
+                element={
+                  <RequireAuth>
+                    <MerchantCenterPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="ngan-hang"
+                element={
+                  <RequireAuth>
+                    <BankPage />
+                  </RequireAuth>
+                }
+              />
               <Route
                 path="vi"
                 element={

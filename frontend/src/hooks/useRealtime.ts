@@ -106,6 +106,33 @@ export function useRealtime() {
       const viewing = location.pathname === '/ho-tro' && new URLSearchParams(location.search).get('ticket') === String(ev.ticketId);
       if (ev.kind === 'message' && !viewing) toast.info(`CSKH vừa trả lời yêu cầu #${ev.ticketId}`, { description: 'Mở mục Hỗ trợ để xem', duration: 10_000 });
     });
+    // Đơn P2P / quảng cáo / tư cách thương nhân thay đổi. Đang mở đúng đơn đó thì trang tự cập nhật, không cần thông báo
+    s.on('p2p', (ev: { orderId?: number; kind: string }) => {
+      void qc.invalidateQueries({ queryKey: ['p2p'] });
+      void qc.invalidateQueries({ queryKey: ['bank'] });
+      if (!ev.orderId || location.pathname === `/p2p/don/${ev.orderId}`) return;
+      const text: Record<string, string> = {
+        created: 'Có đơn P2P mới',
+        paid: 'Người mua đã báo thanh toán, kiểm tra tiền về rồi nhả coin',
+        completed: 'Đơn P2P đã hoàn tất',
+        expired: 'Đơn P2P đã huỷ do hết thời hạn thanh toán',
+        cancelled: 'Đơn P2P đã bị huỷ',
+        appeal: 'Đơn P2P đang khiếu nại',
+        resolved: 'Khiếu nại P2P đã được phân xử',
+        message: 'Tin nhắn mới trong đơn P2P',
+      };
+      if (text[ev.kind]) {
+        toast.info(`${text[ev.kind]} (#${ev.orderId})`, {
+          id: `p2p-${ev.orderId}-${ev.kind}`,
+          duration: 10_000,
+          action: { label: 'Mở đơn', onClick: () => location.assign(`/p2p/don/${ev.orderId}`) },
+        });
+      }
+    });
+    s.on('p2p:staff', (ev: { orderId: number; kind: string }) => {
+      void qc.invalidateQueries({ queryKey: ['desk-p2p'] });
+      if (ev.kind === 'appeal') toast.warning(`Khiếu nại P2P mới #${ev.orderId}`, { description: 'Mở khu vực CSKH → Khiếu nại P2P', duration: 10_000 });
+    });
     // Nhân viên CSKH: yêu cầu mới / tin nhắn mới của khách
     s.on('support:staff', (ev: { ticketId: number; kind: string }) => {
       void qc.invalidateQueries({ queryKey: ['desk'] });

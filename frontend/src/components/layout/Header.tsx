@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Headset, History, LogOut, Moon, Settings, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { ChevronDown, Headset, History, Landmark, LogOut, Moon, Settings, ShieldCheck, Store, Sun, Wallet } from 'lucide-react';
 import { cn, fmtPct, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAccount } from '../../lib/queries';
 import { useAdminMe } from '../../lib/admin';
@@ -34,6 +34,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
 
 const NAV = [
   { to: '/trade', label: 'Giao dịch' },
+  { to: '/p2p', label: 'P2P' },
   { to: '/xep-hang', label: 'Xếp hạng' },
   { to: '/vi', label: 'Ví' },
   { to: '/lich-su', label: 'Lịch sử' },
@@ -117,6 +118,8 @@ function UserMenu() {
           {[
             { icon: Wallet, label: 'Ví Spot', to: '/vi' },
             { icon: History, label: 'Lịch sử giao dịch', to: '/lich-su' },
+            { icon: Store, label: 'Trung tâm thương nhân', to: '/p2p/thuong-nhan' },
+            { icon: Landmark, label: 'Ngân hàng giả lập', to: '/ngan-hang' },
           ].map((it) => (
             <button
               key={it.to}

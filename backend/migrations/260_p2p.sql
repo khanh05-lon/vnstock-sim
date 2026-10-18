@@ -30,7 +30,9 @@ CREATE INDEX bank_transfers_to_idx ON bank_transfers (to_user, created_at DESC);
 
 -- Tài khoản ngân hàng cho người dùng hiện có, cấp 100.000.000đ
 INSERT INTO bank_accounts (user_id, account_no, holder_name, balance_vnd)
-SELECT u.id, (1000000000 + row_number() OVER (ORDER BY u.created_at, u.id))::text, upper(u.full_name), 100000000
+-- Tên chủ tài khoản kiểu ngân hàng: in hoa, bỏ dấu tiếng Việt (giống holderNameOf trong src/p2p/bank.ts)
+SELECT u.id, (1000000000 + row_number() OVER (ORDER BY u.created_at, u.id))::text,
+       upper(translate(lower(u.full_name), 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ', 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd')), 100000000
 FROM users u;
 INSERT INTO bank_transfers (to_user, to_account, amount, memo)
 SELECT user_id, account_no, balance_vnd, 'Cấp vốn ngân hàng giả lập' FROM bank_accounts;

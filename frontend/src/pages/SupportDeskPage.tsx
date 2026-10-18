@@ -4,6 +4,7 @@ import { AlertTriangle, Clock, Headset, History, Lock, Search, ShieldCheck, User
 import { ORDER_STATUS_LABEL, TICKET_CATEGORY_LABEL, can, isTicketActive, type OrderDTO, type TicketPriority } from '@vss/shared';
 import { Pill, ReasonModal } from '../components/admin/adminUi';
 import { Empty, Modal, Spinner } from '../components/common/ui';
+import { P2PAppeals } from '../components/support/P2PAppeals';
 import { ChatThread, Composer, OrderTimeline, OrderTimelineModal, PriorityPill, TicketStatusPill } from '../components/support/SupportUi';
 import { cn, fmtDateTime, fmtPrice, fmtQty, fmtUsd } from '../lib/format';
 import { useDeskStaff, useDeskStats, useDeskTicket, useDeskTickets, useIsStaff, useSupportCall, type DeskScope } from '../lib/support';
@@ -375,6 +376,10 @@ export default function SupportDeskPage() {
   const { data: stats } = useDeskStats();
   const { data, isLoading, error } = useDeskTickets(scope, q.trim());
   const selected = Number(params.get('ticket')) || null;
+  const role = useAuth((s) => s.user?.role);
+  // Khiếu nại P2P (quyền p2p.appeal): ?view=p2p
+  const canAppeal = can(role, 'p2p.appeal');
+  const view = canAppeal && params.get('view') === 'p2p' ? 'p2p' : 'tickets';
 
   useEffect(() => {
     document.title = 'Chăm sóc khách hàng · VNCoin';
@@ -390,12 +395,46 @@ export default function SupportDeskPage() {
   }
   if (error) return <Empty title="Không vào được khu vực CSKH" hint={(error as Error).message} />;
 
+  const switcher = canAppeal && (
+    <div className="flex gap-0.5 rounded-md bg-bg-2 p-0.5" role="tablist" aria-label="Loại công việc">
+      {(
+        [
+          ['tickets', 'Yêu cầu hỗ trợ'],
+          ['p2p', 'Khiếu nại P2P'],
+        ] as const
+      ).map(([v, label]) => (
+        <button
+          key={v}
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => setParams(v === 'p2p' ? { view: 'p2p' } : {}, { replace: true })}
+          className={cn('h-7 rounded px-2.5 text-[12px] font-medium', view === v ? 'bg-bg-1 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  if (view === 'p2p') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+          <Headset size={18} className="text-brand" />
+          <span className="font-semibold">Chăm sóc khách hàng</span>
+          {switcher}
+        </div>
+        <P2PAppeals />
+      </div>
+    );
+  }
+
   const counts: Partial<Record<DeskScope, number>> = { active: stats?.open, unassigned: stats?.unassigned, mine: stats?.mine, overdue: stats?.overdue };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Headset size={18} className="text-brand" />
         <span className="font-semibold">Chăm sóc khách hàng</span>
+        {switcher}
         <div className="flex gap-1">
           {SCOPES.map((s) => (
             <button
