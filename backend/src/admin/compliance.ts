@@ -2,6 +2,7 @@ import type { Router } from 'express';
 import { z } from 'zod';
 import {
   AML_RULES,
+  can,
   DEFAULT_AML_RULES,
   amlAlertUpdateSchema,
   amlReportSchema,
@@ -241,33 +242,74 @@ export function mountCompliance(r: Router, deps: AdminDeps, approvals: Approvals
     }),
   );
 
+  /** Ghi STR (chỉ ghi thêm) + đánh dấu các cảnh báo đã lập STR. Người ghi là người có aml.report (MLRO) */
+  const fileStr = async (staff: AdminCtx, input: { userId: string; alertIds: number[]; narrative: string; preparedBy?: string; approvalId?: number }) =>
+    db.tx(async (tx) => {
+      const alerts = await tx.many<{ id: string | number; user_id: string; status: AmlAlertStatus }>(
+        'SELECT id, user_id, status FROM aml_alerts WHERE id = ANY($1::bigint[]) FOR UPDATE',
+        [input.alertIds],
+      );
+      if (alerts.length !== new Set(input.alertIds).size) throw badRequest('ALERTS', 'Có cảnh báo không tồn tại');
+      if (alerts.some((x) => x.user_id !== input.userId)) throw badRequest('ALERTS', 'Các cảnh báo phải cùng 1 khách hàng');
+      if (alerts.some((x) => x.status === 'CLOSED' || x.status === 'REPORTED')) throw badRequest('ALERTS', 'Có cảnh báo đã được xử lý xong');
+      const narrative = input.preparedBy && input.preparedBy !== staff.email ? `${input.narrative}\n\n(Soạn bởi ${input.preparedBy}; MLRO ${staff.email} duyệt nộp)` : input.narrative;
+      const r = await tx.one<{ id: string | number }>(
+        'INSERT INTO aml_reports (user_id, alert_ids, narrative, created_by) VALUES ($1, $2::bigint[], $3, $4) RETURNING id',
+        [input.userId, input.alertIds, narrative, staff.email],
+      );
+      await tx.many(`UPDATE aml_alerts SET status = 'REPORTED', report_id = $2, handled_by = $3, handled_at = now() WHERE id = ANY($1::bigint[])`, [
+        input.alertIds,
+        r!.id,
+        staff.email,
+      ]);
+      await audit(tx, staff, 'AML_STR_FILE', 'user', input.userId, {
+        reportId: Number(r!.id),
+        alertIds: input.alertIds,
+        preparedBy: input.preparedBy ?? staff.email,
+        approvalId: input.approvalId ?? null,
+      });
+      return Number(r!.id);
+    });
+
+  approvals.register('STR_FILE', async (admin, req) => {
+    const p = req.payload as { userId: string; alertIds: number[]; narrative: string };
+    const id = await fileStr(admin, { ...p, preparedBy: req.requestedByEmail, approvalId: req.id });
+    return { reportId: id };
+  });
+
+  /**
+   * Lập STR: MLRO (aml.report) nộp ngay; chuyên viên Tuân thủ soạn → đề xuất STR_FILE chờ MLRO duyệt
+   * (theo luật phòng, chống rửa tiền, báo cáo giao dịch đáng ngờ do người phụ trách PCRT quyết định nộp).
+   */
   r.post(
     '/compliance/reports',
     need('aml.manage'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const input = amlReportSchema.parse(req.body);
-      const id = await db.tx(async (tx) => {
-        const alerts = await tx.many<{ id: string | number; user_id: string; status: AmlAlertStatus }>(
-          'SELECT id, user_id, status FROM aml_alerts WHERE id = ANY($1::bigint[]) FOR UPDATE',
-          [input.alertIds],
-        );
-        if (alerts.length !== new Set(input.alertIds).size) throw badRequest('ALERTS', 'Có cảnh báo không tồn tại');
-        if (alerts.some((a) => a.user_id !== input.userId)) throw badRequest('ALERTS', 'Các cảnh báo phải cùng 1 khách hàng');
-        if (alerts.some((a) => a.status === 'CLOSED' || a.status === 'REPORTED')) throw badRequest('ALERTS', 'Có cảnh báo đã được xử lý xong');
-        const r = await tx.one<{ id: string | number }>(
-          'INSERT INTO aml_reports (user_id, alert_ids, narrative, created_by) VALUES ($1, $2::bigint[], $3, $4) RETURNING id',
-          [input.userId, input.alertIds, input.narrative, admin.email],
-        );
-        await tx.many(`UPDATE aml_alerts SET status = 'REPORTED', report_id = $2, handled_by = $3, handled_at = now() WHERE id = ANY($1::bigint[])`, [
-          input.alertIds,
-          r!.id,
-          admin.email,
-        ]);
-        await audit(tx, admin, 'AML_STR_FILE', 'user', input.userId, { reportId: Number(r!.id), alertIds: input.alertIds });
-        return Number(r!.id);
+      if (can(admin.role, 'aml.report')) {
+        const id = await fileStr(admin, input);
+        return void res.json({ ok: true, id });
+      }
+      const alerts = await db.many<{ id: string | number; user_id: string; status: AmlAlertStatus }>('SELECT id, user_id, status FROM aml_alerts WHERE id = ANY($1::bigint[])', [
+        input.alertIds,
+      ]);
+      if (alerts.length !== new Set(input.alertIds).size || alerts.some((x) => x.user_id !== input.userId)) throw badRequest('ALERTS', 'Cảnh báo không hợp lệ');
+      if (alerts.some((x) => x.status === 'CLOSED' || x.status === 'REPORTED')) throw badRequest('ALERTS', 'Có cảnh báo đã được xử lý xong');
+      const u = await db.one<{ email: string }>('SELECT email FROM users WHERE id = $1', [input.userId]);
+      const request = await approvals.create(admin, {
+        kind: 'STR_FILE',
+        target: input.userId,
+        payload: input,
+        summary: `STR về ${u?.email ?? input.userId} (cảnh báo ${input.alertIds.map((x) => '#' + x).join(', ')}): ${input.narrative.slice(0, 200)}`,
+        reason: 'Chuyên viên Tuân thủ đề xuất nộp báo cáo giao dịch đáng ngờ',
       });
-      res.json({ ok: true, id });
+      await db.many(`UPDATE aml_alerts SET status = 'REVIEWING', notes = $2, handled_by = $3, handled_at = now() WHERE id = ANY($1::bigint[])`, [
+        input.alertIds,
+        `Đã soạn STR, chờ MLRO duyệt (đề xuất #${request.id})`,
+        admin.email,
+      ]);
+      res.status(202).json({ ok: true, pending: true, request });
     }),
   );
 
@@ -333,7 +375,7 @@ export function mountCompliance(r: Router, deps: AdminDeps, approvals: Approvals
     return { email: u.email };
   });
 
-  /** Gỡ hạn chế: đề xuất, người Tuân thủ khác duyệt (tư cách thương nhân do Rủi ro & giám sát khôi phục riêng) */
+  /** Gỡ hạn chế: đề xuất, Trưởng Tuân thủ (MLRO) duyệt (tư cách thương nhân do Vận hành P2P khôi phục riêng) */
   r.post(
     '/compliance/users/:id/unrestrict',
     need('aml.manage'),

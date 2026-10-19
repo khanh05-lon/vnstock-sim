@@ -43,6 +43,9 @@ import { P2PService } from './p2p/service';
 import { startAmlSchedule } from './kyc/aml';
 import { kycRoutes } from './kyc/routes';
 import { KycService } from './kyc/service';
+import { privacyRoutes } from './privacy/routes';
+import { PrivacyService } from './privacy/service';
+import { VipService, vipRoutes } from './trading/vip';
 
 async function main() {
   const started = Date.now();
@@ -131,6 +134,9 @@ async function main() {
   engine.resetGuards.push((userId) => p2p.assertCanReset(userId));
   // Xác minh danh tính (KYC) + giám sát chống rửa tiền (AML)
   const kyc = new KycService(db, mailer);
+  // Cấp VIP phí: tính lại 00:00 UTC hằng ngày
+  const vip = new VipService(db);
+  vip.notify = (userId) => io.to(`user:${userId}`).emit('account');
   const nav = new NavService(db, market);
   const priceAlerts = new PriceAlertService(db, {
     info: (s) => market.info(s),
@@ -158,6 +164,7 @@ async function main() {
     market,
     p2p,
     kyc,
+    vip,
     engine,
     mailer,
     alerts,
@@ -215,6 +222,8 @@ async function main() {
   app.use('/api', supportRoutes(support, assistant));
   app.use('/api', p2pRoutes(p2p, bank));
   app.use('/api', kycRoutes(kyc));
+  app.use('/api', privacyRoutes(new PrivacyService(db)));
+  app.use('/api', vipRoutes(vip));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);
@@ -240,6 +249,7 @@ async function main() {
   support.start();
   p2p.start();
   const stopAml = startAmlSchedule(db);
+  vip.start();
   await seedDevMerchants(db, p2p).catch((err) => log.error('[p2p] lỗi tạo thương nhân mẫu', { err }));
   if (!config.alertEmails.length && !config.alertWebhookUrl) log.warn('[alert] chưa cấu hình ALERT_EMAILS / ALERT_WEBHOOK_URL, cảnh báo chỉ ghi log và hiện ở trang Quản trị');
 
@@ -263,6 +273,7 @@ async function main() {
     support.stop();
     p2p.stop();
     stopAml();
+    vip.stop();
     metrics.stopSampling();
     await digest.flush().catch(() => undefined);
     await market.stop();

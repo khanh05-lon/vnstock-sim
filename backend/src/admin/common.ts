@@ -11,6 +11,7 @@ import type { AlertMonitor } from '../ops/alerts';
 import type { KycService } from '../kyc/service';
 import type { P2PService } from '../p2p/service';
 import type { SpotEngine } from '../trading/engine';
+import type { VipService } from '../trading/vip';
 import type { AdminStore } from './store';
 
 export interface AdminDeps {
@@ -34,6 +35,8 @@ export interface AdminDeps {
   p2p?: P2PService;
   /** Xác minh danh tính (không có trong một số test) */
   kyc?: KycService;
+  /** Cấp VIP phí */
+  vip?: VipService;
 }
 
 export interface AdminCtx {

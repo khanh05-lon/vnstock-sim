@@ -1,8 +1,10 @@
+import crypto from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import type { NextFunction, Request, Response } from 'express';
 import { Big, PERMISSION_DENIED, can, type AdjustRequestDTO, type Permission, type UserRole } from '@vss/shared';
 import { config } from '../config';
 import type { Database, Queryable } from '../db';
-import { requireAuth, type AuthedRequest } from '../lib/auth';
+import { markPasswordChanged, requireAuth, type AuthedRequest } from '../lib/auth';
 import { accountLockedEmail, approvalRequestEmail } from '../lib/emails';
 import type { Mailer } from '../lib/mailer';
 import { badRequest, notFound } from '../lib/errors';
@@ -181,4 +183,49 @@ export async function createAdjustRequest(
     { adjustRequestId: Number(row!.id) },
   ).catch(() => undefined);
   return toAdjustRequestDTO({ ...row!, email: a.email });
+}
+
+/**
+ * Tắt 2FA của khách khi mất thiết bị (khôi phục quyền truy cập). Gọi trong transaction; người gọi gửi email cho khách.
+ * Chỉ Trưởng nhóm CSKH làm (account.recovery) sau khi đối chiếu danh tính với hồ sơ KYC — xem support/desk.ts.
+ */
+export async function resetUser2fa(tx: Queryable, staff: AdminCtx, user: { id: string; email: string }, detail: Record<string, unknown>) {
+  await tx.many(
+    `UPDATE users SET totp_secret = NULL, totp_pending_secret = NULL, totp_pending_at = NULL, totp_enabled_at = NULL, totp_last_step = NULL
+     WHERE id = $1`,
+    [user.id],
+  );
+  await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [user.id]);
+  await audit(tx, staff, 'USER_RESET_2FA', 'user', user.id, { email: user.email, ...detail });
+}
+
+/**
+ * Xoá tài khoản khách theo yêu cầu = ẨN DANH thông tin cá nhân, GIỮ lệnh, khớp, sổ cái, đơn P2P, tin nhắn hỗ trợ
+ * (nghĩa vụ lưu trữ phục vụ đối soát, phòng chống rửa tiền, giải quyết khiếu nại). Thu hồi mọi phiên đăng nhập cũ.
+ */
+export async function anonymizeUser(
+  deps: Pick<AdminDeps, 'db' | 'io' | 'engine' | 'store'>,
+  staff: AdminCtx,
+  user: { id: string; email: string; full_name: string },
+  detail: Record<string, unknown> = {},
+) {
+  const { db, io, engine, store } = deps;
+  await engine.cancelAllForUser(user.id, 'Tài khoản bị xoá', { actor: staff.email });
+  io.in(`user:${user.id}`).disconnectSockets(true);
+  const deletedAt = new Date();
+  await db.tx(async (tx) => {
+    await tx.many(
+      `UPDATE users SET email = $2, full_name = 'Người dùng đã xoá', display_name = NULL, show_on_leaderboard = false, kyc_name = NULL,
+              password_hash = $3, totp_secret = NULL, totp_pending_secret = NULL, totp_enabled_at = NULL,
+              status = 'DELETED', deleted_at = now(), locked_reason = NULL, password_changed_at = $4
+       WHERE id = $1`,
+      [user.id, `deleted-${user.id}@deleted.invalid`, await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10), deletedAt],
+    );
+    await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [user.id]);
+    await tx.many(`UPDATE price_alerts SET status = 'CANCELLED' WHERE user_id = $1 AND status = 'ACTIVE'`, [user.id]);
+    await tx.many(`UPDATE bank_accounts SET holder_name = 'NGUOI DUNG DA XOA' WHERE user_id = $1`, [user.id]);
+    await audit(tx, staff, 'USER_DELETE', 'user', user.id, { email: user.email, fullName: user.full_name, ...detail });
+  });
+  markPasswordChanged(user.id, deletedAt);
+  store.locked.delete(user.id);
 }

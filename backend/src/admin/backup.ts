@@ -41,6 +41,7 @@ export const BACKUP_TABLES: TableSpec[] = [
   { name: 'kyc_applications', sql: 'SELECT * FROM kyc_applications ORDER BY id', replace: true },
   { name: 'aml_alerts', sql: 'SELECT * FROM aml_alerts ORDER BY id', replace: true },
   { name: 'aml_reports', sql: 'SELECT * FROM aml_reports ORDER BY id', replace: true },
+  { name: 'privacy_requests', sql: 'SELECT * FROM privacy_requests ORDER BY id', replace: true },
   { name: 'recovery_codes', sql: 'SELECT * FROM recovery_codes ORDER BY id', replace: true },
   { name: 'watchlist_lists', sql: 'SELECT * FROM watchlist_lists ORDER BY id', replace: true },
   { name: 'watchlists', sql: 'SELECT * FROM watchlists', replace: true },

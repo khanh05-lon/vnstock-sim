@@ -33,6 +33,7 @@ const mailer: Mailer = { kind: 'smtp', send: async () => undefined };
 type U = { id: string; email: string; token: string };
 let comp1: U;
 let comp2: U;
+let mlro: U;
 let auditor: U;
 let risk: U;
 let mer: U;
@@ -83,6 +84,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   comp1 = await makeUser('comp1@kyc.test', 'COMPLIANCE');
   comp2 = await makeUser('comp2@kyc.test', 'COMPLIANCE');
+  mlro = await makeUser('mlro@kyc.test', 'MLRO');
   auditor = await makeUser('audit@kyc.test', 'AUDITOR');
   risk = await makeUser('risk@kyc.test', 'RISK');
   mer = await makeUser('mer@kyc.test', 'USER', 'Thương nhân Một');
@@ -217,13 +219,20 @@ describe('Giám sát AML', () => {
       alertIds: [alert.id],
       narrative: 'Khách mới xác minh cấp 1 mua 150 triệu đồng USDT trong ngày đầu tiên, không phù hợp nghề nghiệp khai báo.',
     });
-    expect(r.body.ok).toBe(true);
-    expect((await call<AmlAlertDTO[]>('GET', `/admin/compliance/alerts?status=REPORTED`, comp1.token)).body[0]).toMatchObject({ id: alert.id, reportId: r.body.id });
+    // Chuyên viên soạn → đề xuất STR_FILE; chuyên viên khác không duyệt được, MLRO duyệt mới ghi sổ
+    expect(r.status).toBe(202);
+    const reqId = r.body.request.id;
+    expect((await call<AmlAlertDTO[]>('GET', `/admin/compliance/alerts?userId=${alice.id}`, comp1.token)).body.find((a) => a.id === alert.id)!.status).toBe('REVIEWING');
+    expect((await call('POST', `/admin/approvals/${reqId}/approve`, comp2.token, {})).status).toBe(403);
+    const ok = await call('POST', `/admin/approvals/${reqId}/approve`, mlro.token, {});
+    expect(ok.body.status).toBe('APPROVED');
+    const reportId = ok.body.result.reportId;
+    expect((await call<AmlAlertDTO[]>('GET', `/admin/compliance/alerts?status=REPORTED`, comp1.token)).body[0]).toMatchObject({ id: alert.id, reportId });
     await expect(db.many('UPDATE aml_reports SET narrative = $1', ['sửa'])).rejects.toThrow(/chỉ được ghi thêm/);
     expect((await call('GET', '/admin/compliance/reports', auditor.token)).body).toHaveLength(1);
   });
 
-  it('hạn chế tài khoản chặn Spot + P2P, đóng quảng cáo; gỡ hạn chế cần người Tuân thủ thứ hai', async () => {
+  it('hạn chế tài khoản chặn Spot + P2P, đóng quảng cáo; gỡ hạn chế cần MLRO duyệt', async () => {
     expect((await call('POST', `/admin/compliance/users/${mer.id}/restrict`, comp1.token, { reason: 'Nghi tài khoản trung gian chuyển tiền' })).body.ok).toBe(true);
     expect((await p2pAdStatus(sellAd.id))).toBe('CLOSED');
     const spot = await call('POST', '/orders', mer.token, { symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quoteOrderQty: '100' });
@@ -235,9 +244,10 @@ describe('Giám sát AML', () => {
     const req = await call('POST', `/admin/compliance/users/${mer.id}/unrestrict`, comp1.token, { reason: 'Đã xác minh nguồn tiền hợp lệ' });
     expect(req.status).toBe(202);
     const id = req.body.request.id;
-    expect((await call('POST', `/admin/approvals/${id}/approve`, comp1.token, {})).body.error.code).toBe('SELF');
+    expect((await call('POST', `/admin/approvals/${id}/approve`, comp1.token, {})).status).toBe(403);
     expect((await call('POST', `/admin/approvals/${id}/approve`, risk.token, {})).status).toBe(403);
-    expect((await call('POST', `/admin/approvals/${id}/approve`, comp2.token, {})).body.status).toBe('APPROVED');
+    expect((await call('POST', `/admin/approvals/${id}/approve`, comp2.token, {})).status).toBe(403);
+    expect((await call('POST', `/admin/approvals/${id}/approve`, mlro.token, {})).body.status).toBe('APPROVED');
     const after = await call('POST', '/orders', mer.token, { symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quoteOrderQty: '100' });
     expect(after.body.error?.code).not.toBe('ACCOUNT_RESTRICTED');
   });

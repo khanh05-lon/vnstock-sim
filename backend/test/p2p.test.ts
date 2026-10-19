@@ -33,6 +33,7 @@ const mailer: Mailer = { kind: 'smtp', send: async () => undefined };
 
 type U = { id: string; email: string; token: string };
 let risk: U;
+let p2pOps: U;
 let agent: U;
 let ops: U;
 let mer: U;
@@ -104,6 +105,7 @@ beforeAll(async () => {
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   risk = await makeUser('risk@p2p.test', 'RISK');
+  p2pOps = await makeUser('p2pops@p2p.test', 'P2P_OPS');
   agent = await makeUser('cskh@p2p.test', 'SUPPORT');
   ops = await makeUser('ops@p2p.test', 'MARKET_OPS');
   mer = await makeUser('merchant@p2p.test');
@@ -156,12 +158,13 @@ describe('Thương nhân P2P', () => {
     expect(ad.status).toBe(403);
   });
 
-  it('chỉ Rủi ro & giám sát duyệt được thương nhân; nhân viên không giao dịch P2P', async () => {
+  it('chỉ Vận hành P2P duyệt được thương nhân; nhân viên không giao dịch P2P', async () => {
     expect((await call('POST', `/admin/p2p/merchants/${mer.id}/approve`, agent.token, {})).status).toBe(403);
     expect((await call('POST', `/admin/p2p/merchants/${mer.id}/approve`, ops.token, {})).status).toBe(403);
-    const list = await call('GET', '/admin/p2p/merchants?status=PENDING', risk.token);
+    expect((await call('POST', `/admin/p2p/merchants/${mer.id}/approve`, risk.token, {})).status).toBe(403);
+    const list = await call('GET', '/admin/p2p/merchants?status=PENDING', p2pOps.token);
     expect(list.body.map((m: { email: string }) => m.email)).toContain(mer.email);
-    expect((await call('POST', `/admin/p2p/merchants/${mer.id}/approve`, risk.token, { note: 'Đủ điều kiện' })).status).toBe(200);
+    expect((await call('POST', `/admin/p2p/merchants/${mer.id}/approve`, p2pOps.token, { note: 'Đủ điều kiện' })).status).toBe(200);
     expect((await call('GET', '/p2p/merchant', mer.token)).body.status).toBe('ACTIVE');
     const audit = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM admin_audit_log WHERE action = 'P2P_MERCHANT_APPROVE'`);
     expect(audit!.n).toBe(1);
@@ -255,15 +258,15 @@ describe('Thương nhân P2P', () => {
     const ap = await call<P2POrderDTO>('POST', `/p2p/orders/${id}/appeal`, mer.token, { reason: 'NOT_RECEIVED', description: 'Chưa thấy tiền về tài khoản' });
     expect(ap.body).toMatchObject({ status: 'APPEAL', appeal: { by: 'SELLER', reason: 'NOT_RECEIVED' } });
 
-    const queue = await call<P2POrderDTO[]>('GET', '/support-desk/p2p/appeals', agent.token);
+    const queue = await call<P2POrderDTO[]>('GET', '/support-desk/p2p/appeals', p2pOps.token);
     expect(queue.body.map((x) => x.id)).toContain(id);
-    const detail = await call('GET', `/support-desk/p2p/orders/${id}`, agent.token);
+    const detail = await call('GET', `/support-desk/p2p/orders/${id}`, p2pOps.token);
     expect(detail.body.transfers).toEqual([]);
     // Người mua có lỗi nhưng không phải thương nhân → không có cọc để trừ
-    const pen = await call('POST', `/support-desk/p2p/orders/${id}/resolve`, agent.token, { outcome: 'RETURN', note: 'Không có giao dịch chuyển khoản', penaltyUsdt: '10' });
+    const pen = await call('POST', `/support-desk/p2p/orders/${id}/resolve`, p2pOps.token, { outcome: 'RETURN', note: 'Không có giao dịch chuyển khoản', penaltyUsdt: '10' });
     expect(pen.body.error.code).toBe('PENALTY');
-    const r = await call<P2POrderDTO>('POST', `/support-desk/p2p/orders/${id}/resolve`, agent.token, { outcome: 'RETURN', note: 'Không có giao dịch chuyển khoản' });
-    expect(r.body).toMatchObject({ status: 'CANCELLED', cancelledBy: 'STAFF', appeal: { resolution: 'RETURNED', resolvedBy: agent.email } });
+    const r = await call<P2POrderDTO>('POST', `/support-desk/p2p/orders/${id}/resolve`, p2pOps.token, { outcome: 'RETURN', note: 'Không có giao dịch chuyển khoản' });
+    expect(r.body).toMatchObject({ status: 'CANCELLED', cancelledBy: 'STAFF', appeal: { resolution: 'RETURNED', resolvedBy: p2pOps.email } });
     expect(await bal(carol.id)).toEqual({ free: '10000', locked: '0' });
     expect((await p2p.adById(sellAd.id))!.availableQty).toBe('900');
   });
@@ -274,15 +277,15 @@ describe('Thương nhân P2P', () => {
     await call('POST', '/bank/transfers', carol.token, { toAccountNo: o.body.paymentMethod.accountNo, amount: '1315000', memo: `P2P ${id}` });
     await call('POST', `/p2p/orders/${id}/paid`, carol.token);
     await call('POST', `/p2p/orders/${id}/appeal`, carol.token, { reason: 'NOT_RELEASED', description: 'Đã chuyển khoản đúng số tiền nhưng chưa nhận coin' });
-    const detail = await call('GET', `/support-desk/p2p/orders/${id}`, agent.token);
+    const detail = await call('GET', `/support-desk/p2p/orders/${id}`, p2pOps.token);
     expect(detail.body.transfers).toMatchObject([{ direction: 'OUT', amount: '1315000', memo: `P2P ${id}` }]);
-    const r = await call<P2POrderDTO>('POST', `/support-desk/p2p/orders/${id}/resolve`, agent.token, {
+    const r = await call<P2POrderDTO>('POST', `/support-desk/p2p/orders/${id}/resolve`, p2pOps.token, {
       outcome: 'RELEASE', note: 'Sao kê có lệnh chuyển đúng số tiền', penaltyUsdt: '50',
     });
     expect(r.body).toMatchObject({ status: 'COMPLETED', appeal: { resolution: 'RELEASED' } });
     expect(await bal(carol.id)).toEqual({ free: '10100', locked: '0' });
     expect((await call('GET', '/p2p/merchant', mer.token)).body.depositUsdt).toBe('1950');
-    const viewed = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM admin_audit_log WHERE action = 'USER_VIEW' AND admin_email = $1`, [agent.email]);
+    const viewed = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM admin_audit_log WHERE action = 'USER_VIEW' AND admin_email = $1`, [p2pOps.email]);
     expect(viewed!.n).toBeGreaterThan(0);
   });
 
@@ -320,10 +323,10 @@ describe('Thương nhân P2P', () => {
   });
 
   it('tạm ngừng thương nhân đưa quảng cáo offline; đối soát sạch sau mọi kịch bản', async () => {
-    expect((await call('POST', `/admin/p2p/merchants/${mer.id}/suspend`, risk.token, { reason: 'Kiểm tra khiếu nại' })).body.adsOffline).toBe(2);
+    expect((await call('POST', `/admin/p2p/merchants/${mer.id}/suspend`, p2pOps.token, { reason: 'Kiểm tra khiếu nại' })).body.adsOffline).toBe(2);
     expect((await call<P2PAdDTO[]>('GET', '/p2p/ads?side=BUY&asset=USDT')).body).toEqual([]);
     expect((await call('POST', `/p2p/my-ads/${sellAd.id}/online`, mer.token, { online: true })).status).toBe(403);
-    await call('POST', `/admin/p2p/merchants/${mer.id}/restore`, risk.token, {});
+    await call('POST', `/admin/p2p/merchants/${mer.id}/restore`, p2pOps.token, {});
     expect((await call('POST', `/p2p/my-ads/${sellAd.id}/online`, mer.token, { online: true })).body.status).toBe('ONLINE');
 
     const run = await runReconciliation(db, 'test');

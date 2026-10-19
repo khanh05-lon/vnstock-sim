@@ -27,6 +27,8 @@ export interface AccountDTO {
   /** Vốn đã góp (vốn ban đầu + điều chỉnh của quản trị viên) — mốc tính lãi/lỗ */
   contributedUsdt: Dec;
   payFeeWithBnb: boolean;
+  /** Cấp VIP phí (0–9) — phí maker / taker bên dưới là theo cấp này */
+  vipLevel: number;
   makerFee: Dec;
   takerFee: Dec;
 }
@@ -138,20 +140,24 @@ export const preferencesSchema = z
   .strict();
 
 /** Vai trò nhân viên — quyền chi tiết của từng vai trò ở permissions.ts */
-export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'COMPLIANCE' | 'AUDITOR' | 'SUPPORT';
+export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'P2P_OPS' | 'COMPLIANCE' | 'MLRO' | 'DPO' | 'AUDITOR' | 'SUPPORT_LEAD' | 'SUPPORT';
 export type UserRole = 'USER' | StaffRole;
 
-export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'COMPLIANCE', 'AUDITOR', 'SUPPORT'];
+export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'P2P_OPS', 'COMPLIANCE', 'MLRO', 'DPO', 'AUDITOR', 'SUPPORT_LEAD', 'SUPPORT'];
 export const USER_ROLES: readonly UserRole[] = ['USER', ...STAFF_ROLES];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   USER: 'Nhà đầu tư',
   SUPPORT: 'Nhân viên CSKH',
+  SUPPORT_LEAD: 'Trưởng nhóm CSKH',
   ADMIN: 'Quản trị hệ thống',
   MARKET_OPS: 'Vận hành thị trường',
   FINANCE: 'Tài chính',
   RISK: 'Rủi ro & giám sát',
   COMPLIANCE: 'Tuân thủ (KYC/AML)',
+  MLRO: 'Trưởng Tuân thủ (MLRO)',
+  P2P_OPS: 'Vận hành P2P',
+  DPO: 'Bảo vệ dữ liệu cá nhân (DPO)',
   AUDITOR: 'Kiểm toán (chỉ đọc)',
 };
 

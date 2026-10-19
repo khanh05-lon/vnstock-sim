@@ -1,4 +1,4 @@
-import { Big, RULES, str, type AccountDTO, type BalanceDTO, type Dec } from '@vss/shared';
+import { Big, RULES, feesFor, str, type AccountDTO, type BalanceDTO, type Dec } from '@vss/shared';
 import type { Queryable } from '../db';
 import type { AccountRow, BalanceRow } from './dto';
 
@@ -41,6 +41,9 @@ export function toBalanceDTO(b: BalanceRow, pricer: UsdtPricer): BalanceDTO {
 
 /** Ví của 1 người dùng: số dư từng tài sản (sắp theo giá trị), tổng ước tính USDT / BTC */
 export async function accountView(db: Queryable, pricer: UsdtPricer, userId: string): Promise<AccountDTO> {
+  const vip = await db.one<{ vip_level: number }>('SELECT vip_level FROM users WHERE id = $1', [userId]);
+  const vipLevel = Number(vip?.vip_level ?? 0);
+  const fee = feesFor(vipLevel);
   const acct = await db.one<AccountRow>('SELECT * FROM accounts WHERE user_id = $1', [userId]);
   const rows = await db.many<BalanceRow>('SELECT * FROM balances WHERE user_id = $1', [userId]);
   const balances = rows
@@ -56,7 +59,8 @@ export async function accountView(db: Queryable, pricer: UsdtPricer, userId: str
     initialUsdt: str(acct?.initial_usdt ?? RULES.initialUsdt),
     contributedUsdt: str(acct?.contributed_usdt ?? RULES.initialUsdt),
     payFeeWithBnb: !!acct?.pay_fee_with_bnb,
-    makerFee: RULES.makerFee,
-    takerFee: RULES.takerFee,
+    vipLevel,
+    makerFee: fee.maker,
+    takerFee: fee.taker,
   };
 }

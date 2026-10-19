@@ -2,12 +2,14 @@ import {
   RULES,
   applyAmlRules,
   applyP2PRules,
+  applyVipRules,
   applyRules,
   type AmlRulesPatch,
   type EmergencyHalt,
   type P2PRulesPatch,
   type RulesPatch,
   type TradingRules,
+  type VipRulesPatch,
 } from '@vss/shared';
 import type { Queryable } from '../db';
 import type { SpotEngine } from '../trading/engine';
@@ -39,6 +41,7 @@ const KEY_ANNOUNCEMENT = 'admin.announcement';
 const KEY_RULES = 'admin.rules';
 const KEY_P2P_RULES = 'admin.p2pRules';
 const KEY_AML_RULES = 'admin.amlRules';
+const KEY_VIP_RULES = 'admin.vipRules';
 
 /**
  * Cấu hình vận hành do quản trị viên đặt, lưu trong bảng market_meta (key → JSON)
@@ -54,6 +57,8 @@ export class AdminStore {
   p2pRulesPatch: P2PRulesPatch = {};
   /** Ngưỡng cảnh báo AML bộ phận Tuân thủ đã chỉnh */
   amlRulesPatch: AmlRulesPatch = {};
+  /** Hệ số ngưỡng cấp VIP Vận hành thị trường đã chỉnh */
+  vipRulesPatch: VipRulesPatch = {};
   /** Lý do bảo trì (chỉ trong bộ nhớ — khởi động lại là hết) */
   maintenance: string | null = null;
   /** Dừng khẩn toàn sàn do 1 người, chưa có người thứ hai xác nhận (null = không có / đã xác nhận) */
@@ -80,6 +85,8 @@ export class AdminStore {
     applyP2PRules(this.p2pRulesPatch);
     this.amlRulesPatch = (get(KEY_AML_RULES) as AmlRulesPatch | undefined) ?? {};
     applyAmlRules(this.amlRulesPatch);
+    this.vipRulesPatch = (get(KEY_VIP_RULES) as VipRulesPatch | undefined) ?? {};
+    applyVipRules(this.vipRulesPatch);
 
     this.locked.clear();
     for (const r of await this.db.many<{ id: string }>(`SELECT id FROM users WHERE status = 'LOCKED'`)) this.locked.add(r.id);
@@ -145,5 +152,13 @@ export class AdminStore {
     applyAmlRules(next);
     this.amlRulesPatch = next;
     await this.save(KEY_AML_RULES, next);
+  }
+
+  /** Chỉnh hệ số ngưỡng cấp VIP (null = khôi phục mặc định) */
+  async setVipRules(patch: VipRulesPatch | null) {
+    const next = patch == null ? {} : { ...this.vipRulesPatch, ...patch };
+    applyVipRules(next);
+    this.vipRulesPatch = next;
+    await this.save(KEY_VIP_RULES, next);
   }
 }

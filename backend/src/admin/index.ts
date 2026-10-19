@@ -62,6 +62,10 @@ async function seedDevStaff(db: Database) {
     ['compliance2', 'COMPLIANCE', 'Tuân thủ KYC/AML 2'],
     ['audit', 'AUDITOR', 'Kiểm toán'],
     ['cskh', 'SUPPORT', 'Nhân viên CSKH'],
+    ['cskhlead', 'SUPPORT_LEAD', 'Trưởng nhóm CSKH'],
+    ['mlro', 'MLRO', 'Trưởng Tuân thủ (MLRO)'],
+    ['p2p', 'P2P_OPS', 'Vận hành P2P'],
+    ['dpo', 'DPO', 'Bảo vệ dữ liệu cá nhân'],
   ];
   const hash = await bcrypt.hash(password, 10);
   const created: string[] = [];

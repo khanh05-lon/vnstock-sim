@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {
   Big,
   RULES,
+  feesFor,
   floorStep,
   isAlgoType,
   stopTriggered,
@@ -26,6 +27,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import type { BookFill } from '../market/marketService';
 import { grantInitialCapital } from '../seed/seed';
+import { vipLevelOf } from './vip';
 import type { Notifier } from '../socket';
 import { toFillDTO, toOrderDTO, toOrderListDTO, type AccountRow, type FillRow, type OrderListRow, type OrderRow } from './dto';
 import { SYSTEM_ACTOR, recordOrderEvents, userActor, type OrderActor } from './orderEvents';
@@ -163,8 +165,10 @@ export class SpotEngine {
 
     const out = await this.db.tx(async (tx) => {
       await lockFunds(tx, userId, lockAsset, lockAmount);
+      // Phí chốt theo cấp VIP hiện tại của người đặt
+      const fee = feesFor(await vipLevelOf(tx, userId));
       const list = await tx.one<OrderListRow>('INSERT INTO order_lists (user_id, symbol, side) VALUES ($1,$2,$3) RETURNING *', [userId, info.symbol, side]);
-      const common = [userId, info.symbol, side, quantity, RULES.makerFee, RULES.takerFee, lockAsset, list!.id] as const;
+      const common = [userId, info.symbol, side, quantity, fee.maker, fee.taker, lockAsset, list!.id] as const;
       const limitLeg = await tx.one<OrderRow>(
         `INSERT INTO orders (client_order_id, user_id, symbol, side, type, time_in_force, price, stop_price, orig_qty, status, is_working,
                              maker_fee, taker_fee, locked_asset, locked_amount, order_list_id)
@@ -206,6 +210,8 @@ export class SpotEngine {
     }
 
     await lockFunds(tx, userId, lockAsset, lockAmount);
+    // Phí maker / taker chốt vào lệnh theo cấp VIP hiện tại (tính lại 00:00 UTC hằng ngày)
+    const fee = feesFor(await vipLevelOf(tx, userId));
     const row = (await tx.one<OrderRow>(
       `INSERT INTO orders (client_order_id, user_id, symbol, side, type, time_in_force, price, stop_price, orig_qty, quote_order_qty,
                            status, is_working, maker_fee, taker_fee, locked_asset, locked_amount)
@@ -222,8 +228,8 @@ export class SpotEngine {
         input.quantity ?? '0',
         input.quoteOrderQty ?? null,
         !algo,
-        RULES.makerFee,
-        RULES.takerFee,
+        fee.maker,
+        fee.taker,
         lockAsset,
         lockAmount,
       ],

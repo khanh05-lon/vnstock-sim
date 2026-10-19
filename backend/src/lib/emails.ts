@@ -260,3 +260,16 @@ export function kycResultEmail(name: string, level: 1 | 2, approved: boolean, re
     { label: 'Xem trạng thái xác minh', url: `${config.publicUrl}/xac-minh` },
   );
 }
+
+export function privacyResultEmail(name: string, approved: boolean, note?: string): EmailContent {
+  return layout(
+    approved ? `Tài khoản ${BRAND} của bạn đã được xoá` : `Yêu cầu xoá tài khoản ${BRAND} chưa được xử lý`,
+    hello(name),
+    approved
+      ? [
+          'Theo yêu cầu của bạn, thông tin cá nhân (email, họ tên, hồ sơ xác minh) đã được ẩn danh và tài khoản không còn đăng nhập được.',
+          'Dữ liệu giao dịch được giữ lại ở dạng ẩn danh theo nghĩa vụ lưu trữ (đối soát, phòng chống rửa tiền).',
+        ]
+      : ['Yêu cầu xoá tài khoản của bạn chưa được chấp thuận.', ...(note ? [`Lý do: ${note}`] : []), 'Liên hệ CSKH nếu cần hỗ trợ thêm.'],
+  );
+}

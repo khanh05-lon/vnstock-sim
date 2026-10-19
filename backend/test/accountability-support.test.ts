@@ -194,7 +194,10 @@ describe('Xoá người dùng = ẩn danh, giữ hồ sơ giao dịch', () => {
   it('xoá thông tin cá nhân nhưng giữ lệnh, sổ cái; không thao tác tiếp được', async () => {
     const dan = await makeUser('dan@example.test', 'USER');
     await call('POST', '/orders', dan.token, { symbol: BTC, side: 'BUY', type: 'LIMIT', timeInForce: 'GTC', price: '60000', quantity: '0.01' });
-    const r = await call('DELETE', `/admin/users/${dan.id}`, admin1.token, { confirmEmail: dan.email });
+    // Quản trị hệ thống (IT) không còn xoá tài khoản khách — việc của người phụ trách dữ liệu cá nhân (DPO)
+    expect((await call('DELETE', `/admin/users/${dan.id}`, admin1.token, { confirmEmail: dan.email })).status).toBe(403);
+    const dpo = await makeUser('dpo@example.test', 'DPO');
+    const r = await call('DELETE', `/admin/users/${dan.id}`, dpo.token, { confirmEmail: dan.email });
     expect(r.body).toMatchObject({ ok: true, anonymized: true });
     const u = await db.one<{ email: string; full_name: string; status: string }>('SELECT email, full_name, status FROM users WHERE id = $1', [dan.id]);
     expect(u).toMatchObject({ status: 'DELETED', full_name: 'Người dùng đã xoá' });

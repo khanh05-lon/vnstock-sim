@@ -3,13 +3,12 @@ import path from 'node:path';
 import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import crypto from 'node:crypto';
 import { ADJUST_DAILY_TOTAL_MULTIPLIER, Big, EMERGENCY_HALT_MIN, ROLE_LABEL, ROLE_PERMISSIONS, RULES, USER_ROLES, registerSchema, type UserRole } from '@vss/shared';
 import { config } from '../config';
-import { markEmailVerified, markPasswordChanged } from '../lib/auth';
+import { markEmailVerified } from '../lib/auth';
 import { listAuthEvents } from '../lib/authEvents';
 import { listOrderEvents } from '../trading/orderEvents';
-import { accountLockedEmail, emergencyHaltEmail, roleChangedEmail, twoFactorChangedEmail } from '../lib/emails';
+import { accountLockedEmail, emergencyHaltEmail, roleChangedEmail } from '../lib/emails';
 import { AppError, ah, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { utcDay } from '../portfolio/nav';
@@ -24,9 +23,11 @@ import { mountFraud } from './fraud';
 import { mountReconcile } from './reconcile';
 import { mountP2PAdmin } from './p2p';
 import { mountCompliance } from './compliance';
+import { mountPrivacyAdmin } from './privacy';
+import { mountVipAdmin } from './vip';
 import { notifyStaff } from './notify';
-import { assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
-import { applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
+import { assertCan, assertRoutesGuarded, assetParam, audit, need, reasonSchema, uuid, type AdminCtx, type AdminDeps, type AdminRequest } from './common';
+import { anonymizeUser, applyBalanceAdjust, auditView, createAdjustRequest, lockUser, staffGuard, toAdjustRequestDTO, type AdjustRequestRow } from './staff';
 import { metrics } from '../ops/metrics';
 import { recentLogs } from './logBuffer';
 import { mountMarketAdmin } from './marketAdmin';
@@ -120,6 +121,8 @@ export function adminRoutes(deps: AdminDeps) {
   mountReconcile(r, deps);
   mountP2PAdmin(r, deps);
   mountCompliance(r, deps, approvals);
+  mountPrivacyAdmin(r, deps);
+  mountVipAdmin(r, deps);
 
   const onlineCount = async () => {
     const sockets = await io.fetchSockets();
@@ -387,29 +390,6 @@ export function adminRoutes(deps: AdminDeps) {
 
   /** Người dùng mất điện thoại và hết mã khôi phục: quản trị viên tắt 2FA sau khi xác minh danh tính */
   r.post(
-    '/users/:id/reset-2fa',
-    need('users.manage'),
-    ah(async (req, res) => {
-      const { admin } = req as AdminRequest;
-      const id = uuid.parse(req.params.id);
-      const { reason } = z.object({ reason: reasonSchema }).parse(req.body);
-      const u = await loadTarget(id);
-      if (!u.totp_enabled_at) throw badRequest('MFA_NOT_ENABLED', 'Tài khoản chưa bật xác thực 2 lớp');
-      await db.tx(async (tx) => {
-        await tx.many(
-          `UPDATE users SET totp_secret = NULL, totp_pending_secret = NULL, totp_pending_at = NULL, totp_enabled_at = NULL, totp_last_step = NULL
-           WHERE id = $1`,
-          [id],
-        );
-        await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [id]);
-        await audit(tx, admin, 'USER_RESET_2FA', 'user', id, { email: u.email, reason });
-      });
-      sendLater(mailer, u.email, twoFactorChangedEmail(u.full_name, false, 'admin'), { userId: id });
-      res.json({ ok: true });
-    }),
-  );
-
-  r.post(
     '/users/:id/lock',
     need('users.lock'),
     ah(async (req, res) => {
@@ -592,9 +572,13 @@ export function adminRoutes(deps: AdminDeps) {
     }),
   );
 
+  /**
+   * Xoá tài khoản khách: ẩn danh (privacy.manage — DPO, thường qua yêu cầu của chính khách ở mục Dữ liệu cá nhân);
+   * xoá hẳn tài khoản thử (purge, chỉ ngoài production) do Quản trị hệ thống làm (users.manage).
+   */
   r.delete(
     '/users/:id',
-    need('users.manage'),
+    need('admin.view'),
     ah(async (req, res) => {
       const { admin } = req as AdminRequest;
       const id = uuid.parse(req.params.id);
@@ -606,32 +590,21 @@ export function adminRoutes(deps: AdminDeps) {
       if (u.role !== 'USER') throw badRequest('IS_STAFF', 'Hãy thu quyền nhân viên trước khi xoá tài khoản này');
       if (confirmEmail !== u.email) throw badRequest('CONFIRM', 'Email xác nhận không khớp');
       if (purge && config.isProd) throw badRequest('PURGE', 'Môi trường thật không được xoá hẳn dữ liệu giao dịch — chỉ ẩn danh');
+      assertCan(admin, purge ? 'users.manage' : 'privacy.manage');
+      if (!purge) {
+        await anonymizeUser(deps, admin, u);
+        return void res.json({ ok: true, anonymized: true });
+      }
+      // Xoá hẳn: chỉ môi trường chạy thử (dọn tài khoản thử của khảo sát tải)
       await engine.cancelAllForUser(id, 'Tài khoản bị xoá', { actor: admin.email });
       io.in(`user:${id}`).disconnectSockets(true);
-      // Ẩn danh thì dòng users vẫn còn → phải thu hồi mọi phiên đăng nhập cũ (như đổi mật khẩu)
-      const deletedAt = new Date();
       await db.tx(async (tx) => {
-        if (purge) {
-          // Chỉ môi trường chạy thử (dọn tài khoản thử của khảo sát tải)
-          await tx.exec(`SET LOCAL vss.purge = 'on'`);
-          await tx.many('DELETE FROM users WHERE id = $1', [id]);
-        } else {
-          // Xoá thông tin cá nhân nhưng GIỮ lệnh, khớp, sổ cái, tin nhắn hỗ trợ để đối soát / giải quyết khiếu nại
-          await tx.many(
-            `UPDATE users SET email = $2, full_name = 'Người dùng đã xoá', display_name = NULL, show_on_leaderboard = false,
-                    password_hash = $3, totp_secret = NULL, totp_pending_secret = NULL, totp_enabled_at = NULL,
-                    status = 'DELETED', deleted_at = now(), locked_reason = NULL, password_changed_at = $4
-             WHERE id = $1`,
-            [id, `deleted-${id}@deleted.invalid`, await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10), deletedAt],
-          );
-          await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [id]);
-          await tx.many(`UPDATE price_alerts SET status = 'CANCELLED' WHERE user_id = $1 AND status = 'ACTIVE'`, [id]);
-        }
-        await audit(tx, admin, purge ? 'USER_PURGE' : 'USER_DELETE', 'user', id, { email: u.email, fullName: u.full_name });
+        await tx.exec(`SET LOCAL vss.purge = 'on'`);
+        await tx.many('DELETE FROM users WHERE id = $1', [id]);
+        await audit(tx, admin, 'USER_PURGE', 'user', id, { email: u.email, fullName: u.full_name });
       });
-      if (!purge) markPasswordChanged(id, deletedAt);
       store.locked.delete(id);
-      res.json({ ok: true, anonymized: !purge });
+      res.json({ ok: true, anonymized: false });
     }),
   );
 

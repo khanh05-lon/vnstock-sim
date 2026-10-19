@@ -50,7 +50,14 @@ describe('Ma trận quyền', () => {
     expect(STAFF_ROLES.filter((r) => can(r, 'finance.adjust'))).toEqual(['FINANCE']);
     expect(STAFF_ROLES.filter((r) => can(r, 'staff.manage'))).toEqual(['ADMIN']);
     expect(rolesWith('market.approve').sort()).toEqual(['MARKET_OPS', 'RISK']);
-    expect(rolesWith('support.desk').sort()).toEqual(['ADMIN', 'RISK', 'SUPPORT']);
+    expect(rolesWith('support.desk').sort()).toEqual(['P2P_OPS', 'RISK', 'SUPPORT', 'SUPPORT_LEAD']);
+    // Quản trị hệ thống (IT) không làm nghiệp vụ khách hàng
+    for (const p of ['support.desk', 'support.lead', 'account.recovery', 'privacy.manage', 'p2p.appeal', 'kyc.review'] as Permission[]) expect(can('ADMIN', p)).toBe(false);
+    expect(rolesWith('support.lead')).toEqual(['SUPPORT_LEAD']);
+    expect(rolesWith('account.recovery')).toEqual(['SUPPORT_LEAD']);
+    expect(rolesWith('aml.report')).toEqual(['MLRO']);
+    expect(rolesWith('privacy.manage')).toEqual(['DPO']);
+    expect(rolesWith('p2p.review')).toEqual(['P2P_OPS']);
     expect(ROLE_PERMISSIONS.USER).toEqual([]);
     expect(can('SUPPORT', 'admin.view')).toBe(false);
   });

@@ -9,6 +9,7 @@ import { accountView } from '../trading/account';
 import { toFillDTO, toLedgerDTO, toOrderDTO, type FillRow, type LedgerRow, type OrderRow } from '../trading/dto';
 import { listOrderEvents } from '../trading/orderEvents';
 import { mountP2PDesk } from '../p2p/deskRoutes';
+import { mountSupportLead } from './lead';
 import type { P2PService } from '../p2p/service';
 import type { SupportService } from './service';
 
@@ -19,7 +20,7 @@ const idOf = (raw: string | undefined, what = 'yêu cầu') => {
 };
 
 /**
- * Khu vực nhân viên CSKH (/api/support-desk): quản trị viên và nhân viên CSKH.
+ * Khu vực nhân viên CSKH (/api/support-desk): nhân viên CSKH, Trưởng nhóm CSKH, Vận hành P2P, Rủi ro.
  * Nhân viên chỉ xem được dữ liệu của khách THÔNG QUA yêu cầu hỗ trợ khách đã gửi (quyền tối thiểu),
  * mỗi lần xem được ghi nhật ký; mọi thao tác nghiệp vụ ghi nhật ký quản trị + tin nhắn hệ thống trong yêu cầu.
  */
@@ -124,7 +125,7 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
       const { assigneeId } = z.object({ assigneeId: uuid.optional() }).parse(req.body ?? {});
       let assignee = { id: staff.id, email: staff.email };
       if (assigneeId && assigneeId !== staff.id) {
-        if (!can(staff.role, 'support.lead')) throw badRequest('FORBIDDEN', 'Chỉ Quản trị hệ thống được giao yêu cầu cho nhân viên khác');
+        if (!can(staff.role, 'support.lead')) throw badRequest('FORBIDDEN', 'Chỉ Trưởng nhóm CSKH được giao yêu cầu cho nhân viên khác');
         const u = await db.one<{ id: string; email: string }>(`SELECT id, email FROM users WHERE id = $1 AND role = ANY($2::text[]) AND status = 'ACTIVE'`, [
           assigneeId,
           rolesWith('support.desk'),
@@ -220,6 +221,8 @@ export function deskRoutes(deps: Pick<AdminDeps, 'db' | 'io' | 'market' | 'engin
     }),
   );
 
+  // Trưởng nhóm CSKH: bồi hoàn nhỏ, khôi phục 2FA (đối chiếu KYC)
+  mountSupportLead(r, { db, io: deps.io, mailer: deps.mailer, support });
   // Khiếu nại đơn P2P (quyền p2p.appeal)
   if (deps.p2p) mountP2PDesk(r, { db, p2p: deps.p2p });
   return r;

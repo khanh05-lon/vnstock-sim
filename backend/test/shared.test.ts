@@ -208,10 +208,11 @@ describe('P2P: giá và hạn mức', () => {
     expect(placeP2POrderSchema.safeParse({ adId: 1, fiatAmount: '500000', qty: '1' }).success).toBe(false);
   });
 
-  it('quyền P2P: Rủi ro duyệt thương nhân, CSKH và Rủi ro xử lý khiếu nại', () => {
-    expect(can('RISK', 'p2p.review')).toBe(true);
-    expect(can('SUPPORT', 'p2p.review')).toBe(false);
-    expect(can('SUPPORT', 'p2p.appeal')).toBe(true);
+  it('quyền P2P: chỉ bộ phận Vận hành P2P duyệt thương nhân và xử lý khiếu nại', () => {
+    expect(can('P2P_OPS', 'p2p.review')).toBe(true);
+    expect(can('P2P_OPS', 'p2p.appeal')).toBe(true);
+    expect(can('RISK', 'p2p.review')).toBe(false);
+    expect(can('SUPPORT', 'p2p.appeal')).toBe(false);
     expect(can('ADMIN', 'p2p.appeal')).toBe(false);
   });
 });

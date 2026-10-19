@@ -13,3 +13,5 @@ export * from './priceControl';
 export * from './permissions';
 export * from './p2p';
 export * from './kyc';
+export * from './vip';
+export * from './privacy';
