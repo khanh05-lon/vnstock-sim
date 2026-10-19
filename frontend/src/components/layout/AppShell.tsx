@@ -111,12 +111,28 @@ function VerifyEmailBanner() {
   );
 }
 
+/** Tài khoản bị bộ phận Tuân thủ hạn chế (chỉ câu chung, không nêu lý do — nguyên tắc không tiết lộ của AML) */
+function RestrictedBanner() {
+  const restricted = useAuth((s) => !!s.user?.restricted);
+  if (!restricted) return null;
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-down/30 bg-down/10 px-4 py-2 text-[13px] text-down">
+      <OctagonAlert size={16} className="shrink-0" />
+      <span>Tài khoản đang bị hạn chế giao dịch: tạm thời không đặt được lệnh Spot và P2P mới. Lệnh đang mở và đơn P2P đang chạy vẫn xử lý bình thường.</span>
+      <Link to="/ho-tro" className="font-semibold underline-offset-2 hover:underline">
+        Liên hệ CSKH
+      </Link>
+    </div>
+  );
+}
+
 export function AppShell() {
   return (
     <div className="flex h-full flex-col">
       <Header />
       <SystemBanner />
       <VerifyEmailBanner />
+      <RestrictedBanner />
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Outlet />
       </main>

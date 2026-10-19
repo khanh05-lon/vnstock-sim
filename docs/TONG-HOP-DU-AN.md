@@ -69,6 +69,7 @@ Monorepo dùng npm workspaces:
 | **240** | Duyệt 2 người cho đổi vai trò (ROLE_SET) và đặt lại tài khoản (ACCOUNT_RESET) |
 | **250** | MARKET_RESUME, `users.leaderboard_banned_at`, bảng `reconciliation_runs` |
 | **260** | Chợ P2P + ngân hàng giả lập: `bank_accounts`, `bank_transfers`, `p2p_merchants`, `p2p_payment_methods`, `p2p_ads`, `p2p_orders`, `p2p_messages`; ledger loại `P2P` |
+| **270** | KYC + Tuân thủ: vai trò COMPLIANCE, `users.kyc_level` / `kyc_name` / `aml_restricted_*`, `kyc_applications`, `aml_alerts`, `aml_reports` (chỉ ghi thêm), đề xuất AML_UNFREEZE |
 
 ### Các trang web
 
@@ -83,6 +84,7 @@ Monorepo dùng npm workspaces:
 | `/xep-hang` | Bảng xếp hạng |
 | `/p2p`, `/p2p/don`, `/p2p/don/:id` | Chợ P2P, đơn P2P của tôi, chi tiết đơn (chat, chuyển khoản, nhả coin, khiếu nại) |
 | `/p2p/thuong-nhan` | Trung tâm thương nhân: điều kiện, nộp đơn, quảng cáo, phương thức thanh toán |
+| `/xac-minh` | Xác minh danh tính (KYC) theo cấp |
 | `/ngan-hang` | Ngân hàng giả lập (VNĐ ảo ngoài sàn) |
 | `/ho-tro` | Chat CSKH cho khách |
 | `/ho-tro-khoa` | Hỗ trợ cho tài khoản bị khoá (vé hỗ trợ) |
@@ -257,6 +259,13 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 - Đối soát mở rộng: khoá số dư phải bằng đúng tổng khoá Spot + P2P; phí P2P; số dư ngân hàng = sao kê.
 - Tài liệu: [P2P.md](P2P.md).
 
+### Đợt 12: KYC theo cấp + vai trò Tuân thủ (KYC/AML)
+
+- Khách xác minh cấp 1 (danh tính) / cấp 2 (nâng cao) bằng khai báo giả lập; hồ sơ mã hoá, số giấy tờ chỉ giữ mã băm + 4 số cuối; dò trùng giấy tờ, PEP.
+- P2P cần KYC cấp 1, hạn mức ngày theo cấp (cả hai bên), thương nhân cần cấp 2, tên nhận tiền chính chủ theo KYC.
+- Vai trò mới **Tuân thủ (COMPLIANCE)**: duyệt KYC, cảnh báo AML tự động (đơn lớn, khối lượng 24h, chia nhỏ, mua vào bán ra nhanh, nhiều đối tác), lập STR (chỉ ghi thêm), hạn chế tài khoản (chặn Spot + P2P), gỡ cần người Tuân thủ thứ hai duyệt. Kiểm toán xem được cảnh báo / STR.
+- Tài liệu: [KYC-AML.md](KYC-AML.md).
+
 ## 5. Tab quản trị (`/admin`)
 
 | Tab | Quyền cần |
@@ -269,6 +278,7 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 | Giá thị trường (LIVE / MANUAL, kịch bản) | admin.view |
 | Cặp giao dịch (niêm yết, huỷ niêm yết, tạm ngừng cặp) | admin.view |
 | Thương nhân P2P (duyệt, tạm ngừng, trừ cọc; tham số P2P) | p2p.review / market.manage |
+| Tuân thủ (KYC/AML) | kyc.review / aml.view |
 | Giám sát gian lận | risk.monitor |
 | Tài chính & đối soát | finance.view |
 | Dữ liệu & sao lưu | system.view |
@@ -296,14 +306,14 @@ Nút thao tác trong từng tab ẩn / hiện theo quyền của người đang 
 
 | Bộ test | Kết quả |
 |---|---|
-| Backend trên PGlite | 132 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
+| Backend trên PGlite | 139 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
 | Backend trên PostgreSQL 16 | 111/111 (đợt 8, chưa chạy lại cho đợt 9) |
 | Frontend | 19/19 |
 | CI GitHub Actions (4 bước) | Đạt cho mọi lần đẩy |
 
 File test backend:
 - `spot-engine`, `market`, `auth`, `db`, `shared`, `watchlists-alerts`, `ops`;
-- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`.
+- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`, `kyc-aml`.
 
 ## 8. Còn thiếu / việc nên làm tiếp
 

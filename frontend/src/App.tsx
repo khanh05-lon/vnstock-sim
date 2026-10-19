@@ -32,6 +32,7 @@ const P2POrdersPage = lazy(() => import('./pages/P2POrdersPage'));
 const P2POrderPage = lazy(() => import('./pages/P2POrderPage'));
 const MerchantCenterPage = lazy(() => import('./pages/MerchantCenterPage'));
 const BankPage = lazy(() => import('./pages/BankPage'));
+const KycPage = lazy(() => import('./pages/KycPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -114,6 +115,14 @@ export function App() {
                 element={
                   <RequireAuth>
                     <MerchantCenterPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="xac-minh"
+                element={
+                  <RequireAuth>
+                    <KycPage />
                   </RequireAuth>
                 }
               />

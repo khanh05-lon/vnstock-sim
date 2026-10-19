@@ -18,12 +18,19 @@ Thương nhân **không phải vai trò nhân viên**: `users.role` vẫn là `U
 
 Điều kiện mặc định (Quản trị → Thương nhân P2P → Tham số P2P):
 
+- **xác minh danh tính (KYC) cấp 2** (xem [KYC-AML.md](KYC-AML.md));
 - đã xác thực email, đã bật 2FA;
 - tài khoản mở từ 3 ngày;
 - đã hoàn tất ít nhất 5 đơn P2P, tỷ lệ hoàn tất 30 ngày từ 90%;
 - đủ **2.000 USDT** khả dụng để đặt cọc.
 
 Nộp đơn ở `/p2p/thuong-nhan` thì tiền cọc bị khoá ngay. Rủi ro & giám sát duyệt thì thành `ACTIVE`, còn từ chối thì trả cọc. Thương nhân nghỉ (phải hết đơn dang dở) thì mọi quảng cáo đóng, cọc được mở khoá.
+
+## 2b. KYC và hạn mức
+
+- Giao dịch P2P (đặt đơn, thêm tài khoản nhận tiền) cần **KYC cấp 1**. Hạn mức / ngày UTC theo cấp: cấp 1 là 200.000.000 ₫, cấp 2 là 2.000.000.000 ₫. Hạn mức áp cho cả hai bên của đơn.
+- Tên chủ tài khoản nhận tiền luôn là họ tên KYC (chính chủ), không tự gõ.
+- Tài khoản bị bộ phận Tuân thủ hạn chế thì không đặt đơn / đăng quảng cáo được; đơn đang chạy vẫn xử lý tiếp.
 
 ## 3. Quảng cáo
 

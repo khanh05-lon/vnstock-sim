@@ -129,7 +129,13 @@ export function useRealtime() {
         });
       }
     });
-    s.on('p2p:staff', (ev: { orderId: number; kind: string }) => {
+    // Kết quả duyệt KYC / bị hạn chế / gỡ hạn chế → làm mới cấp KYC và thông tin tài khoản
+    s.on('kyc', () => {
+      void qc.invalidateQueries({ queryKey: ['kyc'] });
+      void qc.invalidateQueries({ queryKey: ['me'] });
+      void qc.invalidateQueries({ queryKey: ['p2p'] });
+    });
+    s.on('p2p:staff',(ev: { orderId: number; kind: string }) => {
       void qc.invalidateQueries({ queryKey: ['desk-p2p'] });
       if (ev.kind === 'appeal') toast.warning(`Khiếu nại P2P mới #${ev.orderId}`, { description: 'Mở khu vực CSKH → Khiếu nại P2P', duration: 10_000 });
     });

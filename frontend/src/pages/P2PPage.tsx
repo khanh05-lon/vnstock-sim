@@ -10,6 +10,7 @@ import { cleanDecimal, cn } from '../lib/format';
 import { fmtCoin, fmtVndNum, useMyMerchant, useP2PAds, useP2PConfig } from '../lib/p2p';
 import { useLoggedIn } from '../lib/queries';
 import { useAuth } from '../store/auth';
+import { useMyKyc } from '../lib/kyc';
 
 /** Chợ P2P kiểu Binance: mua / bán coin với thương nhân đã xác minh bằng VNĐ (ngân hàng giả lập) */
 export default function P2PPage() {
@@ -23,6 +24,7 @@ export default function P2PPage() {
   const [open, setOpen] = useState<P2PAdDTO | null>(null);
   const { data: config } = useP2PConfig();
   const { data: me } = useMyMerchant();
+  const { data: kyc } = useMyKyc();
   const fiat = amount ? String(Math.floor(Number(amount))) : undefined;
   const { data: ads, isLoading } = useP2PAds({ side, asset, fiatAmount: fiat, bank: bank || undefined });
 
@@ -45,6 +47,29 @@ export default function P2PPage() {
         <P2PNav />
       </div>
 
+      {loggedIn && !staff && kyc && kyc.level === 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-brand/30 bg-brand/8 px-4 py-2.5 text-[13px]">
+          <ShieldCheck size={16} className="shrink-0 text-brand" />
+          <span>Xác minh danh tính (KYC cấp 1) để mua bán P2P. Thông tin khai báo giả lập, duyệt bởi bộ phận Tuân thủ.</span>
+          <Link to="/xac-minh" className="font-semibold text-brand hover:underline">
+            Xác minh ngay
+          </Link>
+        </div>
+      )}
+      {loggedIn && !staff && kyc && kyc.level > 0 && (
+        <p className="mt-3 text-[12px] text-tx-3">
+          Hạn mức P2P hôm nay theo KYC cấp {kyc.level}: đã dùng <span className="num text-tx-2">{fmtVndNum(kyc.p2pUsedToday)}</span> /{' '}
+          <span className="num text-tx-2">{fmtVndNum(kyc.p2pDailyLimit)} ₫</span>
+          {kyc.level < 2 && (
+            <>
+              {' · '}
+              <Link to="/xac-minh" className="text-brand hover:underline">
+                Tăng hạn mức
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {me?.blockedUntil && (
         <div role="alert" className="mt-4 rounded-md border border-down/30 bg-down/10 px-4 py-2.5 text-[13px] text-down">
           Bạn đã huỷ {me.cancelsToday} đơn hôm nay. Chức năng P2P bị khoá tới {new Date(me.blockedUntil).toLocaleString('vi-VN')}.

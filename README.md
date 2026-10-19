@@ -18,6 +18,7 @@ Dự án khởi đầu là **VNStock Sim** (sàn chứng khoán Việt Nam mô p
 | **P2P** (`/p2p`, `/p2p/don`, `/p2p/thuong-nhan`, `/ngan-hang`) | Chợ P2P kiểu Binance: mua / bán USDT, BTC, ETH, BNB bằng VNĐ với **thương nhân đã xác minh** (đặt cọc 2.000 USDT, được Rủi ro & giám sát duyệt). Coin của bên bán nằm trong ký quỹ; người mua chuyển khoản qua **ngân hàng giả lập**, bên bán xác nhận rồi nhả coin; quá hạn tự huỷ; khiếu nại có nhân viên phân xử, trừ cọc bồi thường. Xem [docs/P2P.md](docs/P2P.md) |
 | **Xếp hạng** (`/xep-hang`) | ROI theo NAV USDT: 7 ngày / 30 ngày / 3 tháng / từ đầu; tên hiển thị tự chọn hoặc che bớt; tuỳ chọn không tham gia |
 | **Hỗ trợ** (`/ho-tro`, `/cskh`) | Hộp chat nổi với trợ lý AI (Claude) và nhân viên CSKH, vé hỗ trợ cho tài khoản bị khoá (`/ho-tro-khoa`); bàn làm việc CSKH cho nhân viên. Xem [docs/CSKH.md](docs/CSKH.md) |
+| **Xác minh danh tính** (`/xac-minh`) | KYC theo cấp như sàn thật: cấp 0 giao dịch Spot; cấp 1 (danh tính) mở P2P hạn mức 200 triệu ₫ / ngày; cấp 2 (nâng cao) hạn mức 2 tỷ ₫ / ngày và được làm thương nhân. Hồ sơ khai báo giả lập, mã hoá, bộ phận Tuân thủ duyệt. Xem [docs/KYC-AML.md](docs/KYC-AML.md) |
 | **Tài khoản** | Đăng ký nhận 10.000 USDT ảo, xác thực email, quên / đặt lại mật khẩu, xác thực 2 lớp (TOTP + mã khôi phục), lịch sử đăng nhập, tài khoản demo |
 | **Quản trị** (`/admin`) | Xem mục [Quản trị & vận hành](#quản-trị--vận-hành) |
 
@@ -108,6 +109,7 @@ Danh sách đầy đủ và giải thích: [`backend/.env.example`](backend/.env
 ## Quản trị & vận hành
 
 - Trang **Quản trị** (`/admin`) chia tab theo **vai trò nhân viên** (Quản trị hệ thống, Vận hành thị trường, Tài chính, Rủi ro & giám sát, Kiểm toán, CSKH): tổng quan, người dùng (khoá / mở khoá, đổi vai trò, điều chỉnh số dư theo tài sản), lệnh, hàng chờ duyệt 2 người, tạm ngừng / dừng khẩn, giá thị trường (LIVE / MANUAL), cặp giao dịch, biểu phí, giám sát gian lận bảng xếp hạng, tài chính & đối soát, dữ liệu & sao lưu, giám sát vận hành, nhật ký. Bảng quyền chi tiết: [docs/TONG-HOP-DU-AN.md](docs/TONG-HOP-DU-AN.md#5-tab-quản-trị-admin).
+- **Tuân thủ (KYC/AML)**: duyệt hồ sơ KYC, cảnh báo chống rửa tiền quét tự động trên đơn P2P (đơn lớn, khối lượng cao, chia nhỏ, mua vào bán ra nhanh, nhiều đối tác), báo cáo giao dịch đáng ngờ (STR, chỉ ghi thêm), hạn chế tài khoản; gỡ hạn chế cần người Tuân thủ thứ hai duyệt. Kiểm toán xem được. Chi tiết: [docs/KYC-AML.md](docs/KYC-AML.md).
 - **Thương nhân P2P**: Rủi ro & giám sát duyệt đơn xin, tạm ngừng, trừ cọc (Quản trị → Thương nhân P2P); CSKH và Rủi ro xử lý khiếu nại đơn P2P (`/cskh` → Khiếu nại P2P); Vận hành thị trường chỉnh tham số P2P (tỷ giá tham chiếu, phí, cọc, điều kiện). Chi tiết: [docs/P2P.md](docs/P2P.md).
 - Thao tác lớn (điều chỉnh số dư lớn, chỉnh giá lệch nhiều, niêm yết / tạm ngừng cặp, đổi vai trò, khôi phục dữ liệu, mở lại sàn) cần **người thứ hai duyệt**. Mọi thao tác ghi vào `admin_audit_log` (chỉ ghi thêm); mọi thay đổi trạng thái lệnh ghi vào `order_events`.
 - Tài khoản quản trị đầu tiên tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
@@ -178,6 +180,7 @@ erDiagram
 | GET/POST | `/api/p2p/merchant` · `/merchant/apply` · `/merchant/resign` · `/p2p/payment-methods` | Trạng thái + điều kiện thương nhân, nộp đơn / nghỉ, tài khoản nhận tiền |
 | GET/POST/PATCH/DELETE | `/api/p2p/my-ads[/:id[/online]]` | Quảng cáo của thương nhân |
 | GET/POST | `/api/p2p/orders[/:id[/paid|release|cancel|appeal|messages]]` | Đơn P2P và chat trong đơn |
+| GET/POST | `/api/kyc` · `/kyc/level1` · `/kyc/level2` | Trạng thái KYC + hạn mức P2P, nộp hồ sơ cấp 1 / 2 |
 | GET/POST | `/api/bank` · `/bank/statement` · `/bank/lookup/:accountNo` · `/bank/transfers` | Ngân hàng giả lập |
 | GET/POST | `/api/support/ai` · `/support/ai/chat` · `/support/tickets[/:id[/messages\|rate\|close]]` | Trợ lý AI, vé hỗ trợ |
 | GET | `/api/health` · `/api/metrics` · `/api/system` | Sức khoẻ, Prometheus, trạng thái hệ thống + biểu phí |
@@ -195,6 +198,7 @@ vnstock-sim/
 │  ├─ src/market/             binance/ (REST, WS), simFeed, marketService, symbols (+ fallbackSymbols.json)
 │  ├─ src/trading/            SpotEngine, wallet, account, orderEvents, priceAlerts, DTO
 │  ├─ src/portfolio/          NAV hằng ngày (USDT), bảng xếp hạng, báo cáo lãi lỗ theo tháng
+│  ├─ src/kyc/                KYC theo cấp (KycService), quét AML, route khách
 │  ├─ src/p2p/                chợ P2P (P2PService), ngân hàng giả lập, khiếu nại ở khu CSKH, thương nhân mẫu (dev)
 │  ├─ src/support/            CSKH, trợ lý AI (Claude API)
 │  ├─ src/admin/              API quản trị, phân quyền, duyệt 2 người, giá điều chỉnh, đối soát, sao lưu / khôi phục

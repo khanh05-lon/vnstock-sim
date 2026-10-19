@@ -6,6 +6,7 @@ import { api, errMsg } from '../../lib/api';
 import { cleanDecimal, cn } from '../../lib/format';
 import { fmtCoin, fmtVndNum, useInvalidateP2P, usePaymentMethods } from '../../lib/p2p';
 import { useFree } from '../../lib/queries';
+import { useAuth } from '../../store/auth';
 import { Modal } from '../common/ui';
 import { TraderCell } from './common';
 
@@ -18,6 +19,26 @@ export function OrderDialog({ ad, onClose }: { ad: P2PAdDTO | null; onClose(): v
 }
 
 function Body({ ad, onClose }: { ad: P2PAdDTO; onClose(): void }) {
+  const kycLevel = useAuth((s) => s.user?.kycLevel ?? 0);
+  if (!kycLevel) {
+    return (
+      <div className="space-y-3 text-[13px]">
+        <p className="text-tx-2">Giao dịch P2P cần xác minh danh tính (KYC cấp 1), như quy định chống rửa tiền của các sàn thật.</p>
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-ghost" onClick={onClose}>
+            Để sau
+          </button>
+          <Link to="/xac-minh" className="btn btn-brand" onClick={onClose}>
+            Xác minh danh tính
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return <OrderForm ad={ad} onClose={onClose} />;
+}
+
+function OrderForm({ ad, onClose }: { ad: P2PAdDTO; onClose(): void }) {
   const nav = useNavigate();
   const invalidate = useInvalidateP2P();
   const takerBuys = ad.side === 'SELL';

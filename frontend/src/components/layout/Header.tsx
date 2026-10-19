@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Headset, History, Landmark, LogOut, Moon, Settings, ShieldCheck, Store, Sun, Wallet } from 'lucide-react';
+import { ChevronDown, Headset, History, IdCard, Landmark, LogOut, Moon, Settings, ShieldCheck, Store, Sun, Wallet } from 'lucide-react';
 import { cn, fmtPct, fmtUsd, signTone, toneText } from '../../lib/format';
 import { useAccount } from '../../lib/queries';
 import { useAdminMe } from '../../lib/admin';
@@ -118,6 +118,7 @@ function UserMenu() {
           {[
             { icon: Wallet, label: 'Ví Spot', to: '/vi' },
             { icon: History, label: 'Lịch sử giao dịch', to: '/lich-su' },
+            { icon: IdCard, label: `Xác minh danh tính${user?.role === 'USER' || !user?.role ? ` · cấp ${user?.kycLevel ?? 0}` : ''}`, to: '/xac-minh' },
             { icon: Store, label: 'Trung tâm thương nhân', to: '/p2p/thuong-nhan' },
             { icon: Landmark, label: 'Ngân hàng giả lập', to: '/ngan-hang' },
           ].map((it) => (

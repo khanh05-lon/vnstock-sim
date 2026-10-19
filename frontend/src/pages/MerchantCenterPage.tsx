@@ -261,13 +261,12 @@ function PaymentMethods() {
   const { data } = usePaymentMethods();
   const invalidate = useInvalidateP2P();
   const [bank, setBank] = useState<BankName>('Vietcombank');
-  const [holder, setHolder] = useState(user?.fullName ?? '');
   const [busy, setBusy] = useState(false);
 
   const add = async () => {
     setBusy(true);
     try {
-      await api('/p2p/payment-methods', { method: 'POST', body: { bankName: bank, holderName: holder } });
+      await api('/p2p/payment-methods', { method: 'POST', body: { bankName: bank } });
       toast.success('Đã thêm phương thức thanh toán');
       invalidate();
     } catch (e) {
@@ -289,8 +288,8 @@ function PaymentMethods() {
     <section id="thanh-toan" className="mt-4 scroll-mt-20 panel p-5">
       <h2 className="text-[15px] font-semibold">Phương thức thanh toán</h2>
       <p className="mt-1 text-[12px] text-tx-3">
-        Tài khoản nhận tiền khi bạn bán coin. Mọi phương thức đều nhận vào <Link to="/ngan-hang" className="text-brand hover:underline">tài khoản ngân hàng giả lập</Link> của bạn; tên
-        ngân hàng là nhãn để khách lọc quảng cáo.
+        Tài khoản nhận tiền khi bạn bán coin. Mọi phương thức đều nhận vào <Link to="/ngan-hang" className="text-brand hover:underline">tài khoản ngân hàng giả lập</Link> của bạn,
+        đứng tên chính chủ theo họ tên đã xác minh KYC; tên ngân hàng là nhãn để khách lọc quảng cáo.
       </p>
       <ul className="mt-3 divide-y divide-line">
         {(data ?? []).map((m) => (
@@ -304,17 +303,23 @@ function PaymentMethods() {
           </li>
         ))}
       </ul>
-      <div className="mt-3 flex flex-wrap gap-2">
+      {!user?.kycLevel ? (
+        <p className="mt-3 rounded-md bg-ref/10 px-3 py-2 text-[12px] text-ref">
+          Cần <Link to="/xac-minh" className="font-semibold underline">xác minh danh tính (KYC cấp 1)</Link> trước khi thêm tài khoản nhận tiền.
+        </p>
+      ) : (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <select className="input w-auto" value={bank} onChange={(e) => setBank(e.target.value as BankName)} aria-label="Ngân hàng">
           {BANK_NAMES.map((b) => (
             <option key={b}>{b}</option>
           ))}
         </select>
-        <input className="input w-64" placeholder="Tên chủ tài khoản" value={holder} onChange={(e) => setHolder(e.target.value)} aria-label="Tên chủ tài khoản" />
-        <button className="btn btn-ghost" disabled={busy || holder.trim().length < 2} onClick={() => void add()}>
+        <button className="btn btn-ghost" disabled={busy} onClick={() => void add()}>
           <Plus size={15} /> Thêm
         </button>
+        <span className="text-[12px] text-tx-3">Chủ tài khoản: tên theo KYC</span>
       </div>
+      )}
     </section>
   );
 }
