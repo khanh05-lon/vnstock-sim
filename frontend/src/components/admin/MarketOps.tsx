@@ -7,6 +7,7 @@ import { cn, fmtTime } from '../../lib/format';
 import { Spinner } from '../common/ui';
 import { KeyValue, Pill, ReasonModal, Section } from './adminUi';
 import { RulesEditor } from './RulesEditor';
+import { VipAdmin } from './VipAdmin';
 
 const LEVELS = [
   { value: 'info', label: 'Thông tin', cls: 'border-info/40 bg-info/10 text-info' },
@@ -204,6 +205,7 @@ export function MarketOps() {
       </Section>
 
       <RulesEditor />
+      <VipAdmin />
 
       <ReasonModal
         open={emergencyOpen}

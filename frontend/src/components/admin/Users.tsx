@@ -71,17 +71,12 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
             Xác thực email hộ
           </button>
         )}
-        {can('users.manage') && u.twoFactorEnabled && (
-          <button className="btn btn-ghost h-8" onClick={() => setKind('reset2fa')}>
-            Tắt 2FA hộ
-          </button>
-        )}
-        {can('users.manage') && (
+        {can('privacy.manage') && (
           <button className="btn btn-ghost h-8 text-down" disabled={self || u.role !== 'USER'} onClick={() => setKind('delete')}>
             Xoá tài khoản
           </button>
         )}
-        {!can('users.lock') && !can('finance.adjust') && !can('staff.manage') && !can('users.manage') && (
+        {!can('users.lock') && !can('finance.adjust') && !can('staff.manage') && !can('users.manage') && !can('privacy.manage') && (
           <span className="text-[12px] text-tx-3">Vai trò của bạn chỉ được xem hồ sơ này.</span>
         )}
       </div>
@@ -97,19 +92,6 @@ function UserActions({ d, onDeleted }: { d: AdminUserDetail; onDeleted(): void }
           if (await act(`${base}/verify-email`, 'POST', {}, 'Đã xác thực email')) close();
         }}
       />
-      <ReasonModal
-        open={kind === 'reset2fa'}
-        title={`Tắt xác thực 2 lớp của ${u.email}`}
-        description="Dùng khi người dùng mất điện thoại và hết mã khôi phục. Hãy xác minh danh tính trước — người dùng sẽ nhận email thông báo."
-        confirmLabel="Tắt 2FA"
-        danger
-        placeholder="Ví dụ: Đã xác minh qua cuộc gọi, mất điện thoại…"
-        onClose={close}
-        onConfirm={async (reason) => {
-          if (await act(`${base}/reset-2fa`, 'POST', { reason }, 'Đã tắt 2FA')) close();
-        }}
-      />
-
       <ReasonModal
         open={kind === 'lock'}
         title={`Khoá tài khoản ${u.email}`}

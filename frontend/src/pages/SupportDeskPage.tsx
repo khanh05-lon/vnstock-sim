@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Clock, Headset, History, Lock, Search, ShieldCheck, UserRound, Wallet, X } from 'lucide-react';
 import { ORDER_STATUS_LABEL, TICKET_CATEGORY_LABEL, can, isTicketActive, type OrderDTO, type TicketPriority } from '@vss/shared';
 import { Pill, ReasonModal } from '../components/admin/adminUi';
 import { Empty, Modal, Spinner } from '../components/common/ui';
+import { CompensationQueue, Recovery2faModal } from '../components/support/LeadTools';
 import { P2PAppeals } from '../components/support/P2PAppeals';
 import { ChatThread, Composer, OrderTimeline, OrderTimelineModal, PriorityPill, TicketStatusPill } from '../components/support/SupportUi';
 import { cn, fmtDateTime, fmtPrice, fmtQty, fmtUsd } from '../lib/format';
@@ -209,6 +211,8 @@ function TicketView({ id }: { id: number }) {
   const [resolve, setResolve] = useState(false);
   const [lock, setLock] = useState(false);
   const [adjust, setAdjust] = useState(false);
+  const [recover, setRecover] = useState(false);
+  const qc = useQueryClient();
   const [cancelOrder, setCancelOrder] = useState<OrderDTO | null>(null);
   const [timeline, setTimeline] = useState<number | null>(null);
   // Màn hình hẹp: hồ sơ khách mở dạng ngăn trượt bên phải
@@ -217,8 +221,9 @@ function TicketView({ id }: { id: number }) {
   const t = data.ticket;
   const active = isTicketActive(t.status);
   const base = `/support-desk/tickets/${t.id}`;
-  // Trưởng nhóm (Quản trị hệ thống) giao được yêu cầu cho nhân viên khác
-  const isAdmin = can(me?.role, 'support.lead');
+  // Trưởng nhóm CSKH giao được yêu cầu cho nhân viên khác, khôi phục 2FA cho khách (đối chiếu KYC)
+  const isLead = can(me?.role, 'support.lead');
+  const canRecover = can(me?.role, 'account.recovery');
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -250,7 +255,7 @@ function TicketView({ id }: { id: number }) {
                   Nhận xử lý
                 </button>
               )}
-              {isAdmin && (
+              {isLead && (
                 <select
                   className="input h-7 w-44 text-[12px]"
                   value=""
@@ -283,6 +288,11 @@ function TicketView({ id }: { id: number }) {
               <button className="btn btn-ghost h-7 text-[12px]" onClick={() => setAdjust(true)}>
                 Đề xuất điều chỉnh số dư
               </button>
+              {canRecover && (
+                <button className="btn btn-ghost h-7 text-[12px]" onClick={() => setRecover(true)}>
+                  Khôi phục 2FA
+                </button>
+              )}
               {t.customer?.status === 'ACTIVE' && (
                 <button className="btn btn-ghost h-7 text-[12px] text-down" onClick={() => setLock(true)}>
                   <Lock size={12} /> Khoá khẩn
@@ -359,9 +369,10 @@ function TicketView({ id }: { id: number }) {
         open={adjust}
         onClose={() => setAdjust(false)}
         onConfirm={async (v) => {
-          if (await call(`${base}/adjust-request`, v, 'Đã gửi đề xuất, chờ quản trị viên duyệt')) setAdjust(false);
+          if (await call(`${base}/adjust-request`, v, 'Đã gửi đề xuất, chờ Trưởng nhóm CSKH / Tài chính duyệt')) setAdjust(false);
         }}
       />
+      <Recovery2faModal open={recover} ticketId={t.id} onClose={() => setRecover(false)} onDone={() => void qc.invalidateQueries({ queryKey: ['desk'] })} />
       <OrderTimelineModal orderId={timeline} path={timeline ? `${base}/orders/${timeline}/events` : undefined} onClose={() => setTimeline(null)} />
     </div>
   );
@@ -379,7 +390,10 @@ export default function SupportDeskPage() {
   const role = useAuth((s) => s.user?.role);
   // Khiếu nại P2P (quyền p2p.appeal): ?view=p2p
   const canAppeal = can(role, 'p2p.appeal');
-  const view = canAppeal && params.get('view') === 'p2p' ? 'p2p' : 'tickets';
+  // Bồi hoàn nhỏ chờ Trưởng nhóm CSKH duyệt: ?view=comp
+  const canComp = can(role, 'support.compensate');
+  const want = params.get('view');
+  const view = want === 'p2p' && canAppeal ? 'p2p' : want === 'comp' && canComp ? 'comp' : 'tickets';
 
   useEffect(() => {
     document.title = 'Chăm sóc khách hàng · VNCoin';
@@ -395,19 +409,19 @@ export default function SupportDeskPage() {
   }
   if (error) return <Empty title="Không vào được khu vực CSKH" hint={(error as Error).message} />;
 
-  const switcher = canAppeal && (
+  const views = [
+    ['tickets', 'Yêu cầu hỗ trợ'],
+    ...(canComp ? [['comp', 'Bồi hoàn chờ duyệt']] : []),
+    ...(canAppeal ? [['p2p', 'Khiếu nại P2P']] : []),
+  ] as [string, string][];
+  const switcher = views.length > 1 && (
     <div className="flex gap-0.5 rounded-md bg-bg-2 p-0.5" role="tablist" aria-label="Loại công việc">
-      {(
-        [
-          ['tickets', 'Yêu cầu hỗ trợ'],
-          ['p2p', 'Khiếu nại P2P'],
-        ] as const
-      ).map(([v, label]) => (
+      {views.map(([v, label]) => (
         <button
           key={v}
           role="tab"
           aria-selected={view === v}
-          onClick={() => setParams(v === 'p2p' ? { view: 'p2p' } : {}, { replace: true })}
+          onClick={() => setParams(v === 'tickets' ? {} : { view: v }, { replace: true })}
           className={cn('h-7 rounded px-2.5 text-[12px] font-medium', view === v ? 'bg-bg-1 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
         >
           {label}
@@ -415,7 +429,7 @@ export default function SupportDeskPage() {
       ))}
     </div>
   );
-  if (view === 'p2p') {
+  if (view !== 'tickets') {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
@@ -423,7 +437,7 @@ export default function SupportDeskPage() {
           <span className="font-semibold">Chăm sóc khách hàng</span>
           {switcher}
         </div>
-        <P2PAppeals />
+        {view === 'p2p' ? <P2PAppeals /> : <CompensationQueue />}
       </div>
     );
   }

@@ -72,7 +72,7 @@ const dropPassOn401 = (e: unknown, pass: string | null) => {
 
 /* ------------------------------ khách hàng ------------------------------ */
 
-/** Được vào khu CSKH (nhân viên CSKH, Rủi ro & giám sát, Quản trị hệ thống) */
+/** Được vào khu CSKH (nhân viên / Trưởng nhóm CSKH, Vận hành P2P, Rủi ro & giám sát) */
 export const useIsStaff = () => useAuth((s) => can(s.user?.role, 'support.desk'));
 
 export function useMyTickets() {

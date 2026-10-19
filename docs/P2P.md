@@ -8,8 +8,8 @@ VNCoin có chợ P2P theo mô hình Binance P2P / OKX P2P: người dùng mua b�
 |---|---|
 | Khách (taker) | Mua / bán theo quảng cáo có sẵn. Miễn phí. Không đăng quảng cáo được. |
 | Thương nhân (maker) | Khách hàng đã được sàn duyệt, đặt cọc USDT. Đăng quảng cáo mua / bán, có huy hiệu "Thương nhân đã xác minh". Trả phí 0,2% số coin của mỗi đơn. |
-| Rủi ro & giám sát (`p2p.review`) | Duyệt / từ chối đơn xin làm thương nhân, tạm ngừng / khôi phục, trừ tiền cọc. |
-| CSKH, Rủi ro (`p2p.appeal`) | Xử lý khiếu nại đơn P2P ở `/cskh` → Khiếu nại P2P. |
+| Vận hành P2P `P2P_OPS` (`p2p.review`) | Duyệt / từ chối đơn xin làm thương nhân, tạm ngừng / khôi phục, trừ tiền cọc. |
+| Vận hành P2P (`p2p.appeal`) | Xử lý khiếu nại đơn P2P ở `/cskh` → Khiếu nại P2P. Tài khoản thử dev: `p2p@`. |
 | Vận hành thị trường (`market.manage`) | Chỉnh tham số P2P: tỷ giá tham chiếu, phí, tiền cọc, điều kiện, giới hạn. |
 
 Thương nhân **không phải vai trò nhân viên**: `users.role` vẫn là `USER`, trạng thái nằm ở bảng `p2p_merchants` (`PENDING`, `ACTIVE`, `SUSPENDED`, `REJECTED`, `RESIGNED`). Tài khoản nhân viên không dùng được P2P, để tránh xung đột lợi ích khi xử lý khiếu nại.
@@ -56,7 +56,7 @@ PENDING_PAYMENT ──người mua bấm "Tôi đã thanh toán"──▶ PAID �
 
 Thống kê hiển thị trên quảng cáo: số đơn 30 ngày, tỷ lệ hoàn tất 30 ngày (lỗi tính cho người mua khi huỷ / hết hạn / bị trả coin), thời gian nhả coin và thanh toán trung bình.
 
-## 5. Xử lý khiếu nại (CSKH)
+## 5. Xử lý khiếu nại (Vận hành P2P)
 
 Mở `/cskh` → **Khiếu nại P2P**. Mỗi đơn có:
 

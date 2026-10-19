@@ -7,17 +7,20 @@ Hướng dẫn cho đội vận hành VNCoin: cách nhận và xử lý yêu c�
 | Vai trò | Được làm | Không được làm |
 | --- | --- | --- |
 | Nhà đầu tư | Gửi yêu cầu hỗ trợ (gắn lệnh liên quan), trao đổi, đánh giá; xem nhật ký lệnh và lịch sử đăng nhập của mình | — |
-| Nhân viên CSKH | Khu `/cskh`: nhận và trả lời yêu cầu, ghi chú nội bộ, xem hồ sơ khách **qua yêu cầu**, huỷ hộ lệnh, khoá khẩn tài khoản, đề xuất bồi hoàn | Vào khu quản trị, mở khoá tài khoản, tự cộng / trừ số dư, duyệt bồi hoàn |
-| Quản trị hệ thống | Phân quyền nhân viên, tài khoản người dùng (tạo, khoá, xác thực email, tắt 2FA, xoá), sao lưu / đề xuất khôi phục, giám sát, nhật ký; khu CSKH + giao việc | Chỉnh số dư, chỉnh giá, niêm yết, huỷ hộ lệnh; tự duyệt đề xuất của mình |
+| Nhân viên CSKH | Khu `/cskh`: nhận và trả lời yêu cầu, ghi chú nội bộ, xem hồ sơ khách **qua yêu cầu**, huỷ hộ lệnh, khoá khẩn tài khoản, đề xuất bồi hoàn | Vào khu quản trị, mở khoá tài khoản, tự cộng / trừ số dư, duyệt bồi hoàn, giao việc cho người khác, khiếu nại P2P |
+| Trưởng nhóm CSKH | Như nhân viên CSKH + giao / chuyển yêu cầu, **duyệt bồi hoàn nhỏ** (≤ `SUPPORT_COMP_LIMIT_USDT`), **khôi phục 2FA** cho khách đã KYC (mục 3b) | Duyệt bồi hoàn của chính mình hoặc vượt hạn mức |
+| Quản trị hệ thống | Phân quyền nhân viên, tài khoản người dùng (tạo, khoá, xác thực email), sao lưu / đề xuất khôi phục, giám sát, nhật ký | Khu CSKH, tắt 2FA hộ khách, xoá khách (việc của DPO), chỉnh số dư, chỉnh giá, niêm yết, huỷ hộ lệnh; tự duyệt đề xuất của mình |
 | Vận hành thị trường | Cặp giao dịch, giá, biểu phí, thông báo, tạm ngừng cặp, huỷ hộ lệnh; đề xuất niêm yết / huỷ niêm yết / chỉnh giá lớn / tạm ngừng toàn sàn; duyệt đề xuất thị trường của người khác | Xem hồ sơ người dùng, chạm vào số dư |
 | Tài chính | Điều chỉnh / đặt lại số dư (lớn thì thành đề xuất), duyệt bồi hoàn của CSKH và điều chỉnh của người khác | Thay đổi thị trường, khoá tài khoản |
-| Rủi ro & giám sát | Khoá / mở khoá, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký, khu CSKH; duyệt đề xuất thị trường của người khác | Chạm vào số dư, tự thay đổi cấu hình thị trường |
+| Rủi ro & giám sát | Khoá / mở khoá, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký, khu CSKH; duyệt đề xuất thị trường của người khác | Chạm vào số dư, tự thay đổi cấu hình thị trường, P2P |
+| Vận hành P2P | Duyệt / tạm ngừng thương nhân, trừ cọc; khiếu nại P2P ở `/cskh` | Số dư ngoài P2P |
+| Bảo vệ dữ liệu cá nhân (DPO) | Xử lý yêu cầu xoá tài khoản của khách (ẩn danh hoá), xem nhật ký | Mọi thao tác giao dịch / số dư |
 | Kiểm toán | Chỉ đọc: tổng quan, người dùng, lệnh, hàng chờ duyệt, nhật ký, giám sát | Mọi thao tác ghi |
 
 Mọi vai trò: không tự điều chỉnh số dư của mình, không tự duyệt đề xuất do chính mình tạo, không sửa / xoá được nhật ký.
 Cấp / đổi vai trò nhân viên và đặt lại tài khoản khách cũng phải có người thứ hai duyệt; điều chỉnh số dư nhỏ nhưng cộng dồn 24 giờ vượt ngưỡng cũng phải duyệt.
 
-Đổi vai trò: Quản trị → Người dùng → hồ sơ → **Đổi vai trò**. Ở môi trường thật (`REQUIRE_STAFF_2FA`), nhân viên phải bật xác thực 2 lớp mới vào được khu nhân viên.
+Ma trận đầy đủ và lý do phân tách: [VAI-TRO.md](VAI-TRO.md). Đổi vai trò: Quản trị → Người dùng → hồ sơ → **Đổi vai trò**. Ở môi trường thật (`REQUIRE_STAFF_2FA`), nhân viên phải bật xác thực 2 lớp mới vào được khu nhân viên.
 
 ## 2. Hạn trả lời
 
@@ -32,15 +35,25 @@ và hệ thống gửi cảnh báo `support_overdue` tới `ALERT_EMAILS` / webh
 
 ## 3. Quy trình xử lý
 
-1. **Nhận xử lý** (hoặc quản trị viên **giao cho** nhân viên). Khách thấy "Nhân viên CSKH đã tiếp nhận".
+1. **Nhận xử lý** (hoặc Trưởng nhóm CSKH **giao cho** nhân viên). Khách thấy "Nhân viên CSKH đã tiếp nhận".
 2. Xem **hồ sơ khách** bên phải: ví, lệnh đang mở, nhật ký lệnh liên quan (ai đặt / sửa / huỷ, lúc nào, IP nào, các lần khớp), lịch sử đăng nhập.
 3. Trả lời khách. Thông tin chỉ nội bộ cần biết → tích **Ghi chú nội bộ**.
 4. Nếu cần thao tác:
    - **Huỷ hộ lệnh** — chỉ lệnh của chính khách đó, bắt buộc ghi lý do.
    - **Khoá khẩn** — khi khách báo bị truy cập trái phép. Mọi lệnh mở bị huỷ, phiên đăng nhập bị ngắt; chỉ quản trị viên mở khoá.
      Khách vẫn nhắn tiếp được (xem mục 4).
-   - **Đề xuất điều chỉnh số dư** — bồi hoàn / sửa sai. Chỉ có hiệu lực khi một quản trị viên khác duyệt ở Quản trị → **Duyệt điều chỉnh**.
+   - **Đề xuất điều chỉnh số dư** — bồi hoàn / sửa sai. Chỉ có hiệu lực khi người khác duyệt: khoản cộng nhỏ (quy đổi ≤ `SUPPORT_COMP_LIMIT_USDT`, mặc định 100 USDT) thì Trưởng nhóm CSKH duyệt ở `/cskh` → **Duyệt bồi hoàn**; lớn hơn hoặc khoản trừ thì Tài chính duyệt ở Quản trị → **Duyệt điều chỉnh**. Kết quả duyệt hiện thành tin nhắn hệ thống trong yêu cầu.
 5. **Đã xử lý xong** — bắt buộc ghi cách đã xử lý; khách nhận email và có thể đánh giá. Khách nhắn tiếp thì yêu cầu tự mở lại; sau 7 ngày không phản hồi thì tự đóng.
+
+## 3b. Khôi phục 2FA (khách mất điện thoại)
+
+Chỉ Trưởng nhóm CSKH làm, trong yêu cầu hỗ trợ của chính khách (nút **Khôi phục 2FA**):
+
+1. Khách phải đã xác minh danh tính (KYC cấp 1). Chưa có thì hướng dẫn khách xác minh trước — không có cách khôi phục nào khác.
+2. Hỏi khách **4 số cuối giấy tờ** và **họ tên đầy đủ**; đối chiếu họ tên với hồ sơ KYC hiển thị, nhập 4 số cuối và tick xác nhận.
+3. Sai 4 số cuối → bị từ chối, ghi `USER_RECOVERY_FAILED`. Đúng → 2FA tắt, ghi `USER_2FA_RESET`, khách nhận email và tin nhắn hệ thống trong yêu cầu. Khuyên khách bật lại 2FA ngay.
+
+Không bao giờ hỏi mật khẩu hay mã khôi phục của khách.
 
 ## 4. Khách đang bị khoá
 
@@ -69,7 +82,7 @@ Người nhắn có thể là chủ tài khoản hoặc kẻ đã chiếm mật 
 | Đã trao đổi gì với khách? | Khu CSKH → yêu cầu hỗ trợ — bảng `support_messages` |
 
 Nhật ký quản trị, nhật ký đăng nhập và tin nhắn hỗ trợ **chỉ được ghi thêm**: cơ sở dữ liệu chặn sửa / xoá, kể cả khi khôi phục bản sao lưu.
-Xoá tài khoản chỉ xoá thông tin cá nhân (email, họ tên, mật khẩu, 2FA); lệnh, khớp lệnh, sổ cái và tin nhắn hỗ trợ được giữ ở dạng ẩn danh để đối soát.
+Xoá tài khoản (khách gửi yêu cầu ở `/du-lieu-ca-nhan`, DPO xử lý) chỉ xoá thông tin cá nhân (email, họ tên, mật khẩu, 2FA); lệnh, khớp lệnh, sổ cái và tin nhắn hỗ trợ được giữ ở dạng ẩn danh để đối soát.
 
 ## 6. Hộp chat và trợ lý AI
 

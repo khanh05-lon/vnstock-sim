@@ -71,7 +71,7 @@ export default function MerchantCenterPage() {
             </div>
             <p className="mt-1 max-w-[70ch] text-[13px] text-tx-2">
               {me.status === 'ACTIVE' && 'Bạn được đăng quảng cáo mua / bán trên chợ P2P. Giữ tỷ lệ hoàn tất cao và nhả coin nhanh để giữ huy hiệu.'}
-              {me.status === 'PENDING' && `Đơn nộp lúc ${fmtDateTime(me.appliedAt!)} đang chờ bộ phận Rủi ro & giám sát duyệt. Tiền cọc ${deposit} USDT đã được khoá.`}
+              {me.status === 'PENDING' && `Đơn nộp lúc ${fmtDateTime(me.appliedAt!)} đang chờ bộ phận Vận hành P2P duyệt. Tiền cọc ${deposit} USDT đã được khoá.`}
               {me.status === 'SUSPENDED' && `Tư cách thương nhân đang bị tạm ngừng${me.note ? `: ${me.note}` : ''}. Quảng cáo đã chuyển offline, đơn đang chạy vẫn xử lý bình thường.`}
               {me.status === 'REJECTED' && `Đơn bị từ chối${me.note ? `: ${me.note}` : ''}. Tiền cọc đã trả lại. Bạn có thể nộp lại khi đủ điều kiện.`}
               {(me.status == null || me.status === 'RESIGNED') &&

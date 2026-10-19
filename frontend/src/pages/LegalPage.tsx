@@ -113,7 +113,7 @@ function Terms() {
           </li>
           <li>
             Nhân viên chăm sóc khách hàng được xem dữ liệu tài khoản của bạn <b className="text-tx-1">chỉ khi xử lý yêu cầu bạn gửi</b>, mỗi lần xem đều được ghi nhật ký.
-            Nhân viên có thể huỷ hộ lệnh, tạm khoá tài khoản để bảo vệ bạn và đề xuất bồi hoàn (cần quản trị viên duyệt).
+            Nhân viên có thể huỷ hộ lệnh, tạm khoá tài khoản để bảo vệ bạn và đề xuất bồi hoàn (cần Trưởng nhóm CSKH hoặc bộ phận Tài chính duyệt).
           </li>
           <li>Mỗi lần đặt, sửa, huỷ lệnh đều được ghi lại kèm thời điểm, người thực hiện và địa chỉ IP để đối chiếu khi có khiếu nại; bạn tự xem được nhật ký từng lệnh.</li>
         </ul>

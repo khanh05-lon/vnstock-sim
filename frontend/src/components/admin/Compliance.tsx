@@ -525,7 +525,7 @@ function AlertDetail({ alert, onClose }: { alert: AmlAlertDTO | null; onClose():
       <ReasonModal
         open={mode === 'unrestrict'}
         title={`Đề xuất gỡ hạn chế ${alert.email}`}
-        description="Cần một người Tuân thủ khác duyệt ở mục Hàng chờ duyệt."
+        description="Cần Trưởng Tuân thủ (MLRO) duyệt ở mục Hàng chờ duyệt."
         confirmLabel="Gửi đề xuất"
         placeholder="Căn cứ gỡ hạn chế"
         onClose={() => setMode(null)}
@@ -572,7 +572,7 @@ function Restricted() {
       <ReasonModal
         open={!!target}
         title="Đề xuất gỡ hạn chế"
-        description="Cần một người Tuân thủ khác duyệt ở mục Hàng chờ duyệt. Tư cách thương nhân P2P (nếu có) do Rủi ro & giám sát khôi phục riêng."
+        description="Cần Trưởng Tuân thủ (MLRO) duyệt ở mục Hàng chờ duyệt. Tư cách thương nhân P2P (nếu có) do Vận hành P2P khôi phục riêng."
         confirmLabel="Gửi đề xuất"
         placeholder="Căn cứ gỡ hạn chế"
         onClose={() => setTarget(null)}

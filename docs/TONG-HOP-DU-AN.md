@@ -266,6 +266,17 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 - Vai trò mới **Tuân thủ (COMPLIANCE)**: duyệt KYC, cảnh báo AML tự động (đơn lớn, khối lượng 24h, chia nhỏ, mua vào bán ra nhanh, nhiều đối tác), lập STR (chỉ ghi thêm), hạn chế tài khoản (chặn Spot + P2P), gỡ cần người Tuân thủ thứ hai duyệt. Kiểm toán xem được cảnh báo / STR.
 - Tài liệu: [KYC-AML.md](KYC-AML.md).
 
+### Đợt 13: vai trò theo phân tách trách nhiệm + cấp VIP phí
+
+- Rà lại ma trận vai trò theo cách Binance / OKX tổ chức ([VAI-TRO.md](VAI-TRO.md)). Vai trò mới:
+  - **Trưởng nhóm CSKH** (`SUPPORT_LEAD`): giao việc, duyệt bồi hoàn nhỏ (≤ `SUPPORT_COMP_LIMIT_USDT`), khôi phục 2FA cho khách đã KYC (đối chiếu 4 số cuối giấy tờ).
+  - **Trưởng Tuân thủ** (`MLRO`): STR của chuyên viên thành đề xuất `STR_FILE`, MLRO duyệt nộp; gỡ hạn chế AML chỉ MLRO duyệt.
+  - **Vận hành P2P** (`P2P_OPS`): nhận duyệt thương nhân và khiếu nại P2P từ Rủi ro / CSKH.
+  - **Bảo vệ dữ liệu cá nhân** (`DPO`): xử lý yêu cầu xoá tài khoản của khách; khách tự tải dữ liệu ở `/du-lieu-ca-nhan`.
+- Quản trị hệ thống (IT) không còn vào khu CSKH, không tắt 2FA / xoá khách.
+- **Cấp VIP phí** như Binance (VIP 0 → 9, khối lượng Spot 30 ngày **và** BNB nắm giữ, ngưỡng × 1/100, tính lại 00:00 UTC), phí chốt vào lệnh theo cấp; trang `/phi`; Vận hành thị trường chỉnh hệ số ngưỡng.
+- Migration `280_roles_vip_privacy.sql` (vai trò, `STR_FILE`, `users.vip_*`, bảng `privacy_requests`).
+
 ## 5. Tab quản trị (`/admin`)
 
 | Tab | Quyền cần |
@@ -274,11 +285,12 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 | Người dùng (khoá, điều chỉnh số dư, phân quyền) | users.view |
 | Lệnh giao dịch (theo dõi, huỷ hộ) | admin.view |
 | Hàng chờ duyệt | admin.view |
-| Vận hành thị trường (nguồn giá, tạm ngừng, dừng khẩn, thông báo, biểu phí) | admin.view |
+| Vận hành thị trường (nguồn giá, tạm ngừng, dừng khẩn, thông báo, biểu phí, hệ số VIP) | admin.view |
 | Giá thị trường (LIVE / MANUAL, kịch bản) | admin.view |
 | Cặp giao dịch (niêm yết, huỷ niêm yết, tạm ngừng cặp) | admin.view |
 | Thương nhân P2P (duyệt, tạm ngừng, trừ cọc; tham số P2P) | p2p.review / market.manage |
 | Tuân thủ (KYC/AML) | kyc.review / aml.view |
+| Dữ liệu cá nhân (yêu cầu xoá tài khoản) | privacy.manage |
 | Giám sát gian lận | risk.monitor |
 | Tài chính & đối soát | finance.view |
 | Dữ liệu & sao lưu | system.view |
@@ -306,14 +318,14 @@ Nút thao tác trong từng tab ẩn / hiện theo quyền của người đang 
 
 | Bộ test | Kết quả |
 |---|---|
-| Backend trên PGlite | 139 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
+| Backend trên PGlite | 146 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
 | Backend trên PostgreSQL 16 | 111/111 (đợt 8, chưa chạy lại cho đợt 9) |
 | Frontend | 19/19 |
 | CI GitHub Actions (4 bước) | Đạt cho mọi lần đẩy |
 
 File test backend:
 - `spot-engine`, `market`, `auth`, `db`, `shared`, `watchlists-alerts`, `ops`;
-- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`, `kyc-aml`.
+- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`, `kyc-aml`, `roles-vip-privacy`.
 
 ## 8. Còn thiếu / việc nên làm tiếp
 

@@ -53,7 +53,7 @@ export function OperationApprovals() {
       }
     >
       <p className="border-b border-line px-4 py-2 text-[12px] text-tx-3">
-        Chỉnh giá lớn, niêm yết / huỷ niêm yết, tạm ngừng toàn sàn (duyệt: Vận hành thị trường hoặc Rủi ro & giám sát), cấp vai trò nhân viên và khôi phục dữ liệu (duyệt: Quản trị hệ thống), đặt lại tài khoản khách (duyệt: Tài chính)
+        Chỉnh giá lớn, niêm yết / huỷ niêm yết, tạm ngừng toàn sàn (duyệt: Vận hành thị trường hoặc Rủi ro & giám sát), cấp vai trò nhân viên và khôi phục dữ liệu (duyệt: Quản trị hệ thống), đặt lại tài khoản khách (duyệt: Tài chính), nộp STR và gỡ hạn chế AML (duyệt: Trưởng Tuân thủ / MLRO)
         chỉ được thực hiện khi một người KHÁC người đề xuất bấm duyệt. Đề xuất có hạn chờ; quá hạn phải đề xuất lại. Mọi bước ghi vào nhật ký quản trị.
       </p>
       {isLoading ? (

@@ -24,15 +24,18 @@ VNCoin làm KYC theo cấp và có bộ phận **Tuân thủ** giống các sàn
 
 Khách xác minh ở `/xac-minh` (menu tài khoản → Xác minh danh tính).
 
-## 2. Vai trò Tuân thủ (`COMPLIANCE`)
+## 2. Vai trò Tuân thủ (`COMPLIANCE`) và Trưởng Tuân thủ (`MLRO`)
 
 | Quyền | Ai có | Dùng để |
 |---|---|---|
 | `kyc.review` | Tuân thủ | Duyệt / từ chối hồ sơ KYC, xem hồ sơ đầy đủ |
 | `aml.view` | Tuân thủ, Kiểm toán | Xem cảnh báo AML, hồ sơ hoạt động P2P của khách, STR, tài khoản bị hạn chế, ngưỡng |
-| `aml.manage` | Tuân thủ | Xử lý cảnh báo, lập STR, hạn chế tài khoản, đề xuất gỡ, chỉnh ngưỡng, quét ngay |
+| `aml.manage` | Tuân thủ, MLRO | Xử lý cảnh báo, lập STR, hạn chế tài khoản, đề xuất gỡ, chỉnh ngưỡng, quét ngay |
+| `aml.report` | MLRO | Nộp STR (tự lập thì nộp ngay, chuyên viên lập thì duyệt đề xuất `STR_FILE`), duyệt gỡ hạn chế `AML_UNFREEZE` |
 
-Khu làm việc: Quản trị → **Tuân thủ (KYC/AML)**. Tài khoản thử ở môi trường dev là `compliance@` và `compliance2@` (cùng tên miền với `ADMIN_EMAIL`, mật khẩu `DEV_STAFF_PASSWORD`).
+Như luật phòng, chống rửa tiền: chuyên viên phát hiện và lập hồ sơ, **người phụ trách PCRT (MLRO)** quyết định nộp báo cáo và chịu trách nhiệm chấp nhận rủi ro khi gỡ hạn chế.
+
+Khu làm việc: Quản trị → **Tuân thủ (KYC/AML)**. Tài khoản thử ở môi trường dev là `compliance@`, `compliance2@` (chuyên viên) và `mlro@` (Trưởng Tuân thủ) (cùng tên miền với `ADMIN_EMAIL`, mật khẩu `DEV_STAFF_PASSWORD`).
 
 ## 3. Cảnh báo AML
 
@@ -53,7 +56,7 @@ Quy trình xử lý:
 2. **Nhận xử lý** → Đang xem xét.
 3. Kết luận theo một trong hai hướng:
    - **Đóng (không đáng ngờ)**: bắt buộc ghi kết luận.
-   - **Lập STR**: chọn các cảnh báo của cùng khách và viết mô tả (≥ 30 ký tự). STR chỉ được ghi thêm, không sửa / xoá; tải JSON được. Sàn mô phỏng không gửi STR đi đâu.
+   - **Lập STR**: chọn các cảnh báo của cùng khách và viết mô tả (≥ 30 ký tự). Chuyên viên lập thì thành đề xuất `STR_FILE` (hạn 3 ngày) trong Hàng chờ duyệt, các cảnh báo chuyển "Đang xem xét"; MLRO duyệt thì STR mới vào sổ. STR chỉ được ghi thêm, không sửa / xoá; tải JSON được. Sàn mô phỏng không gửi STR đi đâu.
 4. Nếu cần, **hạn chế tài khoản** ngay.
 
 Nguyên tắc **không tiết lộ**: khách không bao giờ thấy cảnh báo, STR hay lý do bị hạn chế.
@@ -66,7 +69,7 @@ Nguyên tắc **không tiết lộ**: khách không bao giờ thấy cảnh báo
   - Quảng cáo P2P bị đóng, thương nhân chuyển sang tạm ngừng với ghi chú chung.
   - Đơn P2P đang chạy vẫn xử lý tiếp để không giam coin của người khác.
 - Khách chỉ thấy banner "Tài khoản đang bị hạn chế giao dịch… Liên hệ CSKH".
-- **Gỡ hạn chế** là đề xuất `AML_UNFREEZE` trong Hàng chờ duyệt. Phải có **người Tuân thủ khác** duyệt (người đề xuất không tự duyệt được). Tư cách thương nhân do Rủi ro & giám sát khôi phục riêng.
+- **Gỡ hạn chế** là đề xuất `AML_UNFREEZE` trong Hàng chờ duyệt. Phải có **Trưởng Tuân thủ (MLRO)** duyệt (người đề xuất không tự duyệt được). Tư cách thương nhân do Vận hành P2P khôi phục riêng.
 
 ## 5. Dữ liệu
 

@@ -18,7 +18,7 @@ const TONE: Record<MerchantStatus, 'good' | 'warn' | 'bad' | 'info' | 'muted'> =
 
 type Action = { kind: 'approve' | 'reject' | 'suspend' | 'restore'; m: MerchantAdminDTO };
 
-/** Quản trị thương nhân P2P: duyệt đơn xin (Rủi ro & giám sát), tạm ngừng, trừ cọc; tham số P2P (Vận hành thị trường) */
+/** Quản trị thương nhân P2P: duyệt đơn xin (Vận hành P2P), tạm ngừng, trừ cọc; tham số P2P (Vận hành thị trường) */
 export function P2PMerchants() {
   const { can } = useAdminMe();
   const review = can('p2p.review');

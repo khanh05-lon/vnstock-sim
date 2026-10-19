@@ -17,7 +17,7 @@ import { audit, need, uuid, type AdminDeps, type AdminRequest } from './common';
 import { auditView } from './staff';
 
 /**
- * Quản trị thương nhân P2P (vai trò Rủi ro & giám sát — quyền p2p.review):
+ * Quản trị thương nhân P2P (vai trò Vận hành P2P — quyền p2p.review):
  * duyệt / từ chối đơn xin, tạm ngừng / khôi phục, trừ tiền cọc. Tham số P2P (tỷ giá, phí...) do Vận hành thị trường chỉnh.
  * Khiếu nại đơn P2P xử lý ở khu CSKH (/api/support-desk/p2p).
  */

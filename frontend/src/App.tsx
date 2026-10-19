@@ -33,6 +33,8 @@ const P2POrderPage = lazy(() => import('./pages/P2POrderPage'));
 const MerchantCenterPage = lazy(() => import('./pages/MerchantCenterPage'));
 const BankPage = lazy(() => import('./pages/BankPage'));
 const KycPage = lazy(() => import('./pages/KycPage'));
+const FeesPage = lazy(() => import('./pages/FeesPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -115,6 +117,15 @@ export function App() {
                 element={
                   <RequireAuth>
                     <MerchantCenterPage />
+                  </RequireAuth>
+                }
+              />
+              <Route path="phi" element={<FeesPage />} />
+              <Route
+                path="du-lieu-ca-nhan"
+                element={
+                  <RequireAuth>
+                    <PrivacyPage />
                   </RequireAuth>
                 }
               />
