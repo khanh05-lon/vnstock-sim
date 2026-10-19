@@ -37,6 +37,10 @@ export const BACKUP_TABLES: TableSpec[] = [
   { name: 'p2p_ads', sql: 'SELECT * FROM p2p_ads ORDER BY id', replace: true },
   { name: 'p2p_orders', sql: 'SELECT * FROM p2p_orders ORDER BY id', replace: true },
   { name: 'p2p_messages', sql: 'SELECT * FROM p2p_messages ORDER BY id', replace: true },
+  // KYC / AML (hồ sơ KYC đã mã hoá; STR chỉ ghi thêm nhưng có khoá ngoại tới users nên khôi phục cùng users)
+  { name: 'kyc_applications', sql: 'SELECT * FROM kyc_applications ORDER BY id', replace: true },
+  { name: 'aml_alerts', sql: 'SELECT * FROM aml_alerts ORDER BY id', replace: true },
+  { name: 'aml_reports', sql: 'SELECT * FROM aml_reports ORDER BY id', replace: true },
   { name: 'recovery_codes', sql: 'SELECT * FROM recovery_codes ORDER BY id', replace: true },
   { name: 'watchlist_lists', sql: 'SELECT * FROM watchlist_lists ORDER BY id', replace: true },
   { name: 'watchlists', sql: 'SELECT * FROM watchlists', replace: true },

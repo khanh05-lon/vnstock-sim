@@ -54,6 +54,11 @@ export const P2P_RULES = {
   takerCancelLimit: 3,
   /** Đơn ở trạng thái "đã thanh toán" bao lâu (phút) thì được khiếu nại */
   appealAfterMinutes: 10,
+  /** Hạn mức P2P / ngày UTC theo cấp KYC (tổng tiền các đơn chưa huỷ mà người đó là một bên) */
+  kycLevel1DailyVnd: 200_000_000,
+  kycLevel2DailyVnd: 2_000_000_000,
+  /** Cấp KYC tối thiểu để xin làm thương nhân */
+  merchantMinKyc: 2,
   /** Số dư ngân hàng giả lập cấp khi mở / đặt lại tài khoản */
   initialBankVnd: '100000000' as Dec,
 };
@@ -81,6 +86,9 @@ export const p2pRulesPatchSchema = z
     minOrderVnd: z.number().int().min(10_000).max(100_000_000).optional(),
     takerCancelLimit: z.number().int().min(1).max(100).optional(),
     appealAfterMinutes: z.number().int().min(0).max(1440).optional(),
+    kycLevel1DailyVnd: z.number().int().min(1_000_000).max(1e13).optional(),
+    kycLevel2DailyVnd: z.number().int().min(1_000_000).max(1e14).optional(),
+    merchantMinKyc: z.number().int().min(0).max(2).optional(),
     initialBankVnd: intStr('Số dư không hợp lệ')
       .refine((s) => Number(s) <= 1e13, 'Số dư ngân hàng ban đầu quá lớn')
       .optional(),
@@ -462,12 +470,8 @@ export const resolveAppealSchema = z
 
 export const p2pMessageSchema = z.object({ body: z.string().trim().min(1, 'Nhập nội dung').max(1000, 'Tin nhắn tối đa 1000 ký tự') }).strict();
 
-export const paymentMethodSchema = z
-  .object({
-    bankName: z.enum(BANK_NAMES),
-    holderName: z.string().trim().min(2, 'Tên chủ tài khoản tối thiểu 2 ký tự').max(60),
-  })
-  .strict();
+/** Tên chủ tài khoản lấy theo họ tên KYC (chính chủ), không cho tự nhập */
+export const paymentMethodSchema = z.object({ bankName: z.enum(BANK_NAMES) }).strict();
 
 export const bankTransferSchema = z
   .object({

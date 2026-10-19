@@ -38,6 +38,7 @@ import { AppError, badRequest, notFound } from '../lib/errors';
 import { log } from '../lib/logger';
 import { publicName } from '../portfolio/nav';
 import { balanceOf, credit, debitFree, debitLocked, ledger, lockFunds, unlockFunds } from '../trading/wallet';
+import { assertP2PLimit } from '../kyc/service';
 import { bankAccountOf, holderNameOf } from './bank';
 
 /*
@@ -150,6 +151,9 @@ interface UserGate {
   totp_enabled_at: Date | null;
   full_name: string;
   display_name: string | null;
+  kyc_level: number;
+  kyc_name: string | null;
+  aml_restricted_at: Date | null;
 }
 
 const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : null);
@@ -235,14 +239,18 @@ export class P2PService {
     return adPrice({ priceType: ad.price_type, fixedPrice: ad.fixed_price, floatRatio: ad.float_ratio }, this.refPrice(ad.asset));
   }
 
-  private async gate(q: Queryable, userId: string): Promise<UserGate> {
+  /** Kiểm tra người dùng được thao tác P2P. view = chỉ xem (tài khoản bị Tuân thủ hạn chế vẫn xem được) */
+  private async gate(q: Queryable, userId: string, view = false): Promise<UserGate> {
     const u = await q.one<UserGate>(
-      'SELECT id, role, status, created_at, email_verified_at, totp_enabled_at, full_name, display_name FROM users WHERE id = $1',
+      `SELECT id, role, status, created_at, email_verified_at, totp_enabled_at, full_name, display_name, kyc_level, kyc_name, aml_restricted_at
+       FROM users WHERE id = $1`,
       [userId],
     );
     if (!u) throw notFound('Không tìm thấy tài khoản');
     if (u.role !== 'USER') throw forbidden('Tài khoản nhân viên không được giao dịch P2P (tránh xung đột lợi ích khi xử lý khiếu nại)');
     if (u.status !== 'ACTIVE') throw forbidden('Tài khoản đang bị khoá');
+    // Không nói lý do (nguyên tắc không tiết lộ của AML)
+    if (!view && u.aml_restricted_at) throw forbidden('Tài khoản đang bị hạn chế giao dịch. Vui lòng liên hệ CSKH.');
     return u;
   }
 
@@ -295,13 +303,19 @@ export class P2PService {
   /* ================================ thương nhân ================================ */
 
   async requirements(userId: string): Promise<{ list: MerchantRequirement[]; eligible: boolean; stats: MerchantStats }> {
-    const u = await this.gate(this.db, userId);
+    const u = await this.gate(this.db, userId, true);
     const stats = (await statsFor(this.db, [userId])).get(userId) ?? EMPTY_STATS;
     const usdt = await balanceOf(this.db, userId, 'USDT');
     const ageDays = (Date.now() - new Date(u.created_at).getTime()) / 86_400_000;
     const R = P2P_RULES;
     const rate = stats.completionRate30d;
     const list: MerchantRequirement[] = [
+      {
+        key: 'kyc',
+        label: `Xác minh danh tính cấp ${R.merchantMinKyc}`,
+        ok: Number(u.kyc_level) >= R.merchantMinKyc,
+        detail: `Hiện tại: cấp ${Number(u.kyc_level)}`,
+      },
       { key: 'email', label: 'Đã xác thực email', ok: !R.requireEmailVerified || !!u.email_verified_at, detail: u.email_verified_at ? 'Đã xác thực' : 'Chưa xác thực' },
       { key: '2fa', label: 'Đã bật xác thực 2 lớp', ok: !R.require2fa || !!u.totp_enabled_at, detail: u.totp_enabled_at ? 'Đã bật' : 'Chưa bật' },
       {
@@ -478,17 +492,20 @@ export class P2PService {
     return rows.map((r) => ({ id: idNum(r.id), bankName: r.bank_name, accountNo: r.account_no, holderName: r.holder_name }));
   }
 
-  async addPaymentMethod(userId: string, input: { bankName: string; holderName: string }): Promise<PaymentMethodDTO> {
-    await this.gate(this.db, userId);
+  /** Tài khoản nhận tiền: tên chủ tài khoản luôn là họ tên KYC (chính chủ), không tự gõ */
+  async addPaymentMethod(userId: string, input: { bankName: string }): Promise<PaymentMethodDTO> {
+    const u = await this.gate(this.db, userId);
+    if (Number(u.kyc_level) < 1) throw forbidden('Xác minh danh tính (KYC cấp 1) trước khi thêm tài khoản nhận tiền');
+    const holder = holderNameOf(u.kyc_name ?? u.full_name);
     const count = await this.db.one<{ n: number }>('SELECT count(*)::int AS n FROM p2p_payment_methods WHERE user_id = $1 AND deleted_at IS NULL', [userId]);
     if (count!.n >= 10) throw badRequest('LIMIT', 'Tối đa 10 phương thức thanh toán');
     const bank = await bankAccountOf(this.db, userId);
     if (!bank) throw badRequest('NO_BANK', 'Bạn chưa có tài khoản ngân hàng giả lập');
     const r = await this.db.one<{ id: string | number }>(
       'INSERT INTO p2p_payment_methods (user_id, bank_name, account_no, holder_name) VALUES ($1, $2, $3, $4) RETURNING id',
-      [userId, input.bankName, bank.account_no, holderNameOf(input.holderName)],
+      [userId, input.bankName, bank.account_no, holder],
     );
-    return { id: idNum(r!.id), bankName: input.bankName, accountNo: bank.account_no, holderName: holderNameOf(input.holderName) };
+    return { id: idNum(r!.id), bankName: input.bankName, accountNo: bank.account_no, holderName: holder };
   }
 
   async removePaymentMethod(userId: string, id: number): Promise<void> {
@@ -754,6 +771,12 @@ export class P2PService {
       const fiat = input.qty ? fiatForQty(qty, price) : input.fiatAmount!;
       const err = validateP2POrderAmount(fiat, qty, { minFiat: ad.min_fiat, maxFiat: ad.max_fiat, availableQty: ad.available_qty }, price);
       if (err) throw badRequest('AMOUNT', err);
+      // Hạn mức P2P / ngày theo cấp KYC của cả hai bên
+      if (Number(taker.kyc_level) < 1) throw forbidden('Xác minh danh tính (KYC cấp 1) để giao dịch P2P');
+      const mk = await tx.one<{ kyc_level: number; aml_restricted_at: Date | null }>('SELECT kyc_level, aml_restricted_at FROM users WHERE id = $1', [ad.merchant_id]);
+      if (mk?.aml_restricted_at) throw badRequest('AD_OFFLINE', 'Thương nhân đang tạm ngừng giao dịch');
+      await assertP2PLimit(tx, takerId, Number(taker.kyc_level), fiat, true);
+      await assertP2PLimit(tx, ad.merchant_id, Number(mk?.kyc_level ?? 0), fiat, false);
 
       const makerSells = ad.side === 'SELL';
       const buyerId = makerSells ? takerId : ad.merchant_id;

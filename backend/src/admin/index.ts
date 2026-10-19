@@ -58,6 +58,8 @@ async function seedDevStaff(db: Database) {
     ['finance', 'FINANCE', 'Tài chính'],
     ['finance2', 'FINANCE', 'Tài chính 2'],
     ['risk', 'RISK', 'Rủi ro & giám sát'],
+    ['compliance', 'COMPLIANCE', 'Tuân thủ KYC/AML'],
+    ['compliance2', 'COMPLIANCE', 'Tuân thủ KYC/AML 2'],
     ['audit', 'AUDITOR', 'Kiểm toán'],
     ['cskh', 'SUPPORT', 'Nhân viên CSKH'],
   ];

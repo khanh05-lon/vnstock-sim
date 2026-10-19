@@ -138,10 +138,10 @@ export const preferencesSchema = z
   .strict();
 
 /** Vai trò nhân viên — quyền chi tiết của từng vai trò ở permissions.ts */
-export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'AUDITOR' | 'SUPPORT';
+export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'COMPLIANCE' | 'AUDITOR' | 'SUPPORT';
 export type UserRole = 'USER' | StaffRole;
 
-export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'AUDITOR', 'SUPPORT'];
+export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'COMPLIANCE', 'AUDITOR', 'SUPPORT'];
 export const USER_ROLES: readonly UserRole[] = ['USER', ...STAFF_ROLES];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
@@ -151,6 +151,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   MARKET_OPS: 'Vận hành thị trường',
   FINANCE: 'Tài chính',
   RISK: 'Rủi ro & giám sát',
+  COMPLIANCE: 'Tuân thủ (KYC/AML)',
   AUDITOR: 'Kiểm toán (chỉ đọc)',
 };
 
@@ -169,6 +170,10 @@ export interface UserDTO {
   notifyFills: boolean;
   displayName: string | null;
   showOnLeaderboard: boolean;
+  /** Cấp xác minh danh tính (KYC) 0 / 1 / 2 */
+  kycLevel: 0 | 1 | 2;
+  /** Đang bị bộ phận Tuân thủ hạn chế giao dịch */
+  restricted: boolean;
 }
 
 export type RegisterInput = z.infer<typeof registerSchema>;

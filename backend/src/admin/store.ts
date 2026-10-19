@@ -1,4 +1,14 @@
-import { RULES, applyP2PRules, applyRules, type EmergencyHalt, type P2PRulesPatch, type RulesPatch, type TradingRules } from '@vss/shared';
+import {
+  RULES,
+  applyAmlRules,
+  applyP2PRules,
+  applyRules,
+  type AmlRulesPatch,
+  type EmergencyHalt,
+  type P2PRulesPatch,
+  type RulesPatch,
+  type TradingRules,
+} from '@vss/shared';
 import type { Queryable } from '../db';
 import type { SpotEngine } from '../trading/engine';
 
@@ -28,6 +38,7 @@ const KEY_SYMBOLS = 'admin.halted_symbols';
 const KEY_ANNOUNCEMENT = 'admin.announcement';
 const KEY_RULES = 'admin.rules';
 const KEY_P2P_RULES = 'admin.p2pRules';
+const KEY_AML_RULES = 'admin.amlRules';
 
 /**
  * Cấu hình vận hành do quản trị viên đặt, lưu trong bảng market_meta (key → JSON)
@@ -41,6 +52,8 @@ export class AdminStore {
   rulesPatch: RulesPatch = {};
   /** Tham số P2P quản trị viên đã chỉnh so với mặc định */
   p2pRulesPatch: P2PRulesPatch = {};
+  /** Ngưỡng cảnh báo AML bộ phận Tuân thủ đã chỉnh */
+  amlRulesPatch: AmlRulesPatch = {};
   /** Lý do bảo trì (chỉ trong bộ nhớ — khởi động lại là hết) */
   maintenance: string | null = null;
   /** Dừng khẩn toàn sàn do 1 người, chưa có người thứ hai xác nhận (null = không có / đã xác nhận) */
@@ -65,6 +78,8 @@ export class AdminStore {
     applyRules(this.rulesPatch);
     this.p2pRulesPatch = (get(KEY_P2P_RULES) as P2PRulesPatch | undefined) ?? {};
     applyP2PRules(this.p2pRulesPatch);
+    this.amlRulesPatch = (get(KEY_AML_RULES) as AmlRulesPatch | undefined) ?? {};
+    applyAmlRules(this.amlRulesPatch);
 
     this.locked.clear();
     for (const r of await this.db.many<{ id: string }>(`SELECT id FROM users WHERE status = 'LOCKED'`)) this.locked.add(r.id);
@@ -122,5 +137,13 @@ export class AdminStore {
     applyP2PRules(next);
     this.p2pRulesPatch = next;
     await this.save(KEY_P2P_RULES, next);
+  }
+
+  /** Chỉnh ngưỡng cảnh báo AML (null = khôi phục mặc định) */
+  async setAmlRules(patch: AmlRulesPatch | null) {
+    const next = patch == null ? {} : { ...this.amlRulesPatch, ...patch };
+    applyAmlRules(next);
+    this.amlRulesPatch = next;
+    await this.save(KEY_AML_RULES, next);
   }
 }

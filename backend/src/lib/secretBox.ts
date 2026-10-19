@@ -27,3 +27,12 @@ export function openSecret(stored: string): string {
   decipher.setAuthTag(Buffer.from(tag, 'base64url'));
   return Buffer.concat([decipher.update(Buffer.from(ct, 'base64url')), decipher.final()]).toString('utf8');
 }
+
+/**
+ * Mã băm HMAC của định danh nhạy cảm (số giấy tờ KYC) để dò trùng mà không lưu bản rõ.
+ * Khoá: DATA_ENCRYPTION_KEY; dev chưa đặt khoá thì dùng khoá cố định (chỉ để dò trùng trong máy dev).
+ */
+export function hashIdentifier(value: string): string {
+  const k = config.dataEncryptionKey || 'vncoin-dev-identifier-key';
+  return crypto.createHmac('sha256', k).update(value.trim().toUpperCase()).digest('hex');
+}

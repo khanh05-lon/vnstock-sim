@@ -134,12 +134,14 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
   /* ------------------------------ lệnh ------------------------------ */
 
   /**
-   * Nhân viên (mọi vai trò) biết trước kịch bản giá → không được đặt / sửa lệnh cặp đang ở giá điều chỉnh,
-   * tránh giao dịch dựa trên thông tin nội bộ. Chỉ tra vai trò khi cặp đang ở giá điều chỉnh.
+   * Trước khi đặt / sửa lệnh:
+   *  - tài khoản bị bộ phận Tuân thủ hạn chế (AML) không đặt / sửa lệnh mới (huỷ lệnh vẫn được);
+   *  - nhân viên (mọi vai trò) biết trước kịch bản giá → không được đặt / sửa lệnh cặp đang ở giá điều chỉnh.
    */
-  const assertNotInsider = async (userId: string, symbol: string) => {
+  const assertCanTrade = async (userId: string, symbol: string) => {
+    const row = await db.one<{ role: string; aml_restricted_at: Date | null }>('SELECT role, aml_restricted_at FROM users WHERE id = $1', [userId]);
+    if (row?.aml_restricted_at) throw new AppError(403, 'ACCOUNT_RESTRICTED', 'Tài khoản đang bị hạn chế giao dịch. Vui lòng liên hệ CSKH.');
     if (market.info(symbol)?.priceMode !== 'MANUAL') return;
-    const row = await db.one<{ role: string }>('SELECT role FROM users WHERE id = $1', [userId]);
     if (row && row.role !== 'USER') {
       throw new AppError(403, 'STAFF_MANUAL_PRICE', `Nhân viên không được giao dịch ${symbol} khi cặp đang ở giá điều chỉnh (tránh giao dịch dựa trên thông tin nội bộ)`);
     }
@@ -152,7 +154,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = placeOrderSchema.parse(req.body);
-      await assertNotInsider(user.id, input.symbol);
+      await assertCanTrade(user.id, input.symbol);
       const order = await engine.placeOrder(user.id, input, userActor(req.ip));
       metrics.orders.placed++;
       res.status(201).json(order);
@@ -166,7 +168,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const { user } = req as AuthedRequest;
       await assertVerified(user.id);
       const input = ocoOrderSchema.parse(req.body);
-      await assertNotInsider(user.id, input.symbol);
+      await assertCanTrade(user.id, input.symbol);
       const list = await engine.placeOco(user.id, input, userActor(req.ip));
       metrics.orders.placed += 2;
       res.status(201).json(list);
@@ -247,7 +249,7 @@ export function tradingRoutes(db: Database, market: MarketService, engine: SpotE
       const input = replaceOrderSchema.parse(req.body);
       const id = idParam(req.params.id);
       const o = await db.one<{ symbol: string }>('SELECT symbol FROM orders WHERE id = $1 AND user_id = $2', [id, user.id]);
-      if (o) await assertNotInsider(user.id, o.symbol);
+      if (o) await assertCanTrade(user.id, o.symbol);
       res.json(await engine.replaceOrder(user.id, id, input, userActor(req.ip)));
     }),
   );

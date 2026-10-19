@@ -56,7 +56,8 @@ async function call<T = any>(method: string, path: string, token?: string, body?
 async function makeUser(email: string, role: UserRole = 'USER'): Promise<U> {
   const hash = await bcrypt.hash('matkhau123', 4);
   const u = await db.tx((tx) => createUserAccount(tx, email, hash, email.split('@')[0]!));
-  await db.many('UPDATE users SET role = $2, email_verified_at = now() WHERE id = $1', [u.id, role]);
+  // Khách thử coi như đã KYC cấp 2 (kiểm tra cấp KYC nằm ở kyc-aml.test.ts)
+  await db.many(`UPDATE users SET role = $2, email_verified_at = now(), kyc_level = CASE WHEN $2 = 'USER' THEN 2 ELSE 0 END, kyc_name = full_name WHERE id = $1`, [u.id, role]);
   return { id: u.id, email, token: signToken({ id: u.id, email }) };
 }
 
@@ -70,7 +71,7 @@ async function bankNo(u: U) {
 }
 
 async function payMethod(u: U, bankName = 'Vietcombank') {
-  const r = await call<{ id: number }>('POST', '/p2p/payment-methods', u.token, { bankName, holderName: u.email.split('@')[0] });
+  const r = await call<{ id: number }>('POST', '/p2p/payment-methods', u.token, { bankName });
   expect(r.status).toBe(200);
   return r.body.id;
 }

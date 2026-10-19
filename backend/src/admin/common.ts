@@ -8,6 +8,7 @@ import type { Mailer } from '../lib/mailer';
 import type { BinanceRest } from '../market/binance/rest';
 import type { MarketService } from '../market/marketService';
 import type { AlertMonitor } from '../ops/alerts';
+import type { KycService } from '../kyc/service';
 import type { P2PService } from '../p2p/service';
 import type { SpotEngine } from '../trading/engine';
 import type { AdminStore } from './store';
@@ -31,6 +32,8 @@ export interface AdminDeps {
   onAdjustDecided?(r: AdjustRequestDTO): Promise<void>;
   /** Chợ P2P và thương nhân (không có trong một số test) */
   p2p?: P2PService;
+  /** Xác minh danh tính (không có trong một số test) */
+  kyc?: KycService;
 }
 
 export interface AdminCtx {

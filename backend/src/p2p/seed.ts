@@ -26,7 +26,11 @@ export async function seedDevMerchants(db: Database, p2p: P2PService) {
     if (await db.one('SELECT 1 FROM users WHERE email = $1', [email])) continue;
     const userId = await db.tx(async (tx) => {
       const user = await createUserAccount(tx, email, hash, m.fullName);
-      await tx.many(`UPDATE users SET email_verified_at = now(), display_name = $2, created_at = now() - interval '90 days' WHERE id = $1`, [user.id, m.display]);
+      await tx.many(`UPDATE users SET email_verified_at = now(), display_name = $2, kyc_level = 2, kyc_name = $3, created_at = now() - interval '90 days' WHERE id = $1`, [
+        user.id,
+        m.display,
+        m.fullName,
+      ]);
       // Coin để bán (dev): ghi sổ cái như quản trị viên điều chỉnh để đối soát vẫn khớp
       if (m.btc) {
         const after = await credit(tx, user.id, 'BTC', m.btc);
@@ -40,7 +44,7 @@ export async function seedDevMerchants(db: Database, p2p: P2PService) {
       );
       return user.id;
     });
-    const pm = await p2p.addPaymentMethod(userId, { bankName: m.bank, holderName: m.fullName });
+    const pm = await p2p.addPaymentMethod(userId, { bankName: m.bank });
     const base = { asset: 'USDT' as const, priceType: 'FLOATING' as const, payMinutes: 15 as const, paymentMethodIds: [pm.id], minAccountDays: 0, online: true };
     await p2p.createAd(userId, {
       ...base,

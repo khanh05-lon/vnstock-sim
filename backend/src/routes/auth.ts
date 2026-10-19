@@ -75,15 +75,17 @@ interface UserRow {
   display_name: string | null;
   show_on_leaderboard: boolean;
   password_changed_at: Date | null;
+  kyc_level: number;
+  aml_restricted_at: Date | null;
 }
 
 /** Cột cần để dựng UserDTO */
 export const USER_COLS =
-  'id, email, full_name, created_at, role, email_verified_at, totp_enabled_at, notify_fills, display_name, show_on_leaderboard';
+  'id, email, full_name, created_at, role, email_verified_at, totp_enabled_at, notify_fills, display_name, show_on_leaderboard, kyc_level, aml_restricted_at';
 
 type UserDtoRow = Pick<
   UserRow,
-  'id' | 'email' | 'full_name' | 'created_at' | 'role' | 'email_verified_at' | 'totp_enabled_at' | 'notify_fills' | 'display_name' | 'show_on_leaderboard'
+  'id' | 'email' | 'full_name' | 'created_at' | 'role' | 'email_verified_at' | 'totp_enabled_at' | 'notify_fills' | 'display_name' | 'show_on_leaderboard' | 'kyc_level' | 'aml_restricted_at'
 >;
 
 export const toUser = (u: UserDtoRow): UserDTO => ({
@@ -97,6 +99,8 @@ export const toUser = (u: UserDtoRow): UserDTO => ({
   notifyFills: !!u.notify_fills,
   displayName: u.display_name ?? null,
   showOnLeaderboard: u.show_on_leaderboard ?? true,
+  kycLevel: (Math.min(2, Math.max(0, Number(u.kyc_level ?? 0))) as 0 | 1 | 2),
+  restricted: u.aml_restricted_at != null,
 });
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');

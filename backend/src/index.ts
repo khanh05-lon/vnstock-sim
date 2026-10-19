@@ -40,6 +40,9 @@ import { BankService } from './p2p/bank';
 import { p2pRoutes } from './p2p/routes';
 import { seedDevMerchants } from './p2p/seed';
 import { P2PService } from './p2p/service';
+import { startAmlSchedule } from './kyc/aml';
+import { kycRoutes } from './kyc/routes';
+import { KycService } from './kyc/service';
 
 async function main() {
   const started = Date.now();
@@ -126,6 +129,8 @@ async function main() {
   });
   engine.userCleanup.push((userId, reason) => p2p.onUserCleanup(userId, reason));
   engine.resetGuards.push((userId) => p2p.assertCanReset(userId));
+  // Xác minh danh tính (KYC) + giám sát chống rửa tiền (AML)
+  const kyc = new KycService(db, mailer);
   const nav = new NavService(db, market);
   const priceAlerts = new PriceAlertService(db, {
     info: (s) => market.info(s),
@@ -152,6 +157,7 @@ async function main() {
     db,
     market,
     p2p,
+    kyc,
     engine,
     mailer,
     alerts,
@@ -208,6 +214,7 @@ async function main() {
   log.info(`[ai] trợ lý hỗ trợ: ${assistant.enabled ? `bật (${config.ai.model})` : 'tắt — chưa đặt ANTHROPIC_API_KEY'}`);
   app.use('/api', supportRoutes(support, assistant));
   app.use('/api', p2pRoutes(p2p, bank));
+  app.use('/api', kycRoutes(kyc));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);
@@ -232,6 +239,7 @@ async function main() {
   alerts.start();
   support.start();
   p2p.start();
+  const stopAml = startAmlSchedule(db);
   await seedDevMerchants(db, p2p).catch((err) => log.error('[p2p] lỗi tạo thương nhân mẫu', { err }));
   if (!config.alertEmails.length && !config.alertWebhookUrl) log.warn('[alert] chưa cấu hình ALERT_EMAILS / ALERT_WEBHOOK_URL, cảnh báo chỉ ghi log và hiện ở trang Quản trị');
 
@@ -254,6 +262,7 @@ async function main() {
     alerts.stop();
     support.stop();
     p2p.stop();
+    stopAml();
     metrics.stopSampling();
     await digest.flush().catch(() => undefined);
     await market.stop();

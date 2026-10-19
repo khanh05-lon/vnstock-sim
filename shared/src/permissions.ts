@@ -51,7 +51,13 @@ export type Permission =
   /** Duyệt / từ chối đơn xin làm thương nhân P2P, tạm ngừng thương nhân, trừ tiền cọc */
   | 'p2p.review'
   /** Xử lý khiếu nại đơn P2P (khu CSKH) */
-  | 'p2p.appeal';
+  | 'p2p.appeal'
+  /** Duyệt / từ chối hồ sơ KYC, xem hồ sơ đầy đủ (mỗi lần xem ghi KYC_VIEW) */
+  | 'kyc.review'
+  /** Xem cảnh báo AML, báo cáo giao dịch đáng ngờ (STR), tài khoản bị hạn chế */
+  | 'aml.view'
+  /** Xử lý cảnh báo AML, lập STR, hạn chế tài khoản, chỉnh ngưỡng AML */
+  | 'aml.manage';
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   USER: [],
@@ -74,7 +80,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   MARKET_OPS: ['admin.view', 'orders.cancel', 'market.manage', 'market.halt', 'market.approve', 'system.announce'],
   FINANCE: ['admin.view', 'users.view', 'finance.adjust', 'finance.approve', 'finance.view'],
   RISK: ['admin.view', 'users.view', 'users.lock', 'orders.cancel', 'market.halt', 'market.approve', 'audit.view', 'support.desk', 'risk.monitor', 'p2p.review', 'p2p.appeal'],
-  AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view', 'risk.monitor', 'finance.view'],
+  COMPLIANCE: ['admin.view', 'users.view', 'kyc.review', 'aml.view', 'aml.manage'],
+  AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view', 'risk.monitor', 'finance.view', 'aml.view'],
 };
 
 export const can = (role: string | null | undefined, perm: Permission): boolean =>
@@ -105,6 +112,9 @@ export const PERMISSION_DENIED: Record<Permission, string> = {
   'finance.view': 'Chỉ Tài chính hoặc Kiểm toán được xem doanh thu phí và đối soát',
   'p2p.review': 'Chỉ Rủi ro & giám sát được duyệt và quản lý thương nhân P2P',
   'p2p.appeal': 'Chỉ nhân viên CSKH hoặc Rủi ro & giám sát được xử lý khiếu nại P2P',
+  'kyc.review': 'Chỉ bộ phận Tuân thủ được duyệt hồ sơ KYC',
+  'aml.view': 'Chỉ Tuân thủ hoặc Kiểm toán được xem cảnh báo AML',
+  'aml.manage': 'Chỉ bộ phận Tuân thủ được xử lý cảnh báo AML, lập STR, hạn chế tài khoản',
 };
 
 /** Vai trò có quyền này (vd. danh sách người được giao yêu cầu hỗ trợ) */
@@ -118,12 +128,13 @@ export const ROLE_DESC: Record<UserRole, string> = {
   MARKET_OPS: 'Cặp giao dịch, giá, biểu phí, thông báo, tạm ngừng; niêm yết / chỉnh giá lớn / tạm ngừng toàn sàn phải có người duyệt.',
   FINANCE: 'Điều chỉnh / đặt lại số dư; duyệt đề xuất bồi hoàn và điều chỉnh lớn của người khác.',
   RISK: 'Khoá tài khoản, huỷ hộ lệnh, tạm ngừng cặp, xem nhật ký; duyệt đề xuất thị trường của người khác; duyệt thương nhân P2P, xử lý khiếu nại P2P.',
-  AUDITOR: 'Chỉ đọc: tổng quan, người dùng, lệnh, nhật ký, giám sát. Không thao tác được gì.',
+  COMPLIANCE: 'Duyệt hồ sơ KYC, xử lý cảnh báo chống rửa tiền (AML), lập báo cáo giao dịch đáng ngờ, hạn chế tài khoản; gỡ hạn chế cần người Tuân thủ thứ hai duyệt.',
+  AUDITOR: 'Chỉ đọc: tổng quan, người dùng, lệnh, nhật ký, giám sát, cảnh báo AML. Không thao tác được gì.',
 };
 
 /* ---------------------------- hàng chờ duyệt (2 người) ---------------------------- */
 
-export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'MARKET_RESUME' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET';
+export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'MARKET_RESUME' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET' | 'AML_UNFREEZE';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'FAILED';
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
@@ -135,6 +146,7 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   DATA_RESTORE: 'Khôi phục dữ liệu',
   ROLE_SET: 'Cấp / đổi vai trò nhân viên',
   ACCOUNT_RESET: 'Đặt lại tài khoản khách',
+  AML_UNFREEZE: 'Gỡ hạn chế tài khoản (AML)',
 };
 
 export const APPROVAL_STATUS_LABEL: Record<ApprovalStatus, string> = {
@@ -156,6 +168,7 @@ export const APPROVAL_PERMISSION: Record<ApprovalKind, Permission> = {
   DATA_RESTORE: 'data.approve',
   ROLE_SET: 'staff.manage',
   ACCOUNT_RESET: 'finance.approve',
+  AML_UNFREEZE: 'aml.manage',
 };
 
 /** Thời hạn chờ duyệt (phút) — giá / tạm ngừng cần quyết nhanh, quá hạn phải đề xuất lại */
@@ -168,6 +181,7 @@ export const APPROVAL_TTL_MIN: Record<ApprovalKind, number> = {
   DATA_RESTORE: 120,
   ROLE_SET: 24 * 60,
   ACCOUNT_RESET: 24 * 60,
+  AML_UNFREEZE: 24 * 60,
 };
 
 /** Điều chỉnh số dư trực tiếp: tổng của 1 người trong 24 giờ (mọi khách) vượt ngưỡng × hệ số này cũng phải duyệt */

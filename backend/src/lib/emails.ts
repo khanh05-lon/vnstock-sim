@@ -248,3 +248,15 @@ export function reconIssuesEmail(name: string, run: { id: number; issueCount: nu
     { label: 'Xem kết quả đối soát', url: `${config.publicUrl}/admin?tab=finance` },
   );
 }
+
+export function kycResultEmail(name: string, level: 1 | 2, approved: boolean, reason?: string): EmailContent {
+  const what = level === 1 ? 'xác minh danh tính (cấp 1)' : 'xác minh nâng cao (cấp 2)';
+  return layout(
+    approved ? `Hồ sơ ${what} đã được duyệt` : `Hồ sơ ${what} chưa được duyệt`,
+    hello(name),
+    approved
+      ? [`Hồ sơ ${what} của bạn đã được duyệt. Hạn mức giao dịch P2P của bạn đã tăng theo cấp mới.`]
+      : [`Hồ sơ ${what} của bạn chưa được duyệt.`, ...(reason ? [`Lý do: ${reason}`] : []), 'Bạn có thể sửa thông tin và nộp lại.'],
+    { label: 'Xem trạng thái xác minh', url: `${config.publicUrl}/xac-minh` },
+  );
+}
