@@ -224,6 +224,14 @@ export async function anonymizeUser(
     await tx.many('DELETE FROM recovery_codes WHERE user_id = $1', [user.id]);
     await tx.many(`UPDATE price_alerts SET status = 'CANCELLED' WHERE user_id = $1 AND status = 'ACTIVE'`, [user.id]);
     await tx.many(`UPDATE bank_accounts SET holder_name = 'NGUOI DUNG DA XOA' WHERE user_id = $1`, [user.id]);
+    // Cộng đồng: xoá hồ sơ (handle / tên / giới thiệu) và nội dung đã đăng; bỏ thích / theo dõi
+    await tx.many(`UPDATE square_posts SET status = 'DELETED', body = '', share = NULL WHERE user_id = $1`, [user.id]);
+    await tx.many(`UPDATE square_comments SET status = 'DELETED', body = '' WHERE user_id = $1`, [user.id]);
+    await tx.many(`UPDATE square_posts p SET like_count = GREATEST(like_count - 1, 0) FROM square_likes l WHERE l.post_id = p.id AND l.user_id = $1`, [user.id]);
+    await tx.many(`DELETE FROM square_likes WHERE user_id = $1`, [user.id]);
+    await tx.many(`DELETE FROM square_follows WHERE follower_id = $1 OR followee_id = $1`, [user.id]);
+    await tx.many(`DELETE FROM square_notifications WHERE user_id = $1`, [user.id]);
+    await tx.many(`DELETE FROM square_profiles WHERE user_id = $1`, [user.id]);
     await audit(tx, staff, 'USER_DELETE', 'user', user.id, { email: user.email, fullName: user.full_name, ...detail });
   });
   markPasswordChanged(user.id, deletedAt);

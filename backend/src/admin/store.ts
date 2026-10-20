@@ -4,6 +4,8 @@ import {
   applyP2PRules,
   applyVipRules,
   applyRules,
+  applySquareRules,
+  type SquareRulesPatch,
   type AmlRulesPatch,
   type EmergencyHalt,
   type P2PRulesPatch,
@@ -42,6 +44,7 @@ const KEY_RULES = 'admin.rules';
 const KEY_P2P_RULES = 'admin.p2pRules';
 const KEY_AML_RULES = 'admin.amlRules';
 const KEY_VIP_RULES = 'admin.vipRules';
+const KEY_SQUARE_RULES = 'admin.squareRules';
 
 /**
  * Cấu hình vận hành do quản trị viên đặt, lưu trong bảng market_meta (key → JSON)
@@ -59,6 +62,8 @@ export class AdminStore {
   amlRulesPatch: AmlRulesPatch = {};
   /** Hệ số ngưỡng cấp VIP Vận hành thị trường đã chỉnh */
   vipRulesPatch: VipRulesPatch = {};
+  /** Bộ lọc / thang phạt Cộng đồng Kiểm duyệt nội dung đã chỉnh */
+  squareRulesPatch: SquareRulesPatch = {};
   /** Lý do bảo trì (chỉ trong bộ nhớ — khởi động lại là hết) */
   maintenance: string | null = null;
   /** Dừng khẩn toàn sàn do 1 người, chưa có người thứ hai xác nhận (null = không có / đã xác nhận) */
@@ -87,6 +92,8 @@ export class AdminStore {
     applyAmlRules(this.amlRulesPatch);
     this.vipRulesPatch = (get(KEY_VIP_RULES) as VipRulesPatch | undefined) ?? {};
     applyVipRules(this.vipRulesPatch);
+    this.squareRulesPatch = (get(KEY_SQUARE_RULES) as SquareRulesPatch | undefined) ?? {};
+    applySquareRules(this.squareRulesPatch);
 
     this.locked.clear();
     for (const r of await this.db.many<{ id: string }>(`SELECT id FROM users WHERE status = 'LOCKED'`)) this.locked.add(r.id);
@@ -160,5 +167,13 @@ export class AdminStore {
     applyVipRules(next);
     this.vipRulesPatch = next;
     await this.save(KEY_VIP_RULES, next);
+  }
+
+  /** Chỉnh bộ lọc / thang phạt Cộng đồng (null = khôi phục mặc định) */
+  async setSquareRules(patch: SquareRulesPatch | null) {
+    const next = patch == null ? {} : { ...this.squareRulesPatch, ...patch };
+    applySquareRules(next);
+    this.squareRulesPatch = next;
+    await this.save(KEY_SQUARE_RULES, next);
   }
 }

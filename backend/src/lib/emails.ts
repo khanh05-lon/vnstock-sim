@@ -273,3 +273,11 @@ export function privacyResultEmail(name: string, approved: boolean, note?: strin
       : ['Yêu cầu xoá tài khoản của bạn chưa được chấp thuận.', ...(note ? [`Lý do: ${note}`] : []), 'Liên hệ CSKH nếu cần hỗ trợ thêm.'],
   );
 }
+
+/** Quyết định kiểm duyệt Cộng đồng gửi cho tác giả (gỡ bài, vi phạm, cấm đăng, kết quả khiếu nại) */
+export function squareModerationEmail(name: string, title: string, lines: string[]): EmailContent {
+  return layout(`${title} · Cộng đồng ${BRAND}`, hello(name), [
+    ...lines,
+    'Xem Tiêu chuẩn cộng đồng ở trang Cộng đồng → Quy tắc. Nếu cho rằng quyết định chưa đúng, bạn có thể khiếu nại 1 lần cho mỗi nội dung bị gỡ.',
+  ]);
+}

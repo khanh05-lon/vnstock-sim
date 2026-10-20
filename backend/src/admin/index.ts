@@ -66,6 +66,8 @@ async function seedDevStaff(db: Database) {
     ['mlro', 'MLRO', 'Trưởng Tuân thủ (MLRO)'],
     ['p2p', 'P2P_OPS', 'Vận hành P2P'],
     ['dpo', 'DPO', 'Bảo vệ dữ liệu cá nhân'],
+    ['mod', 'CONTENT_MOD', 'Kiểm duyệt nội dung'],
+    ['mod2', 'CONTENT_MOD', 'Kiểm duyệt nội dung 2'],
   ];
   const hash = await bcrypt.hash(password, 10);
   const created: string[] = [];

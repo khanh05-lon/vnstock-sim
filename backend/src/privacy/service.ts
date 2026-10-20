@@ -157,6 +157,15 @@ export class PrivacyService {
       supportMessages: messages,
       loginHistory: await q.many('SELECT event, ip, user_agent, created_at FROM auth_events WHERE user_id = $1 ORDER BY id DESC LIMIT 1000', [userId]),
       privacyRequests: await this.myRequests(userId),
+      community: {
+        profile: await q.one('SELECT handle, display_name, bio, guidelines_accepted_at, banned_until, ban_permanent, ban_reason, created_at FROM square_profiles WHERE user_id = $1', [userId]),
+        posts: await q.many(`SELECT id, body, sentiment, assets, hashtags, share, status, like_count, comment_count, removed_rule, removed_note, appeal_note, appeal_status, created_at FROM square_posts WHERE user_id = $1 AND status <> 'DELETED' ORDER BY id`, [userId]),
+        comments: await q.many(`SELECT id, post_id, parent_id, body, status, removed_rule, removed_note, created_at FROM square_comments WHERE user_id = $1 AND status <> 'DELETED' ORDER BY id`, [userId]),
+        following: await q.many('SELECT sp.handle, f.created_at FROM square_follows f JOIN square_profiles sp ON sp.user_id = f.followee_id WHERE f.follower_id = $1', [userId]),
+        likes: await q.many('SELECT post_id, created_at FROM square_likes WHERE user_id = $1 ORDER BY created_at', [userId]),
+        reportsSent: await q.many('SELECT target_type, target_id, reason, note, status, created_at FROM square_reports WHERE reporter_id = $1 ORDER BY id', [userId]),
+        strikes: await q.many('SELECT rule, target_type, target_id, note, created_at, expires_at, revoked_at FROM square_strikes WHERE user_id = $1 ORDER BY id', [userId]),
+      },
     };
   }
 }

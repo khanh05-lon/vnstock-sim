@@ -39,6 +39,11 @@ import { PriceAlertService } from './trading/priceAlerts';
 import { BankService } from './p2p/bank';
 import { p2pRoutes } from './p2p/routes';
 import { seedDevMerchants } from './p2p/seed';
+import { squareModerationEmail } from './lib/emails';
+import { sendLater } from './routes/auth';
+import { squareRoutes } from './square/routes';
+import { seedDevSquare } from './square/seed';
+import { SquareService } from './square/service';
 import { P2PService } from './p2p/service';
 import { startAmlSchedule } from './kyc/aml';
 import { kycRoutes } from './kyc/routes';
@@ -138,6 +143,25 @@ async function main() {
   const vip = new VipService(db);
   vip.notify = (userId) => io.to(`user:${userId}`).emit('account');
   const nav = new NavService(db, market);
+  // Cộng đồng (kiểu Binance Square) + kiểm duyệt nội dung
+  const square = new SquareService({
+    db,
+    market: {
+      listedAssets: () => [...new Set(market.symbols().map((s) => market.info(s)?.baseAsset).filter((x): x is string => !!x))],
+      lastPrice: (s) => market.lastPrice(s),
+    },
+    roiOf: async (userId) => {
+      const fills = await db.one<{ n: number }>('SELECT count(*)::int AS n FROM fills WHERE user_id = $1', [userId]);
+      if (!fills?.n) return null;
+      const n = (await nav.current([userId])).get(userId);
+      return n && n.contributed > 0 ? ((n.nav - n.contributed) / n.contributed) * 100 : null;
+    },
+    notify: (userId) => io.to(`user:${userId}`).emit('square'),
+    emailUser: async (userId, title, lines) => {
+      const u = await db.one<{ email: string; full_name: string; status: string }>('SELECT email, full_name, status FROM users WHERE id = $1', [userId]);
+      if (u && u.status !== 'DELETED') sendLater(mailer, u.email, squareModerationEmail(u.full_name, title, lines), { userId });
+    },
+  });
   const priceAlerts = new PriceAlertService(db, {
     info: (s) => market.info(s),
     quoteOf: (s) => {
@@ -165,6 +189,7 @@ async function main() {
     p2p,
     kyc,
     vip,
+    square,
     engine,
     mailer,
     alerts,
@@ -224,6 +249,7 @@ async function main() {
   app.use('/api', kycRoutes(kyc));
   app.use('/api', privacyRoutes(new PrivacyService(db)));
   app.use('/api', vipRoutes(vip));
+  app.use('/api', squareRoutes(square));
   app.use('/api', tradingRoutes(db, market, engine, nav));
   app.use('/api', (_req, _res, next) => next(notFound('API không tồn tại')));
   if (frontend) app.use(frontend.router);
@@ -251,6 +277,7 @@ async function main() {
   const stopAml = startAmlSchedule(db);
   vip.start();
   await seedDevMerchants(db, p2p).catch((err) => log.error('[p2p] lỗi tạo thương nhân mẫu', { err }));
+  await seedDevSquare(db).catch((err) => log.error('[square] lỗi tạo bài mẫu', { err }));
   if (!config.alertEmails.length && !config.alertWebhookUrl) log.warn('[alert] chưa cấu hình ALERT_EMAILS / ALERT_WEBHOOK_URL, cảnh báo chỉ ghi log và hiện ở trang Quản trị');
 
   server.listen(config.port, () => {
