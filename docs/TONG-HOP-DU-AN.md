@@ -277,6 +277,14 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 - **Cấp VIP phí** như Binance (VIP 0 → 9, khối lượng Spot 30 ngày **và** BNB nắm giữ, ngưỡng × 1/100, tính lại 00:00 UTC), phí chốt vào lệnh theo cấp; trang `/phi`; Vận hành thị trường chỉnh hệ số ngưỡng.
 - Migration `280_roles_vip_privacy.sql` (vai trò, `STR_FILE`, `users.vip_*`, bảng `privacy_requests`).
 
+### Đợt 14: Cộng đồng (kiểu Binance Square) + kiểm duyệt nội dung
+
+- Trang `/cong-dong`: bài viết gắn `$coin`, nhận định Tăng / Giảm, chia sẻ lệnh đã khớp / ROI có nhãn xác minh (máy chủ dựng số liệu), bình luận trả lời 1 cấp, thích, theo dõi, bảng tin Dành cho bạn / Mới nhất / Đang theo dõi, coin được bàn nhiều 24h, thông báo realtime; chip cộng đồng ở trang giao dịch.
+- Tiêu chuẩn cộng đồng + kiểm duyệt 3 lớp: bộ lọc dùng chung FE / BE (tục tĩu, xúc phạm, thông tin cá nhân / ví / seed, link lạ, người lớn, cờ bạc, chất cấm → chặn; lừa đảo, kéo giá, mạo danh, chính trị, spam → chờ duyệt), báo cáo (3 người → tự ẩn), kiểm duyệt viên.
+- Thang phạt (cảnh cáo → 24 giờ → 7 ngày → 30 ngày, vi phạm hiệu lực 90 ngày), khiếu nại do kiểm duyệt viên khác xử lý, cấm vĩnh viễn / gỡ cấm dài qua đề xuất `SQUARE_BAN` / `SQUARE_UNBAN`.
+- Vai trò mới **Kiểm duyệt nội dung (`CONTENT_MOD`)**, không xem được email / số dư khách.
+- Migration `290_square.sql`. Tài liệu: [CONG-DONG.md](CONG-DONG.md).
+
 ## 5. Tab quản trị (`/admin`)
 
 | Tab | Quyền cần |
@@ -291,6 +299,7 @@ Riêng điều chỉnh số dư dùng bảng `balance_adjust_requests`, người
 | Thương nhân P2P (duyệt, tạm ngừng, trừ cọc; tham số P2P) | p2p.review / market.manage |
 | Tuân thủ (KYC/AML) | kyc.review / aml.view |
 | Dữ liệu cá nhân (yêu cầu xoá tài khoản) | privacy.manage |
+| Kiểm duyệt cộng đồng (chờ duyệt, báo cáo, khiếu nại, cấm đăng, quy tắc lọc) | square.moderate |
 | Giám sát gian lận | risk.monitor |
 | Tài chính & đối soát | finance.view |
 | Dữ liệu & sao lưu | system.view |
@@ -318,14 +327,14 @@ Nút thao tác trong từng tab ẩn / hiện theo quyền của người đang 
 
 | Bộ test | Kết quả |
 |---|---|
-| Backend trên PGlite | 146 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
+| Backend trên PGlite | 192 đạt, 3 bỏ qua (chỉ chạy khi có Postgres) |
 | Backend trên PostgreSQL 16 | 111/111 (đợt 8, chưa chạy lại cho đợt 9) |
 | Frontend | 19/19 |
 | CI GitHub Actions (4 bước) | Đạt cho mọi lần đẩy |
 
 File test backend:
 - `spot-engine`, `market`, `auth`, `db`, `shared`, `watchlists-alerts`, `ops`;
-- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`, `kyc-aml`, `roles-vip-privacy`.
+- `accountability-support`, `price-control`, `roles-approvals`, `admin-ops`, `support-ai`, `p2p`, `kyc-aml`, `roles-vip-privacy`, `square`, `square-moderation`.
 
 ## 8. Còn thiếu / việc nên làm tiếp
 

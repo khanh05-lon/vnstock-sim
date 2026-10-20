@@ -18,9 +18,10 @@ VNCoin chia nhân viên theo bộ phận giống các sàn thật (Binance, OKX)
 | Tuân thủ (chuyên viên) | `COMPLIANCE` | `kyc.review`, `aml.view`, `aml.manage`: duyệt KYC, xử lý cảnh báo, **lập** STR, hạn chế tài khoản, đề xuất gỡ | Nộp STR, gỡ hạn chế |
 | Trưởng Tuân thủ | `MLRO` | + `aml.report`: nộp STR (tự lập hoặc duyệt đề xuất `STR_FILE`), duyệt gỡ hạn chế `AML_UNFREEZE` | Tự duyệt đề xuất của chính mình |
 | Bảo vệ dữ liệu cá nhân | `DPO` | `privacy.manage`: xử lý yêu cầu xoá tài khoản (ẩn danh hoá), xem nhật ký truy cập dữ liệu | Mọi thao tác giao dịch / số dư |
+| Kiểm duyệt nội dung | `CONTENT_MOD` | `square.moderate`: duyệt bài bị giữ lại, xử lý báo cáo / khiếu nại, gỡ bài + vi phạm, cấm đăng ≤ 30 ngày, đặt lại tên, chỉnh bộ lọc ([CONG-DONG.md](CONG-DONG.md)) | Xem email / số dư khách (không có `users.view`); tự xử lý khiếu nại bài mình gỡ; cấm vĩnh viễn một mình |
 | Kiểm toán | `AUDITOR` | Chỉ đọc: tổng quan, người dùng, lệnh, hàng chờ duyệt, nhật ký, giám sát, AML | Mọi thao tác ghi |
 
-Tài khoản thử (chỉ dev, cùng tên miền với `ADMIN_EMAIL`, mật khẩu `DEV_STAFF_PASSWORD`): `admin2@`, `ops@`, `finance@`, `finance2@`, `risk@`, `compliance@`, `compliance2@`, `mlro@`, `p2p@`, `dpo@`, `cskh@`, `cskhlead@`, `audit@`.
+Tài khoản thử (chỉ dev, cùng tên miền với `ADMIN_EMAIL`, mật khẩu `DEV_STAFF_PASSWORD`): `admin2@`, `ops@`, `finance@`, `finance2@`, `risk@`, `compliance@`, `compliance2@`, `mlro@`, `p2p@`, `dpo@`, `mod@`, `mod2@`, `cskh@`, `cskhlead@`, `audit@`.
 
 ## 2. Vì sao chia như vậy
 
@@ -28,6 +29,7 @@ Tài khoản thử (chỉ dev, cùng tên miền với `ADMIN_EMAIL`, mật kh�
 - **Trưởng nhóm CSKH**: giao việc và các thao tác nhạy cảm của CSKH (khôi phục 2FA, bồi hoàn) cần một cấp trên trực tiếp, không cần lên tới Tài chính với khoản nhỏ.
 - **MLRO**: luật phòng, chống rửa tiền yêu cầu người phụ trách PCRT chịu trách nhiệm báo cáo giao dịch đáng ngờ. Chuyên viên phát hiện, MLRO quyết định nộp. Gỡ hạn chế cũng do MLRO vì đó là quyết định "chấp nhận rủi ro".
 - **Vận hành P2P tách khỏi Rủi ro**: P2P có nghiệp vụ riêng (thương nhân, tiền cọc, khiếu nại có sao kê); Binance có đội P2P riêng. Rủi ro tập trung giám sát gian lận và dừng thị trường.
+- **Kiểm duyệt nội dung tách khỏi CSKH**: Cộng đồng cần người xử lý nội dung theo tiêu chuẩn riêng (như đội Binance Square). Kiểm duyệt viên chỉ cần thấy nội dung công khai, nên không được xem email / số dư; khiếu nại do người khác xử lý để tránh tự bảo vệ quyết định của mình.
 - **DPO**: Luật bảo vệ dữ liệu cá nhân (Nghị định 13/2023, GDPR) cho chủ thể dữ liệu quyền truy cập và yêu cầu xoá; việc xoá phải cân với nghĩa vụ lưu trữ AML, nên cần người phụ trách riêng chứ không để IT xoá tuỳ ý.
 
 ## 3. Trưởng nhóm CSKH
@@ -85,6 +87,7 @@ Như Binance: phí Spot giảm theo cấp, đạt cấp khi **cả** khối lư�
 | Đặt lại tài khoản khách | Tài chính | Tài chính khác |
 | Chỉnh giá lệch lớn, niêm yết / huỷ niêm yết, tạm ngừng / mở lại sàn | Vận hành thị trường, Rủi ro | `market.approve` (người khác) |
 | Cấp / đổi vai trò nhân viên | Quản trị hệ thống | Quản trị hệ thống khác |
+| Cấm vĩnh viễn đăng bài (`SQUARE_BAN`), gỡ cấm dài hạn (`SQUARE_UNBAN`) | Kiểm duyệt nội dung | Kiểm duyệt nội dung khác (`square.moderate`) |
 | Khôi phục dữ liệu | Quản trị hệ thống | `data.approve` (người khác) |
 | Nộp STR (`STR_FILE`), gỡ hạn chế AML (`AML_UNFREEZE`) | Tuân thủ | MLRO (`aml.report`) |
 
