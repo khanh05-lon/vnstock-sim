@@ -140,10 +140,10 @@ export const preferencesSchema = z
   .strict();
 
 /** Vai trò nhân viên — quyền chi tiết của từng vai trò ở permissions.ts */
-export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'P2P_OPS' | 'COMPLIANCE' | 'MLRO' | 'DPO' | 'AUDITOR' | 'SUPPORT_LEAD' | 'SUPPORT';
+export type StaffRole = 'ADMIN' | 'MARKET_OPS' | 'FINANCE' | 'RISK' | 'P2P_OPS' | 'COMPLIANCE' | 'MLRO' | 'DPO' | 'CONTENT_MOD' | 'AUDITOR' | 'SUPPORT_LEAD' | 'SUPPORT';
 export type UserRole = 'USER' | StaffRole;
 
-export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'P2P_OPS', 'COMPLIANCE', 'MLRO', 'DPO', 'AUDITOR', 'SUPPORT_LEAD', 'SUPPORT'];
+export const STAFF_ROLES: readonly StaffRole[] = ['ADMIN', 'MARKET_OPS', 'FINANCE', 'RISK', 'P2P_OPS', 'COMPLIANCE', 'MLRO', 'DPO', 'CONTENT_MOD', 'AUDITOR', 'SUPPORT_LEAD', 'SUPPORT'];
 export const USER_ROLES: readonly UserRole[] = ['USER', ...STAFF_ROLES];
 
 export const ROLE_LABEL: Record<UserRole, string> = {
@@ -158,6 +158,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   MLRO: 'Trưởng Tuân thủ (MLRO)',
   P2P_OPS: 'Vận hành P2P',
   DPO: 'Bảo vệ dữ liệu cá nhân (DPO)',
+  CONTENT_MOD: 'Kiểm duyệt nội dung',
   AUDITOR: 'Kiểm toán (chỉ đọc)',
 };
 

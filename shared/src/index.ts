@@ -15,3 +15,5 @@ export * from './p2p';
 export * from './kyc';
 export * from './vip';
 export * from './privacy';
+export * from './squareModeration';
+export * from './square';

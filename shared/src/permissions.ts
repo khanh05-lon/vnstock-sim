@@ -65,7 +65,9 @@ export type Permission =
   /** Duyệt bồi hoàn nhỏ do nhân viên CSKH đề xuất (≤ SUPPORT_COMP_LIMIT_USDT) */
   | 'support.compensate'
   /** Xử lý yêu cầu của chủ thể dữ liệu (xoá / ẩn danh tài khoản) */
-  | 'privacy.manage';
+  | 'privacy.manage'
+  /** Kiểm duyệt Cộng đồng: duyệt / gỡ bài, xử lý báo cáo và khiếu nại, cấm đăng, chỉnh bộ lọc nội dung */
+  | 'square.moderate';
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   USER: [],
@@ -92,6 +94,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   COMPLIANCE: ['admin.view', 'users.view', 'kyc.review', 'aml.view', 'aml.manage'],
   MLRO: ['admin.view', 'users.view', 'kyc.review', 'aml.view', 'aml.manage', 'aml.report'],
   DPO: ['admin.view', 'users.view', 'privacy.manage', 'audit.view'],
+  // Kiểm duyệt nội dung: KHÔNG có users.view — chỉ thấy hồ sơ cộng đồng công khai (tối thiểu dữ liệu)
+  CONTENT_MOD: ['admin.view', 'square.moderate'],
   AUDITOR: ['admin.view', 'users.view', 'audit.view', 'system.view', 'risk.monitor', 'finance.view', 'aml.view'],
 };
 
@@ -130,6 +134,7 @@ export const PERMISSION_DENIED: Record<Permission, string> = {
   'account.recovery': 'Chỉ Trưởng nhóm CSKH được khôi phục quyền truy cập (tắt 2FA) cho khách',
   'support.compensate': 'Chỉ Trưởng nhóm CSKH được duyệt bồi hoàn nhỏ',
   'privacy.manage': 'Chỉ người phụ trách bảo vệ dữ liệu cá nhân (DPO) được xử lý yêu cầu xoá tài khoản',
+  'square.moderate': 'Chỉ bộ phận Kiểm duyệt nội dung được kiểm duyệt Cộng đồng',
 };
 
 /** Vai trò có quyền này (vd. danh sách người được giao yêu cầu hỗ trợ) */
@@ -148,12 +153,13 @@ export const ROLE_DESC: Record<UserRole, string> = {
   COMPLIANCE: 'Chuyên viên Tuân thủ: duyệt hồ sơ KYC, xử lý cảnh báo chống rửa tiền, soạn báo cáo giao dịch đáng ngờ (chờ MLRO duyệt), hạn chế tài khoản.',
   MLRO: 'Trưởng Tuân thủ, người phụ trách phòng chống rửa tiền: mọi việc của Tuân thủ + duyệt nộp STR, duyệt gỡ hạn chế tài khoản.',
   DPO: 'Bảo vệ dữ liệu cá nhân: xử lý yêu cầu xoá tài khoản của khách (ẩn danh, giữ dữ liệu giao dịch theo nghĩa vụ lưu trữ), xem nhật ký truy cập dữ liệu.',
+  CONTENT_MOD: 'Kiểm duyệt Cộng đồng: duyệt bài bị giữ lại, xử lý báo cáo và khiếu nại, cảnh cáo / cấm đăng, chỉnh bộ lọc nội dung. Cấm vĩnh viễn và gỡ cấm dài hạn cần người thứ hai. Không xem email / số dư của khách.',
   AUDITOR: 'Chỉ đọc: tổng quan, người dùng, lệnh, nhật ký, giám sát, cảnh báo AML. Không thao tác được gì.',
 };
 
 /* ---------------------------- hàng chờ duyệt (2 người) ---------------------------- */
 
-export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'MARKET_RESUME' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET' | 'AML_UNFREEZE' | 'STR_FILE';
+export type ApprovalKind = 'PRICE_SET' | 'SYMBOL_LIST' | 'SYMBOL_DELIST' | 'MARKET_HALT' | 'MARKET_RESUME' | 'DATA_RESTORE' | 'ROLE_SET' | 'ACCOUNT_RESET' | 'AML_UNFREEZE' | 'STR_FILE' | 'SQUARE_BAN' | 'SQUARE_UNBAN';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'FAILED';
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
@@ -167,6 +173,8 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   ACCOUNT_RESET: 'Đặt lại tài khoản khách',
   AML_UNFREEZE: 'Gỡ hạn chế tài khoản (AML)',
   STR_FILE: 'Nộp báo cáo giao dịch đáng ngờ (STR)',
+  SQUARE_BAN: 'Cấm vĩnh viễn đăng bài Cộng đồng',
+  SQUARE_UNBAN: 'Gỡ cấm đăng bài Cộng đồng',
 };
 
 export const APPROVAL_STATUS_LABEL: Record<ApprovalStatus, string> = {
@@ -190,6 +198,8 @@ export const APPROVAL_PERMISSION: Record<ApprovalKind, Permission> = {
   ACCOUNT_RESET: 'finance.approve',
   AML_UNFREEZE: 'aml.report',
   STR_FILE: 'aml.report',
+  SQUARE_BAN: 'square.moderate',
+  SQUARE_UNBAN: 'square.moderate',
 };
 
 /** Thời hạn chờ duyệt (phút) — giá / tạm ngừng cần quyết nhanh, quá hạn phải đề xuất lại */
@@ -204,6 +214,8 @@ export const APPROVAL_TTL_MIN: Record<ApprovalKind, number> = {
   ACCOUNT_RESET: 24 * 60,
   AML_UNFREEZE: 24 * 60,
   STR_FILE: 3 * 24 * 60,
+  SQUARE_BAN: 3 * 24 * 60,
+  SQUARE_UNBAN: 3 * 24 * 60,
 };
 
 /** Điều chỉnh số dư trực tiếp: tổng của 1 người trong 24 giờ (mọi khách) vượt ngưỡng × hệ số này cũng phải duyệt */
