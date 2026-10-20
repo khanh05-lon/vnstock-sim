@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Activity, CheckCheck, Coins, Database, Gauge, Headset, Landmark, LayoutDashboard, ListOrdered, ScrollText, ShieldAlert, ShieldCheck, FileLock2, SlidersHorizontal, Store, UserCheck, Users as UsersIcon } from 'lucide-react';
+import { Activity, CheckCheck, Coins, Database, Gauge, Headset, Landmark, LayoutDashboard, ListOrdered, MessagesSquare, ScrollText, ShieldAlert, ShieldCheck, FileLock2, SlidersHorizontal, Store, UserCheck, Users as UsersIcon } from 'lucide-react';
 import { AdjustRequests } from '../components/admin/AdjustRequests';
 import { OperationApprovals } from '../components/admin/OperationApprovals';
 import { DataStorage } from '../components/admin/DataStorage';
@@ -13,6 +13,7 @@ import { Orders } from '../components/admin/Orders';
 import { P2PMerchants } from '../components/admin/P2PMerchants';
 import { Compliance } from '../components/admin/Compliance';
 import { PrivacyAdmin } from '../components/admin/PrivacyAdmin';
+import { SquareModeration } from '../components/admin/SquareModeration';
 import { Overview } from '../components/admin/Overview';
 import { PriceControl } from '../components/admin/PriceControl';
 import { Symbols } from '../components/admin/Symbols';
@@ -35,6 +36,7 @@ const TABS = [
   { id: 'p2p', label: 'Thương nhân P2P', icon: Store, hint: 'Duyệt đơn xin làm thương nhân, tạm ngừng, trừ cọc; tham số chợ P2P (tỷ giá, phí, điều kiện)', perms: ['p2p.review', 'market.manage'] },
   { id: 'compliance', label: 'Tuân thủ (KYC/AML)', icon: UserCheck, hint: 'Duyệt hồ sơ KYC, cảnh báo chống rửa tiền, báo cáo giao dịch đáng ngờ (STR), hạn chế tài khoản', perms: ['kyc.review', 'aml.view'] },
   { id: 'privacy', label: 'Dữ liệu cá nhân', icon: FileLock2, hint: 'Yêu cầu xoá tài khoản của khách (ẩn danh, giữ dữ liệu giao dịch theo nghĩa vụ lưu trữ)', perms: ['privacy.manage'] },
+  { id: 'square', label: 'Kiểm duyệt cộng đồng', icon: MessagesSquare, hint: 'Bài bị bộ lọc giữ lại, nội dung bị báo cáo, khiếu nại; cảnh cáo / cấm đăng; quy tắc lọc nội dung', perms: ['square.moderate'] },
   { id: 'fraud', label: 'Giám sát gian lận', icon: ShieldAlert, hint: 'Nhiều tài khoản cùng IP, tự đặt lại liên tục, spam lệnh — loại khỏi bảng xếp hạng', perms: ['risk.monitor'] },
   { id: 'finance', label: 'Tài chính & đối soát', icon: Landmark, hint: 'Doanh thu phí, đối soát số dư ↔ sổ cái ↔ khớp lệnh hằng ngày', perms: ['finance.view'] },
   { id: 'data', label: 'Dữ liệu & sao lưu', icon: Database, hint: 'Nơi lưu trữ, bảng, sao lưu, khôi phục', perms: ['system.view'] },
@@ -140,6 +142,7 @@ export default function AdminPage() {
         {tab === 'p2p' && <P2PMerchants />}
         {tab === 'compliance' && <Compliance />}
         {tab === 'privacy' && <PrivacyAdmin />}
+        {tab === 'square' && <SquareModeration />}
         {tab === 'fraud' && <FraudMonitor />}
         {tab === 'finance' && <FinanceReports />}
         {tab === 'data' && <DataStorage />}

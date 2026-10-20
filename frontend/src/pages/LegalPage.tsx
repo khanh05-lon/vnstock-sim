@@ -90,7 +90,21 @@ function Terms() {
           <li>Mạo danh người khác, đặt tên hiển thị hoặc đăng nội dung vi phạm pháp luật.</li>
         </ul>
       </Block>
-      <Block n={8} title="Quyền của ban quản trị">
+      <Block n={8} title="Cộng đồng">
+        <p>
+          Khi đăng bài, bình luận hay tạo hồ sơ trong Cộng đồng, bạn phải tuân thủ{' '}
+          <Link to="/cong-dong/quy-tac" className="text-brand hover:underline">
+            Tiêu chuẩn cộng đồng
+          </Link>
+          : không tục tĩu, xúc phạm; không đăng thông tin cá nhân, địa chỉ ví, seed phrase; không rủ giao dịch ngoài sàn; không hô hào kéo giá hay hứa hẹn lợi nhuận;
+          không mạo danh VNCoin.
+        </p>
+        <p>
+          Nội dung được lọc tự động, có thể bị giữ lại chờ kiểm duyệt hoặc gỡ. Vi phạm bị cảnh cáo hoặc cấm đăng theo thang phạt; bạn được khiếu nại mỗi quyết định gỡ một
+          lần. Bài viết là quan điểm của người đăng, không phải khuyến nghị đầu tư của VNCoin.
+        </p>
+      </Block>
+      <Block n={9} title="Quyền của ban quản trị">
         <p>Để bảo đảm hệ thống hoạt động công bằng, ban quản trị có quyền:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>Khoá tài khoản vi phạm điều khoản (các lệnh đang mở sẽ bị huỷ).</li>
@@ -105,7 +119,7 @@ function Terms() {
           có thẩm quyền khác người đề xuất duyệt; không ai được tự điều chỉnh số dư của chính mình.
         </p>
       </Block>
-      <Block n={9} title="Hỗ trợ khách hàng và khiếu nại">
+      <Block n={10} title="Hỗ trợ khách hàng và khiếu nại">
         <ul className="list-disc space-y-1 pl-5">
           <li>
             Gặp lệnh, số dư bất thường hay nghi bị truy cập trái phép, hãy gửi yêu cầu ở mục <b className="text-tx-1">Hỗ trợ</b> (có thể gắn kèm lệnh liên quan). Yêu cầu
@@ -118,13 +132,13 @@ function Terms() {
           <li>Mỗi lần đặt, sửa, huỷ lệnh đều được ghi lại kèm thời điểm, người thực hiện và địa chỉ IP để đối chiếu khi có khiếu nại; bạn tự xem được nhật ký từng lệnh.</li>
         </ul>
       </Block>
-      <Block n={10} title="Giới hạn trách nhiệm">
+      <Block n={11} title="Giới hạn trách nhiệm">
         <p>
           Dịch vụ được cung cấp &quot;nguyên trạng&quot;. Chúng tôi không chịu trách nhiệm cho thiệt hại phát sinh từ việc dùng kết quả mô phỏng để ra quyết định đầu tư
           thật, hoặc từ việc hệ thống tạm ngừng, gián đoạn, mất kết nối nguồn giá, gửi email chậm / thất bại, mất dữ liệu mô phỏng.
         </p>
       </Block>
-      <Block n={11} title="Thay đổi điều khoản">
+      <Block n={12} title="Thay đổi điều khoản">
         <p>Điều khoản có thể được cập nhật; thay đổi quan trọng sẽ được thông báo trên banner hệ thống. Tiếp tục sử dụng nghĩa là bạn đồng ý với bản cập nhật.</p>
       </Block>
     </>

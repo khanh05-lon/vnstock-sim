@@ -130,6 +130,11 @@ export function useRealtime() {
       }
     });
     // Kết quả duyệt KYC / bị hạn chế / gỡ hạn chế → làm mới cấp KYC và thông tin tài khoản
+    // Cộng đồng: thông báo mới (thích, bình luận, quyết định kiểm duyệt)
+    s.on('square', () => {
+      void qc.invalidateQueries({ queryKey: ['square', 'me'] });
+      void qc.invalidateQueries({ queryKey: ['square', 'notifications'] });
+    });
     s.on('kyc', () => {
       void qc.invalidateQueries({ queryKey: ['kyc'] });
       void qc.invalidateQueries({ queryKey: ['me'] });

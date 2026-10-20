@@ -1,5 +1,7 @@
-import { Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MessagesSquare, Star } from 'lucide-react';
 import { useWatchlist } from '../../lib/queries';
+import { useTrends } from '../../lib/square';
 import { cn, fmtCompact, fmtPct, fmtPrice, signTone, toneText } from '../../lib/format';
 import { useMarket, useSymbolRow } from '../../store/market';
 import { CoinIcon } from '../common/CoinIcon';
@@ -12,6 +14,20 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
       <div className="text-[11px] text-tx-3">{label}</div>
       <div className="num truncate text-[13px] font-medium text-tx-1">{children}</div>
     </div>
+  );
+}
+
+/** Thảo luận về coin trong Cộng đồng: số bài 24h + tỷ lệ nhận định Tăng */
+function CommunityChip({ asset }: { asset: string }) {
+  const { data } = useTrends(asset);
+  const t = data?.[0];
+  const voted = t ? t.bullish + t.bearish : 0;
+  return (
+    <Link to={`/cong-dong?coin=${asset}`} className="chip gap-1 bg-bg-3 text-tx-2 hover:text-tx-1" title={`Thảo luận về ${asset} trong Cộng đồng`}>
+      <MessagesSquare size={12} />
+      Cộng đồng {asset}
+      {voted > 0 && <span className="num text-up">· {Math.round((t!.bullish / voted) * 100)}% Tăng</span>}
+    </Link>
   );
 }
 
@@ -66,6 +82,7 @@ export function SymbolHeader({ symbol }: { symbol: string }) {
         <Stat label={`KL 24h (${r.quoteAsset})`}>{fmtCompact(r.quoteVolume)}</Stat>
       </div>
 
+      <CommunityChip asset={r.baseAsset} />
       {r.status !== 'TRADING' && <span className="chip bg-down/15 text-down">Tạm ngừng giao dịch</span>}
       {r.priceMode === 'MANUAL' && <ManualPriceBadge since={r.priceSince} />}
       {feed === 'SIM' && r.priceMode !== 'MANUAL' && (

@@ -35,6 +35,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
 const NAV = [
   { to: '/trade', label: 'Giao dịch' },
   { to: '/p2p', label: 'P2P' },
+  { to: '/cong-dong', label: 'Cộng đồng' },
   { to: '/xep-hang', label: 'Xếp hạng' },
   { to: '/vi', label: 'Ví' },
   { to: '/lich-su', label: 'Lịch sử' },

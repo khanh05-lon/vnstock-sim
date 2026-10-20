@@ -35,6 +35,10 @@ const BankPage = lazy(() => import('./pages/BankPage'));
 const KycPage = lazy(() => import('./pages/KycPage'));
 const FeesPage = lazy(() => import('./pages/FeesPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const SquarePage = lazy(() => import('./pages/SquarePage'));
+const SquarePostPage = lazy(() => import('./pages/SquarePostPage'));
+const SquareProfilePage = lazy(() => import('./pages/SquareProfilePage'));
+const SquareGuidelinesPage = lazy(() => import('./pages/SquareGuidelinesPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -121,6 +125,10 @@ export function App() {
                 }
               />
               <Route path="phi" element={<FeesPage />} />
+              <Route path="cong-dong" element={<SquarePage />} />
+              <Route path="cong-dong/bai/:id" element={<SquarePostPage />} />
+              <Route path="cong-dong/u/:handle" element={<SquareProfilePage />} />
+              <Route path="cong-dong/quy-tac" element={<SquareGuidelinesPage />} />
               <Route
                 path="du-lieu-ca-nhan"
                 element={
