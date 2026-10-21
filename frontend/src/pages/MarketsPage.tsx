@@ -194,7 +194,7 @@ export function MarketsPage() {
           <h2 id="xau-tien" className="text-[15px] font-semibold">
             Xâu tiền 24 giờ
           </h2>
-          <span className="text-[12px] text-tx-3">Mỗi đồng là một cặp, từ tăng mạnh nhất tới giảm mạnh nhất. Màu càng đậm, biên độ càng lớn.</span>
+          <span className="text-[12px] text-tx-3">Mỗi đồng là một cặp, từ tăng mạnh nhất tới giảm mạnh nhất. Vành xanh là tăng, đỏ là giảm; màu càng đậm, biên độ càng lớn.</span>
         </div>
         <CoinString rows={all} />
       </section>

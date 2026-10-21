@@ -81,9 +81,7 @@ export function StringScene() {
               style={{ '--i': i, '--n': sorted.length } as CSSProperties}
               title={`${r.baseAsset} ${fmtPct(r.changePct)}`}
             >
-              <span className="block h-11 w-11">
-                <Coin pct={r.changePct} />
-              </span>
+              <Coin pct={r.changePct} asset={r.baseAsset} className="h-11 w-11" />
               <span className="helix-reveal flex flex-col items-center">
                 <span className="text-[12px] font-semibold leading-none text-tx-1">{r.baseAsset}</span>
                 <span className={cn('num mt-1 text-[11px] leading-none', r.changePct >= 0 ? 'text-up' : 'text-down')}>{fmtPct(r.changePct, 1)}</span>

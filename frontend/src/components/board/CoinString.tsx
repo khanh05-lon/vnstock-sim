@@ -2,6 +2,7 @@ import type React from 'react';
 import { Link } from 'react-router-dom';
 import type { SymbolRow } from '@vss/shared';
 import { cn, fmtPct, signTone } from '../../lib/format';
+import { CoinIcon } from '../common/CoinIcon';
 
 /** Độ đậm của màu theo biên độ: 0% → gần nền, ≥ 6% → màu đầy */
 const intensity = (pct: number) => Math.round(18 + Math.min(Math.abs(pct) / 6, 1) * 82);
@@ -12,13 +13,12 @@ function fillOf(pct: number) {
   return `color-mix(in srgb, var(--${tone === 'up' ? 'up' : 'down'}) ${intensity(pct)}%, var(--bg-3))`;
 }
 
-/** Một đồng xu lỗ vuông; sợi dây chạy qua lỗ */
-export function Coin({ pct }: { pct: number }) {
+/** Một đồng: logo thật của coin trong vành màu theo biên độ 24h (xanh tăng, đỏ giảm, càng đậm biến động càng lớn) */
+export function Coin({ pct, asset, className }: { pct: number; asset: string; className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className="relative h-9 w-9 xl:h-[34px] xl:w-[34px]" aria-hidden>
-      <path fillRule="evenodd" d="M16 1a15 15 0 1 1 0 30a15 15 0 1 1 0-30zM12.5 12.5v7h7v-7z" fill={fillOf(pct)} />
-      <circle cx="16" cy="16" r="11.6" fill="none" stroke="var(--bg-0)" strokeOpacity="0.35" strokeWidth="1" />
-    </svg>
+    <span aria-hidden className={cn('relative block rounded-full p-[3px]', className ?? 'h-9 w-9 xl:h-[34px] xl:w-[34px]')} style={{ background: fillOf(pct) }}>
+      <CoinIcon asset={asset} size="fill" />
+    </span>
   );
 }
 
@@ -45,7 +45,7 @@ export function CoinString({ rows }: { rows: SymbolRow[] }) {
             title={`${r.baseAsset}/${r.quoteAsset} ${fmtPct(r.changePct)}`}
           >
             <span className="transition-transform group-hover:-translate-y-0.5">
-              <Coin pct={r.changePct} />
+              <Coin pct={r.changePct} asset={r.baseAsset} />
             </span>
             <span className="text-[11px] font-semibold leading-none text-tx-1">{r.baseAsset}</span>
             <span className={cn('num text-[11px] leading-none', r.changePct > 0 ? 'text-up' : r.changePct < 0 ? 'text-down' : 'text-tx-3')}>{fmtPct(r.changePct, 1)}</span>

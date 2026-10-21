@@ -34,6 +34,7 @@ Sàn coin **Spot mô phỏng** kiểu Binance (paper trading, 10.000 USDT ảo /
 - Test backend trên PostgreSQL thật: `TEST_DATABASE_URL=postgres://... npm run test -w backend` (mỗi test 1 schema riêng; 3 test chỉ chạy khi có Postgres). Không có Postgres cài sẵn thì dùng gói npm `embedded-postgres` ngoài repo, dừng bằng `pg_ctl stop -m fast`.
 - `npm run typecheck` — tsc FE + BE
 - `npm run symbols:update -w backend` — cập nhật `backend/src/market/fallbackSymbols.json` (bộ lọc + giá dự phòng khi khởi động offline)
+- `npm run coins:icons -w backend [-- MÃ1 MÃ2] [-- --force]` — tải logo thật (CDN Binance) vào `frontend/public/coins/<MÃ>.png` và sinh `CoinIcon`'s `coinIcons.gen.ts`; niêm yết coin mới thì chạy kèm mã đó. `CoinIcon` chỉ dùng logo có trong danh sách, thiếu thì hiện chữ cái đầu.
 - Xoá `backend/data/` để seed lại toàn bộ dữ liệu. PGlite báo `RuntimeError: Aborted` lúc khởi động = thư mục data hỏng, đổi tên thư mục rồi chạy lại.
 
 ## Quy ước quan trọng
