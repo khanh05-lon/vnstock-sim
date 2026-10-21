@@ -21,31 +21,32 @@ export function Rules() {
   ];
 
   return (
-    <section id="luat-choi" className="scroll-mt-20 py-20 lg:py-28">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+    <section id="luat-choi" className="scroll-mt-4 bg-bg-0 py-24 lg:py-36">
+      <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <Reveal className="max-w-2xl">
-          <h2 className="font-display text-[32px] font-bold leading-tight tracking-tight md:text-[42px]">Luật chơi giống Binance</h2>
-          <p className="mt-4 max-w-[60ch] text-[17px] leading-relaxed text-tx-2">
+          <h2 className="font-display text-[36px] font-bold leading-[1.05] tracking-[-0.03em] md:text-[52px]">Luật chơi giống Binance</h2>
+          <p className="mt-5 max-w-[60ch] text-[17px] leading-relaxed text-tx-2">
             Bộ lọc giá, khối lượng và giá trị tối thiểu lấy thật từ Binance cho từng cặp. Lãi lỗ bạn thấy là lãi lỗ sau phí.
           </p>
         </Reveal>
 
-        <Reveal delay={0.08} className="mt-12 overflow-hidden rounded-2xl border border-line bg-bg-1">
-          <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
-            {big.map((b) => (
-              <div key={b.label} className="p-6 lg:p-8">
-                <div className="text-[13px] font-semibold text-tx-3">{b.label}</div>
-                <div className="num mt-3 font-display text-[52px] font-bold leading-none tracking-tight lg:text-[64px]">{b.value}</div>
-                <div className="mt-3 text-[14px] text-tx-2">{b.note}</div>
-              </div>
-            ))}
-          </div>
-          <dl className="grid grid-cols-2 gap-px border-t border-line bg-line lg:grid-cols-4">
+        <Reveal delay={0.08} className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-3">
+          {big.map((b) => (
+            <div key={b.label}>
+              <div className="num font-display text-[64px] font-bold leading-none tracking-tight text-brand lg:text-[84px]">{b.value}</div>
+              <h3 className="mt-4 text-[22px] font-bold">{b.label}</h3>
+              <p className="mt-1 text-[16px] text-tx-2">{b.note}</p>
+            </div>
+          ))}
+        </Reveal>
+        <Reveal delay={0.14} className="mt-14 rounded-md bg-bg-1 px-6 py-8 lg:px-10">
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-8 lg:grid-cols-4">
             {facts.map((f) => (
-              <div key={f.label} className="bg-bg-2 p-5 lg:p-6">
-                <dt className="text-[13px] text-tx-3">{f.label}</dt>
-                <dd className="num mt-1 font-display text-[24px] font-bold">{f.value}</dd>
-                <dd className="text-[13px] text-tx-2">{f.hint}</dd>
+              <div key={f.label} className="flex flex-col-reverse">
+                <dt className="mt-1 text-[16px] text-tx-2">
+                  {f.label}, {f.hint}
+                </dt>
+                <dd className="num font-display text-[28px] font-bold">{f.value}</dd>
               </div>
             ))}
           </dl>

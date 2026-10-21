@@ -120,7 +120,7 @@ function OrderForm({ ad, onClose }: { ad: P2PAdDTO; onClose(): void }) {
                   setMode(m);
                   setValue('');
                 }}
-                className={cn('h-6 rounded px-2 text-[11px] font-medium', mode === m ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+                className={cn('sel-line h-6 px-2 text-[11px] font-medium [--sel-inset:0.5rem]', mode === m ? 'is-active text-tx-1' : 'text-tx-3 hover:text-tx-1')}
               >
                 Theo {m === 'fiat' ? 'VNĐ' : ad.asset}
               </button>

@@ -339,7 +339,7 @@ function SidePanel({ r, side, kind }: { r: SymbolRow; side: Side; kind: TicketKi
                 setTotal('');
                 setPct(0);
               }}
-              className={cn('rounded-md px-2.5 py-1', marketBy === m ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+              className={cn('sel-line px-2.5 py-1 [--sel-inset:0.625rem]', marketBy === m ? 'is-active text-tx-1' : 'text-tx-3 hover:text-tx-1')}
             >
               {m === 'total' ? `Theo tổng (${quote})` : `Theo số lượng (${base})`}
             </button>
@@ -457,7 +457,7 @@ export function OrderForm({ symbol }: { symbol: string }) {
             onClick={() => setKind(k.value)}
             className={cn(
               'relative h-10 text-[13px] font-medium transition-colors',
-              kind === k.value ? 'text-tx-1 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand' : 'text-tx-3 hover:text-tx-1',
+              kind === k.value ? 'text-tx-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-brand' : 'text-tx-3 hover:text-tx-1',
             )}
           >
             {k.label}

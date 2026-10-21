@@ -100,7 +100,7 @@ export default function P2PPage() {
               role="tab"
               aria-selected={asset === a}
               onClick={() => setAsset(a)}
-              className={cn('flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium', asset === a ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1')}
+              className={cn('sel-line flex h-8 items-center gap-1.5 px-3 text-[13px] font-medium [--sel-inset:0.75rem]', asset === a ? 'is-active text-tx-1' : 'text-tx-3 hover:text-tx-1')}
             >
               <CoinIcon asset={a} size={16} />
               {a}

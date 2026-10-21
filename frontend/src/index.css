@@ -1,62 +1,66 @@
 @import 'tailwindcss';
 
 /*
- * Bảng màu tham khảo SSI iBoard (màu giá bảng điện VN) và Binance (nền, panel, chữ).
- * Quy ước VN: tím = trần, xanh lam = sàn, vàng = tham chiếu, xanh lá = tăng, đỏ = giảm.
+ * Giao diện "Đồng" của VNCoin.
+ * Tiền Việt gọi là đồng (bronze): màu nhấn là đồng thau, logo là đồng xu cổ lỗ vuông (Thái Bình Hưng Bảo, 970).
+ * Nền than ấm (không phải xanh-đen của các sàn khác), thẻ tối hơn nền, mọi lựa chọn (tab, điều hướng) là 1 vạch đồng 1px
+ * đúng bằng bề rộng chữ. Màu chỉ nằm trên dữ liệu: tăng / giảm, hành động chính. Font Be Vietnam Pro (font của người Việt).
+ * Quy ước giá VN vẫn giữ token: tím = trần, xanh lam = sàn, vàng = tham chiếu.
  */
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg-0: #0b0e11;
-  --bg-1: #12161c;
-  --bg-2: #181d25;
-  --bg-3: #1f2630;
-  --bg-4: #2b3139;
-  --line: #222932;
-  --line-2: #323a46;
-  --tx-1: #eaecef;
-  --tx-2: #a3acb9;
-  --tx-3: #6c7686;
-  --brand: #f0b90b;
-  --brand-2: #fcd535;
-  --brand-ink: #181a20;
-  --up: #0ecb81;
-  --down: #f6465d;
-  --ref: #f5d90a;
-  --ceil: #e24bff;
-  --floor: #1fc8ff;
-  --info: #3b82f6;
-  --row-alt: #0f1318;
-  --col-hl: #161b23;
-  --overlay: rgb(0 0 0 / 0.6);
-  --shadow: 0 12px 40px rgb(0 0 0 / 0.45);
+  /* nền → thẻ (tối hơn nền) → lớp nổi → ô nhập → viền đậm */
+  --bg-0: #1a1815;
+  --bg-1: #13120f;
+  --bg-2: #201d19;
+  --bg-3: #2a2621;
+  --bg-4: #3a352e;
+  --line: #2a2621;
+  --line-2: #3d3830;
+  --tx-1: #eeedea;
+  --tx-2: #bdb5a8;
+  --tx-3: #958d80;
+  --brand: #c69653;
+  --brand-2: #d4a766;
+  --brand-ink: #1b120a;
+  --up: #43b48a;
+  --down: #e8606f;
+  --ref: #d9a441;
+  --ceil: #d46bf0;
+  --floor: #4bbde8;
+  --info: #6ea2dc;
+  --row-alt: #171512;
+  --col-hl: #1f1c18;
+  --overlay: rgb(8 6 4 / 0.66);
+  --shadow: 0 12px 28px rgb(0 0 0 / 0.32);
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --bg-0: #f4f5f7;
-  --bg-1: #ffffff;
-  --bg-2: #f7f8fa;
-  --bg-3: #eef0f3;
-  --bg-4: #e3e6eb;
-  --line: #e6e8ec;
-  --line-2: #d5d9e0;
-  --tx-1: #1e2329;
-  --tx-2: #4f5866;
-  --tx-3: #8a93a1;
-  --brand: #e5a800;
-  --brand-2: #f0b90b;
-  --brand-ink: #181a20;
-  --up: #03a66d;
-  --down: #e0294a;
-  --ref: #b38600;
-  --ceil: #a21caf;
-  --floor: #0284c7;
-  --info: #2563eb;
-  --row-alt: #fafbfc;
-  --col-hl: #f3f5f8;
-  --overlay: rgb(15 23 42 / 0.45);
-  --shadow: 0 12px 40px rgb(15 23 42 / 0.15);
+  --bg-0: #eeedea;
+  --bg-1: #fbfbfa;
+  --bg-2: #f5f4f1;
+  --bg-3: #e8e5de;
+  --bg-4: #d9d5cc;
+  --line: #e3dfd7;
+  --line-2: #cfcac0;
+  --tx-1: #1d1914;
+  --tx-2: #4c453b;
+  --tx-3: #6f675b;
+  --brand: #8a5c22;
+  --brand-2: #9c6a2b;
+  --brand-ink: #fffaf2;
+  --up: #11815a;
+  --down: #c63a4f;
+  --ref: #8f6a12;
+  --ceil: #9b2bb5;
+  --floor: #0f6fa6;
+  --info: #2c62a8;
+  --row-alt: #f8f6f2;
+  --col-hl: #efece6;
+  --overlay: rgb(29 25 20 / 0.42);
+  --shadow: 0 12px 28px rgb(29 25 20 / 0.14);
 }
 
 @theme inline {
@@ -81,9 +85,10 @@
   --color-info: var(--info);
   --color-row-alt: var(--row-alt);
   --color-col-hl: var(--col-hl);
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* Font tiêu đề trang giới thiệu (Be Vietnam Pro chỉ tải cùng LandingPage) */
-  --font-display: 'Be Vietnam Pro', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Số: Inter có chữ số đều bề rộng (tabular) để giá, khối lượng xếp thẳng cột */
+  --font-num: 'Inter Variable', 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -97,8 +102,7 @@
     color: var(--tx-1);
     font-family: var(--font-sans);
     font-size: 13px;
-    line-height: 1.4;
-    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
   }
   button {
@@ -108,11 +112,16 @@
     cursor: not-allowed;
   }
   input,
-  select {
+  select,
+  textarea {
     font: inherit;
   }
   input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
   }
   ::selection {
     background: color-mix(in srgb, var(--brand) 35%, transparent);
@@ -135,13 +144,23 @@
 }
 
 @layer components {
+  /* Thẻ tối hơn nền, viền một bậc tông, không bóng */
   .panel {
     background: var(--bg-1);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: 6px;
   }
-  .num {
+  /* Mọi con số: chữ số đều bề rộng */
+  .num,
+  .tbl td,
+  .tbl th {
+    font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+  }
+  .tbl td:first-child,
+  .tbl th:first-child {
+    font-family: var(--font-sans);
   }
   .input {
     width: 100%;
@@ -154,6 +173,9 @@
     outline: none;
     transition: border-color 0.15s;
   }
+  .input::placeholder {
+    color: var(--tx-3);
+  }
   .input:hover {
     border-color: var(--line-2);
   }
@@ -163,23 +185,28 @@
   .input[aria-invalid='true'] {
     border-color: var(--down);
   }
+  /* Nút: viên tròn, phẳng, một màu */
   .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     height: 34px;
-    padding: 0 14px;
-    border-radius: 6px;
+    padding: 0 16px;
+    border-radius: 999px;
     font-weight: 600;
     transition:
       background 0.15s,
       color 0.15s,
-      opacity 0.15s;
+      opacity 0.15s,
+      transform 0.1s;
     white-space: nowrap;
   }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
   .btn:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
   }
   .btn-brand {
     background: var(--brand);
@@ -197,14 +224,14 @@
   }
   .btn-up {
     background: var(--up);
-    color: #fff;
+    color: #08140f;
   }
   .btn-up:hover:not(:disabled) {
     filter: brightness(1.08);
   }
   .btn-down {
     background: var(--down);
-    color: #fff;
+    color: #1a0609;
   }
   .btn-down:hover:not(:disabled) {
     filter: brightness(1.08);
@@ -214,7 +241,7 @@
     align-items: center;
     height: 22px;
     padding: 0 8px;
-    border-radius: 4px;
+    border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
   }
@@ -230,6 +257,21 @@
   }
   .tbl td {
     white-space: nowrap;
+  }
+  /* Dấu chọn của giao diện Đồng: 1 vạch đồng 1px đúng bằng bề rộng chữ, nằm ở mép dưới */
+  .sel-line {
+    position: relative;
+  }
+  .sel-line[aria-selected='true']::after,
+  .sel-line[aria-current='page']::after,
+  .sel-line.is-active::after {
+    content: '';
+    position: absolute;
+    left: var(--sel-inset, 0);
+    right: var(--sel-inset, 0);
+    bottom: var(--sel-bottom, 0);
+    height: 1px;
+    background: var(--brand);
   }
 }
 

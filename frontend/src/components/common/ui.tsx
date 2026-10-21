@@ -40,9 +40,9 @@ export function Tabs<T extends string>({
           disabled={it.disabled}
           onClick={() => onChange(it.value)}
           className={cn(
-            'rounded-md font-medium transition-colors whitespace-nowrap',
-            size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px]',
-            value === it.value ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1',
+            'sel-line font-medium transition-colors whitespace-nowrap [--sel-inset:0.5rem]',
+            size === 'sm' ? 'h-7 px-2 text-xs' : 'h-8 px-2 text-[13px]',
+            value === it.value ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1',
             it.disabled && 'opacity-40',
           )}
         >
@@ -74,12 +74,11 @@ export function UnderlineTabs<T extends string>({
           aria-selected={value === it.value}
           onClick={() => onChange(it.value)}
           className={cn(
-            'relative h-10 shrink-0 text-[13px] font-medium transition-colors whitespace-nowrap',
+            'sel-line h-10 shrink-0 text-[13px] font-medium transition-colors whitespace-nowrap',
             value === it.value ? 'text-tx-1' : 'text-tx-3 hover:text-tx-2',
           )}
         >
           {it.label}
-          {value === it.value && <span className="absolute inset-x-1/4 bottom-0 h-0.5 rounded bg-brand" />}
         </button>
       ))}
     </div>

@@ -1,6 +1,7 @@
 import { cn, fmtCompact } from '../../lib/format';
 
-export const PALETTE = ['#f0b90b', '#3b82f6', '#a855f7', '#14b8a6', '#f97316', '#ec4899', '#22c55e', '#06b6d4', '#eab308', '#8b5cf6', '#64748b'];
+// Dải màu đồng thau từ đậm tới nhạt rồi các xám ấm: một họ màu, không cầu vồng
+export const PALETTE = ['#c69653', '#e2c391', '#8f6a35', '#f0dfc2', '#6b4f27', '#bdb5a8', '#958d80', '#d8cfc0', '#6f675b', '#a89d8c', '#4c453b'];
 
 export interface Slice {
   label: string;

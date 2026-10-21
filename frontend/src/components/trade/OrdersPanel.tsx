@@ -367,7 +367,7 @@ export function OrdersPanel({ symbol }: { symbol: string }) {
             onClick={() => setTab(t.value)}
             className={cn(
               'relative h-10 text-[13px] font-medium',
-              tab === t.value ? 'text-tx-1 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand' : 'text-tx-3 hover:text-tx-1',
+              tab === t.value ? 'text-tx-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-brand' : 'text-tx-3 hover:text-tx-1',
             )}
           >
             {t.label}

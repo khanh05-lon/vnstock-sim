@@ -21,7 +21,7 @@ export function P2PNav() {
           to={it.to}
           end={it.end}
           className={({ isActive }) =>
-            cn('h-8 shrink-0 rounded-md px-3 text-[13px] font-medium leading-8 transition-colors', isActive ? 'bg-bg-3 text-tx-1' : 'text-tx-3 hover:text-tx-1')
+            cn('sel-line h-8 shrink-0 px-3 text-[13px] font-medium leading-8 transition-colors [--sel-inset:0.75rem]', isActive ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1')
           }
         >
           {it.label}

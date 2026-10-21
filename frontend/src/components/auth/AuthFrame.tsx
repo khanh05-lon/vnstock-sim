@@ -13,7 +13,7 @@ export function LiveTicker() {
   if (!list.length) return null;
   const items = [...list, ...list];
   return (
-    <div className="overflow-hidden border-y border-line bg-bg-1/60 py-2">
+    <div className="overflow-hidden bg-bg-1 py-3">
       <div className="ticker-track flex w-max gap-6">
         {items.map((r, i) => {
           const tone = signTone(r.changePct);
@@ -74,7 +74,7 @@ export function AuthCard({ title, subtitle, children }: { title: ReactNode; subt
   return (
     <AuthFrame>
       <div className="flex flex-1 items-start justify-center px-4 py-10 sm:items-center">
-        <div className="w-full max-w-md rounded-2xl border border-line bg-bg-1 p-6 sm:p-8" style={{ boxShadow: 'var(--shadow)' }}>
+        <div className="w-full max-w-md rounded-md border border-line bg-bg-1 p-6 sm:p-8">
           <h1 className="text-[22px] font-bold">{title}</h1>
           {subtitle && <p className="mt-1 text-tx-3">{subtitle}</p>}
           <div className="mt-6">{children}</div>

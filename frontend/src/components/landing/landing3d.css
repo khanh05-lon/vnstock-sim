@@ -1,0 +1,219 @@
+/*
+ * Cảnh 3D của trang giới thiệu (CSS 3D, không thư viện): đồng xu VNCoin lỗ vuông, quỹ đạo các coin,
+ * xâu tiền xoắn theo cuộn. Chỉ transform + opacity; @property để quay quỹ đạo mà các coin vẫn đứng thẳng.
+ * prefers-reduced-motion: mọi thứ đứng yên ở bố cục hoàn chỉnh.
+ */
+
+@property --orbit {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+/* ---------------- đồng xu 3D ---------------- */
+.coin3d {
+  --d: 260px; /* đường kính */
+  --t: 22px; /* độ dày */
+  position: relative;
+  width: var(--d);
+  height: var(--d);
+  transform-style: preserve-3d;
+}
+.coin3d-spin {
+  animation: coin-spin 9s linear infinite;
+}
+.coin3d > .face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.coin3d > .face.front {
+  transform: translateZ(calc(var(--t) / 2));
+}
+.coin3d > .face.back {
+  transform: rotateY(180deg) translateZ(calc(var(--t) / 2));
+}
+/* Viền: các dải mỏng quanh chu vi */
+.coin3d > .edge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--d) * 3.1416 / var(--n) + 1px);
+  height: var(--t);
+  margin-left: calc(var(--d) * -3.1416 / var(--n) / 2);
+  margin-top: calc(var(--t) / -2);
+  background: var(--edge, #8a6534);
+  transform: rotateZ(calc(var(--i) * 360deg / var(--n))) translateY(calc(var(--d) / -2)) rotateX(90deg);
+}
+.coin3d > .edge:nth-child(odd) {
+  background: var(--edge-2, #75552b);
+}
+@keyframes coin-spin {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+/* ---------------- quỹ đạo ---------------- */
+.orbit-stage {
+  perspective: 1400px;
+  perspective-origin: 50% 40%;
+}
+.orbit-world {
+  position: relative;
+  transform-style: preserve-3d;
+  width: 100%;
+  height: 100%;
+}
+.orbit-ring {
+  --tilt: 72deg;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt)) rotateZ(var(--orbit));
+  animation: orbit-turn var(--period, 26s) linear infinite;
+}
+.orbit-ring.reverse {
+  animation-direction: reverse;
+}
+/* Đường quỹ đạo: vòng tròn tô đầy rất nhạt (không phải đường kẻ mảnh) */
+.orbit-path {
+  position: absolute;
+  left: calc(var(--r) * -1);
+  top: calc(var(--r) * -1);
+  width: calc(var(--r) * 2);
+  height: calc(var(--r) * 2);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand) 7%, transparent);
+}
+.orbit-token {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+  transform: rotateZ(var(--a)) translateX(var(--r)) rotateZ(calc(-1 * var(--a) - var(--orbit))) rotateX(calc(-1 * var(--tilt)));
+}
+.orbit-token > * {
+  transform: translate(-50%, -50%);
+}
+@keyframes orbit-turn {
+  to {
+    --orbit: 360deg;
+  }
+}
+
+/* ---------------- lệnh khớp thật bay lên ---------------- */
+@keyframes print-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-46px);
+  }
+}
+.trade-print {
+  animation: print-rise 3.6s ease-out forwards;
+}
+
+/* ---------------- chảy tiền ký quỹ P2P ---------------- */
+@keyframes flow-right {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--dist));
+    opacity: 0;
+  }
+}
+.flow-dot {
+  animation: flow-right 3.2s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+/* ---------------- thẻ cộng đồng trôi ---------------- */
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0) rotateX(var(--rx, 8deg)) rotateY(var(--ry, -10deg));
+  }
+  50% {
+    transform: translateY(-10px) rotateX(var(--rx, 8deg)) rotateY(calc(var(--ry, -10deg) + 3deg));
+  }
+}
+.drift {
+  animation: drift var(--dur, 7s) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coin3d-spin,
+  .orbit-ring,
+  .flow-dot,
+  .drift,
+  .trade-print {
+    animation: none !important;
+  }
+  .trade-print {
+    opacity: 1;
+  }
+}
+
+/* ---------------- xâu tiền xoắn theo cuộn ---------------- */
+/* --p: tiến độ cuộn 0 → 1 (JS đặt); --q: 0 = xoắn ốc, 1 = duỗi thẳng thành một xâu */
+.helix {
+  --p: 1;
+  perspective: 1100px;
+}
+.helix-track {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+.helix-coin {
+  --q: clamp(0, (var(--p) - 0.42) / 0.36, 1);
+  --u: calc(var(--i) / (var(--n) - 1) - 0.5);
+  --ang: calc(var(--i) * 26deg + var(--p) * 520deg);
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+  transform: translate3d(
+      calc(var(--u) * var(--span) * (1.3 - 0.3 * var(--q)) - 50%),
+      calc(sin(var(--ang)) * 130px * (1 - var(--q)) - 50%),
+      calc(cos(var(--ang)) * 260px * (1 - var(--q)))
+    )
+    rotateY(calc(var(--ang) * (1 - var(--q))));
+}
+.helix-thread {
+  opacity: clamp(0, (var(--p) - 0.7) / 0.15, 1);
+}
+.helix-reveal {
+  opacity: clamp(0, (var(--p) - 0.72) / 0.12, 1);
+  transform: translateY(calc((1 - clamp(0, (var(--p) - 0.72) / 0.12, 1)) * 16px));
+}
+
+/* ---------------- màn giao dịch nghiêng → phẳng theo cuộn ---------------- */
+.tilt-stage {
+  perspective: 1600px;
+}

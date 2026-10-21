@@ -57,10 +57,10 @@ export function SymbolHeader({ symbol }: { symbol: string }) {
         )}
         <CoinIcon asset={r.baseAsset} size={28} />
         <div>
-          <div className="text-[17px] font-bold leading-tight">
+          <h1 className="text-[20px] font-bold leading-tight tracking-tight">
             {r.baseAsset}
             <span className="text-tx-3">/{r.quoteAsset}</span>
-          </div>
+          </h1>
           <div className="text-[11px] text-tx-3">{r.name}</div>
         </div>
       </div>

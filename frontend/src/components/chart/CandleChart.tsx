@@ -40,7 +40,7 @@ const SECONDS: Partial<Record<KlineInterval, number>> = {
 };
 /** Đường trung bình như mặc định của Binance: MA(7), MA(25), MA(99) */
 const MAS = [
-  { n: 7, color: '#f0b90b' },
+  { n: 7, color: '#c69653' },
   { n: 25, color: '#e84393' },
   { n: 99, color: '#a855f7' },
 ] as const;
@@ -257,7 +257,7 @@ export function CandleChart({ symbol, className }: { symbol: string; className?:
                   /* bỏ qua */
                 }
               }}
-              className={cn('h-6 rounded px-2 text-[12px] font-medium', iv === t.value ? 'bg-bg-3 text-brand' : 'text-tx-3 hover:text-tx-1')}
+              className={cn('sel-line h-6 px-1.5 text-[12px] font-medium [--sel-inset:0.375rem]', iv === t.value ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1')}
             >
               {t.label}
             </button>

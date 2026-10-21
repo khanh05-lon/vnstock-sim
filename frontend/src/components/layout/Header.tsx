@@ -11,21 +11,35 @@ import { useMarket } from '../../store/market';
 import { useUi } from '../../store/ui';
 import { AccountSettingsModal } from './AccountSettingsModal';
 
+/** Đồng xu cổ lỗ vuông (Thái Bình Hưng Bảo, 970 — đồng tiền đầu tiên của người Việt): tiền Việt là "đồng" */
+export function CoinMark({ size = 26, className }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className={className}>
+      <defs>
+        <mask id="vnc-hole">
+          <rect width="32" height="32" fill="#fff" />
+          <rect x="12" y="12" width="8" height="8" fill="#000" />
+        </mask>
+      </defs>
+      <g mask="url(#vnc-hole)">
+        <circle cx="16" cy="16" r="15" fill="var(--brand)" />
+        <circle cx="16" cy="16" r="12.2" fill="none" stroke="var(--brand-ink)" strokeOpacity="0.4" strokeWidth="1.2" />
+        <rect x="10.4" y="10.4" width="11.2" height="11.2" fill="none" stroke="var(--brand-ink)" strokeOpacity="0.4" strokeWidth="1.2" />
+        {/* bốn chữ trên mặt xu, cách điệu */}
+        <path d="M14.5 6h3M16 6v2.6M23.4 14.5v3M23.4 16h2.6M14.5 26h3M16 26v-2.6M8.6 14.5v3M8.6 16H6" stroke="var(--brand-ink)" strokeOpacity="0.55" strokeWidth="1.3" strokeLinecap="round" />
+      </g>
+    </svg>
+  );
+}
+
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="VNCoin, trang chủ">
-      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden>
-        <rect width="32" height="32" rx="8" fill="var(--brand)" />
-        <circle cx="16" cy="16" r="9" fill="none" stroke="var(--brand-ink)" strokeWidth="2.5" />
-        <path d="M13 11.5h4.2a2.3 2.3 0 0 1 0 4.5H13zM13 16h4.8a2.3 2.3 0 0 1 0 4.5H13z" fill="none" stroke="var(--brand-ink)" strokeWidth="2" strokeLinejoin="round" />
-        <path d="M14.5 9.5v2M14.5 20.5v2" stroke="var(--brand-ink)" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+      <CoinMark />
       {!compact && (
         <span className="hidden items-baseline gap-1.5 sm:flex">
-          <span className="text-[17px] font-extrabold tracking-tight">
-            VN<span className="text-brand">Coin</span>
-          </span>
-          <span className="chip h-[18px] bg-brand/15 px-1.5 text-[10px] text-brand">SIM</span>
+          <span className="text-[17px] font-bold tracking-tight">VNCoin</span>
+          <span className="text-[11px] font-medium text-tx-3">mô phỏng</span>
         </span>
       )}
     </Link>
@@ -199,11 +213,16 @@ export function Header() {
   const toggleTheme = useUi((s) => s.toggleTheme);
   const { pathname } = useLocation();
   const onMarkets = pathname === '/' || pathname === '/thi-truong';
-  const item = (active: boolean) => cn('rounded-md px-3 py-1.5 text-[14px] font-medium whitespace-nowrap transition-colors', active ? 'text-brand' : 'text-tx-2 hover:text-tx-1');
+  // Mục đang chọn: chữ sáng + vạch đồng 1px nằm trên mép dưới của thanh (aria-current='page' do NavLink đặt)
+  const item = (active: boolean) =>
+    cn('sel-line flex h-11 items-center px-3 md:h-14 text-[14px] font-medium whitespace-nowrap transition-colors [--sel-inset:0.75rem]', active ? 'text-tx-1' : 'text-tx-2 hover:text-tx-1');
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-line bg-bg-1 px-3 sm:px-4">
-      <Logo />
-      <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" aria-label="Điều hướng chính">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 border-b border-line bg-bg-1 px-3 sm:px-4 md:h-14 md:flex-nowrap md:gap-x-4">
+      <div className="flex h-14 items-center">
+        <Logo />
+      </div>
+      {/* Điện thoại: các mục xuống hàng riêng, kéo ngang; từ md trở lên nằm cùng hàng */}
+      <nav className="order-last -mx-3 flex w-[calc(100%+1.5rem)] min-w-0 items-center overflow-x-auto border-t border-line px-1 sm:-mx-4 sm:w-[calc(100%+2rem)] md:order-none md:mx-0 md:w-auto md:flex-1 md:self-stretch md:border-t-0 md:px-0" aria-label="Điều hướng chính">
         {/* "/" chỉ là trang Thị trường khi đã đăng nhập (khách thấy trang giới thiệu) → khách dùng /thi-truong */}
         <Link to={token ? '/' : '/thi-truong'} aria-current={onMarkets ? 'page' : undefined} className={item(onMarkets)}>
           Thị trường
@@ -224,7 +243,7 @@ export function Header() {
       <FeedBadge />
       <button
         onClick={toggleTheme}
-        className="rounded-md p-2 text-tx-2 hover:bg-bg-3 hover:text-tx-1"
+        className="ml-auto rounded-full p-2 text-tx-2 hover:bg-bg-3 hover:text-tx-1 md:ml-0"
         aria-label={theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
         title={theme === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}
       >

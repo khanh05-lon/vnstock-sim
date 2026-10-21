@@ -8,7 +8,7 @@ import { EASE, fmtCapital, Reveal } from './motion';
 function Item({ q, a, open, onToggle }: { q: string; a: string; open: boolean; onToggle(): void }) {
   const id = useId();
   return (
-    <div className="border-b border-line">
+    <div>
       <h3>
         <button
           type="button"
@@ -66,12 +66,13 @@ export function Faq() {
   ];
 
   return (
-    <section id="hoi-dap" className="scroll-mt-20 border-t border-line bg-bg-1 py-20 lg:py-28">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <Reveal>
-          <h2 className="font-display text-[32px] font-bold leading-tight tracking-tight md:text-[42px]">Câu hỏi thường gặp</h2>
+    <section id="hoi-dap" className="scroll-mt-4 bg-bg-1 py-24 lg:py-36">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 sm:px-8 lg:grid-cols-12">
+        <Reveal className="lg:col-span-4">
+          <h2 className="font-display text-[36px] font-bold leading-[1.05] tracking-[-0.03em] md:text-[52px]">Câu hỏi thường gặp</h2>
+          <p className="mt-5 max-w-[34ch] text-[17px] leading-relaxed text-tx-2">Chưa thấy câu trả lời? Hỏi trợ lý hoặc nhân viên CSKH trong hộp chat sau khi đăng nhập.</p>
         </Reveal>
-        <Reveal delay={0.06} className="mt-8 border-t border-line">
+        <Reveal delay={0.06} className="flex flex-col gap-1 lg:col-span-8">
           {items.map((it, i) => (
             <Item key={it.q} q={it.q} a={it.a} open={open === i} onToggle={() => setOpen(open === i ? null : i)} />
           ))}

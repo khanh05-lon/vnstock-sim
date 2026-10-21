@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Eye, EyeOff, Headset, KeyRound, Lock, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { Eye, EyeOff, Headset, KeyRound, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { RULES, loginSchema, registerSchema, type UserDTO } from '@vss/shared';
 import { AuthFrame, MajorsMini } from '../components/auth/AuthFrame';
+import { Coin3D } from '../components/landing/Coin3D';
+import '../components/landing/landing3d.css';
 import { api, errMsg, supportTokenOf } from '../lib/api';
 import { useSupportPass } from '../lib/support';
 import { useAuth, type LoginResult } from '../store/auth';
@@ -210,40 +212,28 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     <AuthFrame>
       <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-4 py-10 lg:grid-cols-[1.1fr_1fr]">
         <div className="hidden lg:block">
-          <div className="chip bg-brand/15 text-brand">
-            <Sparkles size={12} className="mr-1" /> Giao dịch mô phỏng, vốn ảo {Number(RULES.initialUsdt).toLocaleString('en-US')} USDT
+          <div className="[perspective:900px]">
+            <Coin3D size={160} thickness={16} />
           </div>
-          <h1 className="mt-4 text-[40px] font-extrabold leading-[1.1] tracking-tight">
-            Luyện giao dịch coin
+          <h2 className="mt-8 text-[40px] font-extrabold leading-[1.05] tracking-[-0.03em]">
+            Tiền ảo,
             <br />
-            <span className="text-brand">không rủi ro, giá thật từ Binance.</span>
-          </h1>
-          <p className="mt-4 max-w-lg text-[15px] text-tx-2">
-            Bảng giá và sổ lệnh realtime, biểu đồ nến chuyên nghiệp, khớp lệnh đúng bộ lọc giá, khối lượng và phí maker/taker như sàn thật.
+            thị trường thật
+          </h2>
+          <p className="mt-4 max-w-lg text-[16px] leading-relaxed text-tx-2">
+            {Number(RULES.initialUsdt).toLocaleString('vi-VN')} USDT vốn ảo, giá và sổ lệnh thật từ Binance. Khớp lệnh đúng bộ lọc giá, khối lượng và phí maker / taker như sàn thật.
           </p>
-          <ul className="mt-6 space-y-3 text-[14px]">
-            {[
-              [Zap, 'Giá và sổ lệnh 20 mức cập nhật liên tục từ Binance'],
-              [BarChart3, 'Biểu đồ nến với MA7/MA25/MA99, khung 1 phút đến 1 tháng'],
-              [ShieldCheck, 'Lệnh giới hạn, thị trường, stop-limit, OCO; trả phí bằng BNB giảm 25%'],
-            ].map(([Icon, text], i) => {
-              const I = Icon as typeof Zap;
-              return (
-                <li key={i} className="flex items-center gap-3 text-tx-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-2 text-brand">
-                    <I size={16} />
-                  </span>
-                  {text as string}
-                </li>
-              );
-            })}
+          <ul className="mt-6 max-w-lg space-y-2 text-[15px] text-tx-1">
+            <li>Sổ lệnh 20 mức, nến từ 1 phút tới 1 tháng</li>
+            <li>Lệnh giới hạn, thị trường, stop-limit, OCO</li>
+            <li>Trả phí bằng BNB được giảm 25%</li>
           </ul>
           <div className="mt-8 max-w-md">
             <MajorsMini />
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-md rounded-2xl border border-line bg-bg-1 p-6 sm:p-8" style={{ boxShadow: 'var(--shadow)' }}>
+        <div className="mx-auto w-full max-w-md rounded-md border border-line bg-bg-1 p-6 sm:p-8">
           {locked ? (
             <>
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-down/15 text-down">
@@ -278,7 +268,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             </>
           ) : (
             <>
-              <h2 className="text-[24px] font-bold">{isLogin ? 'Đăng nhập' : 'Mở tài khoản miễn phí'}</h2>
+              <h1 className="text-[24px] font-bold">{isLogin ? 'Đăng nhập' : 'Mở tài khoản miễn phí'}</h1>
               <p className="mt-1 text-tx-3">{isLogin ? 'Chào mừng bạn quay lại VNCoin' : `Nhận ngay ${Number(RULES.initialUsdt).toLocaleString('en-US')} USDT vốn ảo để giao dịch`}</p>
               <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)} noValidate>
                 {!isLogin && field('fullName', 'Họ và tên', fullName, setFullName, 'text', 'name')}

@@ -1,59 +1,54 @@
-import '@fontsource/be-vietnam-pro/400.css';
-import '@fontsource/be-vietnam-pro/500.css';
-import '@fontsource/be-vietnam-pro/600.css';
-import '@fontsource/be-vietnam-pro/700.css';
 import '@fontsource/be-vietnam-pro/800.css';
-import { useEffect, useState, type ReactNode } from 'react';
+import '../components/landing/landing3d.css';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MotionConfig, motion, useMotionValueEvent, useScroll } from 'motion/react';
+import { MotionConfig, animate, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
 import { ArrowRight, Menu, Moon, Sun, X } from 'lucide-react';
 import { RULES } from '@vss/shared';
 import { LiveTicker } from '../components/auth/AuthFrame';
+import { Coin3D } from '../components/landing/Coin3D';
 import { Faq } from '../components/landing/Faq';
-import { Features } from '../components/landing/Features';
-import { LivePreview } from '../components/landing/LivePreview';
+import { HeroOrbit } from '../components/landing/HeroOrbit';
 import { EASE, fmtCapital, Reveal, scrollToSection } from '../components/landing/motion';
 import { Rules } from '../components/landing/Rules';
-import { Steps } from '../components/landing/Steps';
-import { Logo } from '../components/layout/Header';
+import { CommunityStack, EscrowFlow, StringScene, TradeScene } from '../components/landing/Scenes';
+import { CoinMark } from '../components/layout/Header';
 import { useSystemStatus } from '../lib/admin';
 import { cn } from '../lib/format';
 import { useAuth } from '../store/auth';
 import { useMarket } from '../store/market';
 import { useUi } from '../store/ui';
 
+/*
+ * Trang giới thiệu "Đồng": tiền Việt gọi là đồng. Đồng xu VNCoin lỗ vuông (CSS 3D) quay giữa quỹ đạo các coin lớn với
+ * giá Binance trực tiếp; cả thị trường xâu thành một quan tiền xoắn theo cuộn; một màn giao dịch thật dựng phẳng theo cuộn;
+ * ký quỹ P2P chạy tiền; bài viết thật của Cộng đồng trôi trong không gian. Mọi con số là dữ liệu thật của sàn.
+ * Chuyển động: transform / opacity; prefers-reduced-motion → bố cục đứng yên hoàn chỉnh.
+ */
+
 const SECTIONS = [
-  { id: 'tinh-nang', label: 'Tính năng' },
+  { id: 'thi-truong', label: 'Thị trường' },
+  { id: 'gia-that', label: 'Giao dịch' },
   { id: 'bat-dau', label: 'Bắt đầu' },
-  { id: 'luat-choi', label: 'Luật chơi' },
-  { id: 'hoi-dap', label: 'Hỏi đáp' },
+  { id: 'p2p', label: 'P2P' },
+  { id: 'cong-dong', label: 'Cộng đồng' },
 ];
 
-/* Mỗi ý định chỉ một nhãn trên toàn trang: "Mở tài khoản" (đăng ký), "Xem bảng giá", "Đăng nhập". */
+const BRONZE = { background: '#c69653', color: '#1b120a' } as const;
 
-function PrimaryCta({ className }: { className?: string }) {
+function PrimaryCta({ className, tone = 'bronze' }: { className?: string; tone?: 'bronze' | 'ink' }) {
   const loggedIn = useAuth((s) => !!s.token);
   return (
     <Link
       to={loggedIn ? '/trade' : '/register'}
       className={cn(
-        'group inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-brand px-6 text-[15px] font-semibold text-brand-ink transition-[background-color,transform] duration-200 hover:bg-brand-2 active:scale-[0.98]',
+        'group inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full px-7 text-[16px] font-semibold transition-[background-color,transform] duration-200 hover:-translate-y-0.5 active:translate-y-px',
+        tone === 'bronze' ? 'bg-[#c69653] text-[#1b120a] hover:bg-[#d4a766]' : 'bg-[#1d1914] text-[#f1ece2] hover:bg-[#33291f]',
         className,
       )}
     >
       {loggedIn ? 'Vào giao dịch' : 'Mở tài khoản'}
       <ArrowRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-    </Link>
-  );
-}
-
-function SecondaryCta({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className="inline-flex h-12 items-center justify-center whitespace-nowrap rounded-xl border border-line-2 bg-bg-1/60 px-6 text-[15px] font-semibold text-tx-1 transition-[background-color,transform] duration-200 hover:bg-bg-3 active:scale-[0.98]"
-    >
-      {children}
     </Link>
   );
 }
@@ -65,7 +60,7 @@ function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      className="rounded-xl p-2.5 text-tx-2 transition-colors hover:bg-bg-3 hover:text-tx-1"
+      className="rounded-full p-2.5 text-tx-2 transition-colors hover:bg-bg-3 hover:text-tx-1"
       aria-label={theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
     >
       {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
@@ -76,29 +71,18 @@ function ThemeToggle() {
 function LandingNav() {
   const loggedIn = useAuth((s) => !!s.token);
   const [menu, setMenu] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const { scrollY } = useScroll();
-  useMotionValueEvent(scrollY, 'change', (y) => {
-    const next = y > 8;
-    if (next !== scrolled) setScrolled(next);
-  });
-
   const go = (id: string) => {
-    // Đóng menu trước rồi mới cuộn, để khoảng cách không bị lệch khi menu thu lại
     setMenu(false);
     requestAnimationFrame(() => scrollToSection(id));
   };
-
   return (
-    <header
-      className={cn(
-        'sticky top-0 z-30 border-b backdrop-blur-xl transition-colors duration-300',
-        scrolled || menu ? 'border-line bg-bg-0/85' : 'border-transparent bg-bg-0/40',
-      )}
-    >
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6">
-        <Logo />
-        <nav className="hidden flex-1 items-center gap-1 md:flex" aria-label="Các mục trong trang">
+    <header className="relative z-30 bg-bg-0">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-8">
+        <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="VNCoin, trang chủ">
+          <CoinMark size={28} />
+          <span className="text-[18px] font-bold tracking-tight">VNCoin</span>
+        </Link>
+        <nav className="hidden flex-1 items-center gap-1 lg:flex" aria-label="Các mục trong trang">
           {SECTIONS.map((s) => (
             <a
               key={s.id}
@@ -107,29 +91,23 @@ function LandingNav() {
                 e.preventDefault();
                 go(s.id);
               }}
-              className="rounded-lg px-3 py-2 text-[14px] font-medium text-tx-2 transition-colors hover:text-tx-1"
+              className="rounded-full px-3 py-2 text-[14px] font-medium text-tx-2 transition-colors hover:text-tx-1"
             >
               {s.label}
             </a>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2 md:ml-0">
+        <div className="ml-auto flex items-center gap-1 lg:ml-0">
           <ThemeToggle />
           {!loggedIn && (
-            <Link to="/login" className="hidden rounded-xl px-4 py-2.5 text-[14px] font-semibold text-tx-1 transition-colors hover:bg-bg-3 sm:inline-flex">
+            <Link to="/login" className="hidden rounded-full px-4 py-2.5 text-[14px] font-semibold transition-colors hover:bg-bg-3 sm:inline-flex">
               Đăng nhập
             </Link>
           )}
           <span className="hidden sm:block">
-            <PrimaryCta className="h-10 px-4 text-[14px]" />
+            <PrimaryCta className="h-10 px-5 text-[14px]" />
           </span>
-          <button
-            type="button"
-            className="rounded-xl p-2.5 text-tx-1 hover:bg-bg-3 md:hidden"
-            onClick={() => setMenu((v) => !v)}
-            aria-expanded={menu}
-            aria-label={menu ? 'Đóng menu' : 'Mở menu'}
-          >
+          <button type="button" className="rounded-full p-2.5 hover:bg-bg-3 lg:hidden" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label={menu ? 'Đóng menu' : 'Mở menu'}>
             {menu ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
@@ -139,7 +117,7 @@ function LandingNav() {
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, ease: EASE }}
-          className="border-t border-line px-4 pb-5 pt-2 md:hidden"
+          className="absolute inset-x-0 top-full bg-bg-0 px-4 pb-5 pt-2 lg:hidden"
           aria-label="Các mục trong trang"
         >
           {SECTIONS.map((s) => (
@@ -150,14 +128,14 @@ function LandingNav() {
                 e.preventDefault();
                 go(s.id);
               }}
-              className="block rounded-lg px-2 py-3 text-[16px] font-medium text-tx-1"
+              className="block px-2 py-3 text-[16px] font-medium"
             >
               {s.label}
             </a>
           ))}
           <div className="mt-3 grid grid-cols-2 gap-2">
             {!loggedIn && (
-              <Link to="/login" className="inline-flex h-12 items-center justify-center rounded-xl border border-line-2 text-[15px] font-semibold">
+              <Link to="/login" className="inline-flex h-12 items-center justify-center rounded-full bg-bg-3 text-[15px] font-semibold">
                 Đăng nhập
               </Link>
             )}
@@ -169,163 +147,172 @@ function LandingNav() {
   );
 }
 
-function SessionPill() {
-  const status = useMarket((s) => s.status);
-  const connected = useMarket((s) => s.connected);
-  const live = connected && status?.feed === 'LIVE';
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-line-2 bg-bg-1/70 px-3 py-1.5 text-[13px] text-tx-2">
-      <span className={cn('h-2 w-2 rounded-full', !connected ? 'bg-tx-3' : live ? 'bg-up pulse-dot' : 'bg-ref')} aria-hidden />
-      {!connected ? 'Đang kết nối thị trường' : live ? 'Giao dịch 24/7, giá thật từ Binance' : 'Giao dịch 24/7, đang dùng giá giả lập'}
-    </span>
-  );
-}
+const rise = (i: number) => ({
+  initial: { opacity: 0, y: 24 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.8, delay: 0.06 + i * 0.08, ease: EASE },
+});
 
 function Hero() {
-  const item = (i: number) => ({
-    initial: { opacity: 0, y: 20 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.8, delay: 0.08 + i * 0.08, ease: EASE },
-  });
+  const btc = useMarket((s) => s.rows.BTCUSDT);
   return (
-    <section className="relative overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(55% 60% at 78% 40%, color-mix(in srgb, var(--brand) 13%, transparent) 0%, transparent 70%), radial-gradient(40% 40% at 10% 0%, color-mix(in srgb, var(--brand) 6%, transparent) 0%, transparent 70%)',
-        }}
-      />
-      <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 pb-16 pt-10 sm:px-6 lg:min-h-[calc(100dvh-6.5rem)] lg:grid-cols-12 lg:gap-10 lg:pb-20 lg:pt-12">
-        <div className="lg:col-span-6">
-          <motion.div {...item(0)}>
-            <SessionPill />
-          </motion.div>
-          <motion.h1
-            {...item(1)}
-            className="mt-6 font-display text-[40px] font-bold leading-[1.1] tracking-tight sm:text-[52px] lg:text-[60px]"
-          >
-            Tập giao dịch coin với <span className="whitespace-nowrap text-brand">{fmtCapital(RULES.initialUsdt)}</span> vốn ảo
+    <section className="relative overflow-hidden bg-bg-0" aria-labelledby="hero-title">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-4 px-4 pb-8 pt-6 sm:px-8 lg:grid-cols-12 lg:gap-0 lg:pb-12">
+        <div className="relative z-10 lg:col-span-6">
+          <motion.h1 {...rise(0)} id="hero-title" className="font-display text-[46px] font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-[64px] lg:text-[72px]">
+            Tiền ảo,
+            <br />
+            thị trường thật
           </motion.h1>
-          <motion.p {...item(2)} className="mt-6 max-w-[34rem] text-[18px] leading-relaxed text-tx-2">
-            Giá và sổ lệnh thật từ Binance, đặt lệnh như sàn lớn. Sai thì rút kinh nghiệm, không mất tiền thật.
+          <motion.p {...rise(1)} className="mt-7 max-w-[32rem] text-[18px] leading-relaxed">
+            Sàn coin mô phỏng cho người Việt. Nhận {fmtCapital(RULES.initialUsdt)} vốn ảo, giao dịch trên giá và sổ lệnh thật của Binance, 24/7.
+            {btc && (
+              <span className="mt-2 block text-[15px] text-tx-2">
+                BTC lúc này <b className="num text-tx-1">{Number(btc.last).toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> USDT
+              </span>
+            )}
           </motion.p>
-          <motion.div {...item(3)} className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <motion.div {...rise(2)} className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
             <PrimaryCta />
-            <SecondaryCta to="/thi-truong">Xem thị trường</SecondaryCta>
+            <Link to="/thi-truong" className="text-[16px] font-semibold underline decoration-2 underline-offset-[6px] transition-colors hover:text-brand">
+              Xem thị trường
+            </Link>
           </motion.div>
         </div>
-        <motion.div
-          initial={{ opacity: 0, y: 32, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 1, delay: 0.25, ease: EASE }}
-          className="lg:col-span-6 lg:pl-6"
-        >
-          <LivePreview />
+        <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.2, delay: 0.15, ease: EASE }} className="lg:col-span-6">
+          <HeroOrbit />
         </motion.div>
       </div>
     </section>
   );
 }
 
-function Stats() {
-  const total = useMarket((s) => s.symbols.length);
-  const stats = [
-    { value: total ? String(total) : '...', label: 'cặp coin với USDT, từ BTC, ETH tới các altcoin lớn' },
-    { value: '5', label: 'loại lệnh: giới hạn, thị trường, post-only, stop-limit, OCO' },
-    { value: '<1s', label: 'độ trễ giá và sổ lệnh so với Binance' },
-    { value: '24/7', label: 'thị trường luôn mở, giống sàn coin thật' },
+/** Số vốn đếm từ 0 lên khi cuộn tới (đứng yên ở số cuối khi giảm chuyển động) */
+function CountUp({ to }: { to: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-15% 0px' });
+  const reduce = useReducedMotion();
+  const [v, setV] = useState(reduce ? to : 0);
+  useEffect(() => {
+    if (!inView || reduce) return;
+    const c = animate(0, to, { duration: 1.6, ease: EASE, onUpdate: (x) => setV(Math.round(x)) });
+    return () => c.stop();
+  }, [inView, reduce, to]);
+  return (
+    <span ref={ref} className="num">
+      {v.toLocaleString('vi-VN')}
+    </span>
+  );
+}
+
+function Start() {
+  const steps = [
+    { t: 'Mở tài khoản', b: 'Đăng ký bằng email, vốn ảo vào ví ngay. Muốn xem trước thì dùng tài khoản demo.' },
+    { t: 'Đặt lệnh', b: 'Chọn coin, xem nến và sổ lệnh, đặt lệnh giới hạn, thị trường, stop-limit hoặc OCO.' },
+    { t: 'Theo dõi lãi lỗ', b: 'Ví, giá vốn, lịch sử khớp và báo cáo theo tháng cập nhật sau mỗi lệnh. Lên bảng xếp hạng nếu muốn.' },
   ];
   return (
-    <section className="py-16 lg:py-20">
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 sm:px-6 lg:grid-cols-4">
-        {stats.map((s, i) => (
-          <Reveal key={s.label} delay={i * 0.06} className="lg:border-l lg:border-line lg:pl-8 lg:first:border-l-0 lg:first:pl-0">
-            <div className="num font-display text-[44px] font-bold leading-none tracking-tight lg:text-[56px]">{s.value}</div>
-            <p className="mt-3 max-w-[24ch] text-[15px] leading-snug text-tx-2">{s.label}</p>
+    <section id="bat-dau" className="scroll-mt-4 py-24 lg:py-36" style={BRONZE} aria-labelledby="bat-dau-title">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-14 px-4 sm:px-8 lg:grid-cols-12 lg:gap-10">
+        <div className="lg:col-span-6">
+          <Reveal>
+            <h2 id="bat-dau-title" className="font-display text-[36px] font-bold leading-[1.05] tracking-[-0.03em] md:text-[56px]">
+              Vốn ảo vào ví ngay khi đăng ký
+            </h2>
           </Reveal>
-        ))}
+          <Reveal delay={0.08}>
+            <p className="mt-8 font-display text-[64px] font-extrabold leading-none tracking-[-0.04em] sm:text-[96px] lg:text-[120px]">
+              <CountUp to={Number(RULES.initialUsdt)} />
+            </p>
+            <p className="mt-2 text-[20px] font-semibold">USDT, không nạp đồng nào</p>
+          </Reveal>
+        </div>
+        <ol className="space-y-9 lg:col-span-6 lg:pl-6 lg:pt-4">
+          {steps.map((s, i) => (
+            <Reveal key={s.t} delay={0.06 + i * 0.08}>
+              <li>
+                <h3 className="text-[24px] font-bold tracking-tight">{s.t}</h3>
+                <p className="mt-2 max-w-[48ch] text-[17px] leading-relaxed">{s.b}</p>
+              </li>
+            </Reveal>
+          ))}
+          <Reveal delay={0.32}>
+            <PrimaryCta tone="ink" />
+          </Reveal>
+        </ol>
       </div>
     </section>
   );
 }
 
+/** Kết: đồng xu lật theo cuộn rồi dừng ở mặt "10.000 USDT" */
 function FinalCta() {
   const loggedIn = useAuth((s) => !!s.token);
+  const ref = useRef<HTMLElement>(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] });
+  const p = useSpring(scrollYProgress, { stiffness: 80, damping: 20 });
+  const rotateY = useTransform(p, [0, 1], [0, 540]);
+  const rotateX = useTransform(p, [0, 1], [24, 8]);
   return (
-    <section className="py-20 lg:py-28">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <Reveal className="relative overflow-hidden rounded-2xl border border-brand/25 bg-bg-1 px-6 py-14 sm:px-12 lg:py-20">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0"
-            style={{ background: 'radial-gradient(70% 90% at 100% 100%, color-mix(in srgb, var(--brand) 18%, transparent) 0%, transparent 65%)' }}
-          />
-          <div className="relative max-w-2xl">
-            <h2 className="font-display text-[32px] font-bold leading-tight tracking-tight md:text-[46px]">
-              {loggedIn ? 'Thị trường đang chạy, vào đặt lệnh thôi' : 'Sẵn sàng đặt lệnh đầu tiên?'}
-            </h2>
-            <p className="mt-4 max-w-[52ch] text-[17px] leading-relaxed text-tx-2">
-              {loggedIn
-                ? 'Ví, lệnh chờ và cảnh báo giá của bạn vẫn đang được cập nhật theo giá Binance.'
-                : `Mở tài khoản miễn phí, nhận ${fmtCapital(RULES.initialUsdt)} vốn ảo và giao dịch ngay hôm nay.`}
-            </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <PrimaryCta />
-              {!loggedIn && <SecondaryCta to="/login">Dùng tài khoản demo</SecondaryCta>}
-            </div>
+    <section ref={ref} className="overflow-hidden bg-bg-0 py-24 lg:py-32" aria-labelledby="final-title">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 sm:px-8 lg:grid-cols-12">
+        <div className="lg:col-span-7">
+          <h2 id="final-title" className="font-display text-[44px] font-extrabold leading-[1.02] tracking-[-0.035em] md:text-[72px]">
+            {loggedIn ? 'Thị trường đang chạy' : 'Đặt lệnh đầu tiên hôm nay'}
+          </h2>
+          <p className="mt-6 max-w-[44ch] text-[18px] leading-relaxed">
+            {loggedIn ? 'Ví, lệnh chờ và cảnh báo giá của bạn vẫn đang cập nhật theo giá Binance.' : `Miễn phí, ${fmtCapital(RULES.initialUsdt)} vốn ảo, giá thật. Không phải khuyến nghị đầu tư.`}
+          </p>
+          <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <PrimaryCta />
+            {!loggedIn && (
+              <Link to="/login" className="text-[16px] font-semibold underline decoration-2 underline-offset-[6px] hover:text-brand">
+                Dùng tài khoản demo
+              </Link>
+            )}
           </div>
-        </Reveal>
+        </div>
+        <div className="flex justify-center [perspective:1200px] lg:col-span-5">
+          <motion.div style={reduce ? { rotateY: 180 } : { rotateY, rotateX }} className="[transform-style:preserve-3d]">
+            <Coin3D size={300} thickness={26} spin={false} />
+          </motion.div>
+        </div>
       </div>
     </section>
   );
 }
 
 function Footer() {
-  const product = [
+  const links = [
     { to: '/thi-truong', label: 'Thị trường' },
     { to: '/trade', label: 'Giao dịch' },
-    { to: '/vi', label: 'Ví' },
+    { to: '/p2p', label: 'P2P' },
+    { to: '/cong-dong', label: 'Cộng đồng' },
     { to: '/xep-hang', label: 'Xếp hạng' },
-  ];
-  const legal = [
-    { to: '/dieu-khoan', label: 'Điều khoản sử dụng' },
-    { to: '/chinh-sach-bao-mat', label: 'Chính sách bảo mật' },
+    { to: '/phi', label: 'Biểu phí' },
+    { to: '/dieu-khoan', label: 'Điều khoản' },
+    { to: '/chinh-sach-bao-mat', label: 'Bảo mật' },
   ];
   return (
-    <footer className="border-t border-line">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-14 sm:px-6 md:grid-cols-12">
-        <div className="md:col-span-6">
-          <Logo />
-          <p className="mt-4 max-w-[46ch] text-[14px] leading-relaxed text-tx-3">
-            Sàn giao dịch coin mô phỏng với giá thật từ Binance, phục vụ học tập. Dữ liệu và kết quả không phải khuyến nghị đầu tư.
-          </p>
-        </div>
-        <FooterCol title="Sản phẩm" links={product} className="md:col-span-3" />
-        <FooterCol title="Pháp lý" links={legal} className="md:col-span-3" />
-      </div>
-      <div className="border-t border-line">
-        <div className="mx-auto max-w-7xl px-4 py-6 text-[13px] text-tx-3 sm:px-6">© {new Date().getFullYear()} VNCoin SIM</div>
-      </div>
-    </footer>
-  );
-}
-
-function FooterCol({ title, links, className }: { title: string; links: { to: string; label: string }[]; className?: string }) {
-  return (
-    <div className={className}>
-      <div className="text-[14px] font-semibold text-tx-1">{title}</div>
-      <ul className="mt-4 flex flex-col gap-3">
-        {links.map((l) => (
-          <li key={l.to}>
-            <Link to={l.to} className="text-[14px] text-tx-2 transition-colors hover:text-brand">
+    <footer className="bg-bg-1 text-tx-1">
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-20 sm:px-8">
+        <nav aria-label="Chân trang" className="flex flex-wrap gap-x-7 gap-y-3 text-[15px]">
+          {links.map((l) => (
+            <Link key={l.to} to={l.to} className="text-tx-2 transition-colors hover:text-brand">
               {l.label}
             </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+          ))}
+        </nav>
+        <div className="mt-16 flex items-end gap-[2vw]" aria-hidden>
+          <CoinMark size={120} className="h-[12vw] max-h-[150px] w-[12vw] max-w-[150px] shrink-0" />
+          <span className="font-display text-[18vw] font-extrabold leading-[0.8] tracking-[-0.06em] lg:text-[208px]">VNCoin</span>
+        </div>
+        <p className="mt-10 max-w-[68ch] text-[14px] leading-relaxed text-tx-2">
+          Sàn giao dịch coin mô phỏng phục vụ học tập, giá thật từ Binance. Vốn, coin và lãi lỗ là ảo, không quy đổi ra tiền thật. Không phải khuyến nghị đầu tư. © {new Date().getFullYear()} VNCoin.
+        </p>
+      </div>
+    </footer>
   );
 }
 
@@ -333,7 +320,7 @@ export default function LandingPage() {
   useSystemStatus();
   useEffect(() => {
     const prev = document.title;
-    document.title = 'VNCoin · Tập giao dịch coin bằng vốn ảo';
+    document.title = 'VNCoin · Tiền ảo, thị trường thật';
     return () => {
       document.title = prev;
     };
@@ -341,14 +328,16 @@ export default function LandingPage() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-full bg-bg-0 text-[15px] leading-normal text-tx-1">
+      <div className="min-h-full bg-bg-0 text-[16px] leading-normal text-tx-1">
         <LandingNav />
         <main>
           <Hero />
           <LiveTicker />
-          <Stats />
-          <Features />
-          <Steps cta={<PrimaryCta />} />
+          <StringScene />
+          <TradeScene />
+          <Start />
+          <EscrowFlow />
+          <CommunityStack />
           <Rules />
           <Faq />
           <FinalCta />
