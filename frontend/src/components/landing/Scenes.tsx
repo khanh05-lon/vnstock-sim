@@ -27,7 +27,9 @@ const useAllRows = () => {
  * ===================================================================================== */
 export function StringScene() {
   const all = useAllRows();
-  const sorted = useMemo(() => [...all].sort((a, b) => b.changePct - a.changePct), [all]);
+  // Xoắn ốc chỉ đủ chỗ cho khoảng 30 đồng: lấy 30 cặp giao dịch nhiều nhất
+  const top = useMemo(() => [...all].sort((a, b) => Number(b.quoteVolume) - Number(a.quoteVolume)).slice(0, 30), [all]);
+  const sorted = useMemo(() => [...top].sort((a, b) => b.changePct - a.changePct), [top]);
   const up = all.filter((r) => r.changePct > 0).length;
   const ref = useRef<HTMLElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -41,7 +43,7 @@ export function StringScene() {
         Cả thị trường, xâu thành một quan
       </h2>
       <p className="mt-5 text-[17px] leading-relaxed text-tx-2">
-        Mỗi đồng là một cặp coin trên Binance, màu theo biến động 24 giờ. Lúc này{' '}
+        Mỗi đồng là một trong 30 cặp giao dịch nhiều nhất, màu theo biến động 24 giờ. Cả sàn lúc này{' '}
         <b className="num text-up">
           {up} / {all.length || 30}
         </b>{' '}
@@ -55,7 +57,7 @@ export function StringScene() {
       <section id="thi-truong" className="scroll-mt-4 bg-bg-1 py-24 lg:py-32" aria-labelledby="thi-truong-title">
         <div className="mx-auto max-w-7xl space-y-10 px-4 sm:px-8">
           {heading}
-          <CoinString rows={all} />
+          <CoinString rows={top} />
         </div>
       </section>
     );
@@ -66,7 +68,7 @@ export function StringScene() {
       {/* Điện thoại / tablet: lưới đứng yên */}
       <div className="mx-auto max-w-7xl space-y-10 px-4 py-24 sm:px-8 lg:hidden">
         {heading}
-        <CoinString rows={all} />
+        <CoinString rows={top} />
       </div>
       <div ref={stage} className="helix sticky top-0 hidden h-screen overflow-hidden lg:block" style={{ '--p': 0, '--span': 'min(88vw, 1180px)' } as CSSProperties}>
         <div className="mx-auto max-w-7xl px-8 pt-[12vh]">{heading}</div>

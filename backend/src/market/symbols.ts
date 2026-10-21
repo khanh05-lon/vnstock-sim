@@ -78,24 +78,28 @@ export async function fetchSymbols(rest: BinanceRest, symbols: string[]): Promis
 }
 
 /**
- * Lần đầu: tạo các cặp mặc định (bộ lọc thật từ Binance, mất mạng thì dùng file dự phòng).
- * Các lần sau: cập nhật lại bộ lọc của các cặp đang bật (Binance thỉnh thoảng đổi tickSize / minNotional).
+ * Tạo các cặp mặc định chưa có trong CSDL (lần đầu: tất cả; sàn đã chạy: cặp mới thêm vào DEFAULT_SYMBOLS),
+ * bộ lọc thật từ Binance, mất mạng thì dùng file dự phòng. Cặp quản trị viên đã huỷ niêm yết vẫn còn dòng nên không bị thêm lại.
+ * Sau đó cập nhật lại bộ lọc của các cặp đang bật (Binance thỉnh thoảng đổi tickSize / minNotional).
  */
 export async function seedSymbols(db: Database, rest: BinanceRest | null): Promise<void> {
-  const count = (await db.one<{ n: number }>('SELECT count(*)::int AS n FROM symbols'))!.n;
-  const fallback = new Map(fallbackSymbols().map((s) => [s.symbol, s]));
-  if (count === 0) {
-    const live = rest ? await fetchSymbols(rest, DEFAULT_SYMBOLS) : null;
+  const have = new Set((await db.many<{ symbol: string }>('SELECT symbol FROM symbols')).map((r) => r.symbol));
+  const missing = DEFAULT_SYMBOLS.filter((s) => !have.has(s));
+  if (missing.length) {
+    const fallback = new Map(fallbackSymbols().map((s) => [s.symbol, s]));
+    const live = rest ? await fetchSymbols(rest, missing) : null;
     const byLive = new Map((live ?? []).map((s) => [s.symbol, s]));
-    let sort = 0;
-    for (const symbol of DEFAULT_SYMBOLS) {
+    let sort = (await db.one<{ n: number }>('SELECT COALESCE(max(sort_order), -1)::int + 1 AS n FROM symbols'))!.n;
+    let added = 0;
+    for (const symbol of missing) {
       const fb = fallback.get(symbol);
       const s = byLive.get(symbol) ?? fb;
       if (!s) continue;
       await insertSymbol(db, { ...s, lastPrice: fb?.lastPrice ?? null }, sort++);
+      added++;
     }
-    log.info(`[symbols] đã tạo ${sort} cặp giao dịch (bộ lọc ${live ? 'lấy từ Binance' : 'từ file dự phòng'})`);
-    return;
+    log.info(`[symbols] đã tạo ${added} cặp giao dịch (bộ lọc ${live ? 'lấy từ Binance' : 'từ file dự phòng'})`);
+    if (!have.size) return;
   }
   if (!rest) return;
   const enabled = await db.many<{ symbol: string }>('SELECT symbol FROM symbols WHERE enabled');

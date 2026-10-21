@@ -29,9 +29,12 @@ export function Coin({ pct, asset, className }: { pct: number; asset: string; cl
 export function CoinString({ rows }: { rows: SymbolRow[] }) {
   const sorted = [...rows].sort((a, b) => b.changePct - a.changePct);
   return (
-    // Màn rộng: cả xâu trên một sợi dây; nhỏ hơn: hàng 10 / 6 đồng (30 cặp chia đều, không có hàng lửng)
+    // Màn rộng: cả xâu trên một sợi dây khi đủ chỗ (≤ 32 đồng); nhiều hơn thì xâu thành nhiều hàng
     <ol
-      className="grid grid-cols-6 gap-y-4 sm:grid-cols-10 xl:[grid-template-columns:repeat(var(--n),minmax(0,1fr))]"
+      className={cn(
+        'grid grid-cols-6 gap-y-4 sm:grid-cols-10',
+        sorted.length <= 32 ? 'xl:[grid-template-columns:repeat(var(--n),minmax(0,1fr))]' : 'lg:grid-cols-[repeat(auto-fill,minmax(58px,1fr))]',
+      )}
       style={{ '--n': sorted.length } as React.CSSProperties}
       aria-label="Các cặp xếp theo thay đổi 24 giờ"
     >

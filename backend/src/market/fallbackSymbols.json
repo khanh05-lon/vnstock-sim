@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-16T09:57:31.845Z",
+  "updatedAt": "2026-10-21T18:37:31.970Z",
   "symbols": [
     {
       "symbol": "BTCUSDT",
@@ -13,7 +13,7 @@
         "stepSize": "0.00001",
         "minQty": "0.00001",
         "maxQty": "9000",
-        "marketMaxQty": "144.10594037",
+        "marketMaxQty": "144.98226504",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -25,7 +25,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "82066"
+      "lastPrice": "84768"
     },
     {
       "symbol": "ETHUSDT",
@@ -39,7 +39,7 @@
         "stepSize": "0.0001",
         "minQty": "0.0001",
         "maxQty": "9000",
-        "marketMaxQty": "3601.78383347",
+        "marketMaxQty": "3561.22487416",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -51,7 +51,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "2451.14"
+      "lastPrice": "2516.6"
     },
     {
       "symbol": "BNBUSDT",
@@ -65,7 +65,7 @@
         "stepSize": "0.001",
         "minQty": "0.001",
         "maxQty": "900000",
-        "marketMaxQty": "5874.7930502",
+        "marketMaxQty": "6403.59244166",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -77,7 +77,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "730.82"
+      "lastPrice": "751.14"
     },
     {
       "symbol": "SOLUSDT",
@@ -91,7 +91,7 @@
         "stepSize": "0.001",
         "minQty": "0.001",
         "maxQty": "90000",
-        "marketMaxQty": "63095.02661087",
+        "marketMaxQty": "88073.79275",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -103,7 +103,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "106.39"
+      "lastPrice": "109.08"
     },
     {
       "symbol": "XRPUSDT",
@@ -117,7 +117,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "9222449",
-        "marketMaxQty": "2656894.09121338",
+        "marketMaxQty": "2550725.65416666",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -129,7 +129,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "1.3382"
+      "lastPrice": "1.3942"
     },
     {
       "symbol": "DOGEUSDT",
@@ -143,7 +143,7 @@
         "stepSize": "1",
         "minQty": "1",
         "maxQty": "9000000",
-        "marketMaxQty": "24948210.0711297",
+        "marketMaxQty": "28520659.20833333",
         "minNotional": "1",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -155,7 +155,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.08231"
+      "lastPrice": "0.08359"
     },
     {
       "symbol": "ADAUSDT",
@@ -169,7 +169,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "900000",
-        "marketMaxQty": "2511025.77698744",
+        "marketMaxQty": "2409362.71958333",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -181,7 +181,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.2312"
+      "lastPrice": "0.2301"
     },
     {
       "symbol": "TRXUSDT",
@@ -195,7 +195,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "9000000",
-        "marketMaxQty": "3998127.59121338",
+        "marketMaxQty": "5010535.0675",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -207,7 +207,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.3361"
+      "lastPrice": "0.3328"
     },
     {
       "symbol": "AVAXUSDT",
@@ -221,7 +221,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "39437.87506276",
+        "marketMaxQty": "36117.5235",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -233,7 +233,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "10.381"
+      "lastPrice": "10.009"
     },
     {
       "symbol": "LINKUSDT",
@@ -247,7 +247,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "35963.28573221",
+        "marketMaxQty": "39971.06204166",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -259,7 +259,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "12.644"
+      "lastPrice": "12.8"
     },
     {
       "symbol": "DOTUSDT",
@@ -273,7 +273,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "157241.79606694",
+        "marketMaxQty": "153765.52954166",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -285,7 +285,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "1.147"
+      "lastPrice": "1.19"
     },
     {
       "symbol": "TONUSDT",
@@ -325,7 +325,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "92141578",
-        "marketMaxQty": "570932.97824267",
+        "marketMaxQty": "599535.01375",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -337,7 +337,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "1.0448"
+      "lastPrice": "1.0554"
     },
     {
       "symbol": "NEARUSDT",
@@ -351,7 +351,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "900000",
-        "marketMaxQty": "135312.19456066",
+        "marketMaxQty": "130219.03666666",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -363,7 +363,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "5.274"
+      "lastPrice": "5.363"
     },
     {
       "symbol": "LTCUSDT",
@@ -377,7 +377,7 @@
         "stepSize": "0.001",
         "minQty": "0.001",
         "maxQty": "90000",
-        "marketMaxQty": "7613.59035983",
+        "marketMaxQty": "8202.43807083",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -389,7 +389,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "60.99"
+      "lastPrice": "62.29"
     },
     {
       "symbol": "BCHUSDT",
@@ -403,7 +403,7 @@
         "stepSize": "0.001",
         "minQty": "0.001",
         "maxQty": "90000",
-        "marketMaxQty": "1240.49834309",
+        "marketMaxQty": "1294.3008375",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -415,7 +415,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "282.6"
+      "lastPrice": "287.8"
     },
     {
       "symbol": "UNIUSDT",
@@ -429,7 +429,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "58839.37263598",
+        "marketMaxQty": "55644.376375",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -441,7 +441,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "7.421"
+      "lastPrice": "7.718"
     },
     {
       "symbol": "AAVEUSDT",
@@ -455,7 +455,7 @@
         "stepSize": "0.001",
         "minQty": "0.001",
         "maxQty": "900000",
-        "marketMaxQty": "1249.22598744",
+        "marketMaxQty": "1206.22833333",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -467,7 +467,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "160.83"
+      "lastPrice": "160.18"
     },
     {
       "symbol": "ATOMUSDT",
@@ -481,7 +481,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "53998.15263598",
+        "marketMaxQty": "73734.590875",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -493,7 +493,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "1.772"
+      "lastPrice": "1.78"
     },
     {
       "symbol": "APTUSDT",
@@ -507,7 +507,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "92141578",
-        "marketMaxQty": "151624.03004184",
+        "marketMaxQty": "143596.5955",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -519,7 +519,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.8684"
+      "lastPrice": "0.8439"
     },
     {
       "symbol": "ARBUSDT",
@@ -533,7 +533,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "92141578",
-        "marketMaxQty": "919228.71715481",
+        "marketMaxQty": "1065451.55",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -545,7 +545,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.1992"
+      "lastPrice": "0.1968"
     },
     {
       "symbol": "OPUSDT",
@@ -559,7 +559,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "92141578",
-        "marketMaxQty": "988290.60577405",
+        "marketMaxQty": "999213.85370833",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -571,7 +571,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.1375"
+      "lastPrice": "0.1336"
     },
     {
       "symbol": "INJUSDT",
@@ -585,7 +585,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "30030.47598326",
+        "marketMaxQty": "29785.88120833",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -597,7 +597,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "9.211"
+      "lastPrice": "8.646"
     },
     {
       "symbol": "FILUSDT",
@@ -611,7 +611,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "9222449",
-        "marketMaxQty": "214751.05887029",
+        "marketMaxQty": "237851.94045833",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -623,7 +623,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "1.1489"
+      "lastPrice": "1.088"
     },
     {
       "symbol": "PEPEUSDT",
@@ -649,7 +649,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.00000408"
+      "lastPrice": "0.00000469"
     },
     {
       "symbol": "SHIBUSDT",
@@ -663,7 +663,7 @@
         "stepSize": "1",
         "minQty": "1",
         "maxQty": "46116860414",
-        "marketMaxQty": "42262637655.8",
+        "marketMaxQty": "46116860414",
         "minNotional": "1",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -675,7 +675,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.00000516"
+      "lastPrice": "0.00000524"
     },
     {
       "symbol": "WLDUSDT",
@@ -689,7 +689,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "92141578",
-        "marketMaxQty": "714697.07280334",
+        "marketMaxQty": "827371.92916666",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -701,7 +701,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.5238"
+      "lastPrice": "0.5766"
     },
     {
       "symbol": "FETUSDT",
@@ -715,7 +715,7 @@
         "stepSize": "0.1",
         "minQty": "0.1",
         "maxQty": "9000000",
-        "marketMaxQty": "1170148.17573221",
+        "marketMaxQty": "1223099.58083333",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -727,7 +727,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.207"
+      "lastPrice": "0.2019"
     },
     {
       "symbol": "HBARUSDT",
@@ -741,7 +741,7 @@
         "stepSize": "1",
         "minQty": "1",
         "maxQty": "9000000",
-        "marketMaxQty": "4896650.83682008",
+        "marketMaxQty": "4977374.65833333",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -753,7 +753,7 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "0.08633"
+      "lastPrice": "0.08636"
     },
     {
       "symbol": "ETCUSDT",
@@ -767,7 +767,7 @@
         "stepSize": "0.01",
         "minQty": "0.01",
         "maxQty": "90000",
-        "marketMaxQty": "16047.15916317",
+        "marketMaxQty": "15767.77933333",
         "minNotional": "5",
         "maxNotional": "9000000",
         "applyMinToMarket": true,
@@ -779,7 +779,1359 @@
         "maxNumOrders": 200,
         "maxNumAlgoOrders": 5
       },
-      "lastPrice": "8.09"
+      "lastPrice": "8.2"
+    },
+    {
+      "symbol": "ZECUSDT",
+      "baseAsset": "ZEC",
+      "quoteAsset": "USDT",
+      "name": "Zcash",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "100000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "90000",
+        "marketMaxQty": "1609.72425416",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "1361.72"
+    },
+    {
+      "symbol": "ENAUSDT",
+      "baseAsset": "ENA",
+      "quoteAsset": "USDT",
+      "name": "Ethena",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "2872086.15925",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.2233"
+    },
+    {
+      "symbol": "TAOUSDT",
+      "baseAsset": "TAO",
+      "quoteAsset": "USDT",
+      "name": "Bittensor",
+      "filters": {
+        "tickSize": "0.1",
+        "minPrice": "0.1",
+        "maxPrice": "100000",
+        "stepSize": "0.0001",
+        "minQty": "0.0001",
+        "maxQty": "922327",
+        "marketMaxQty": "1243.07967625",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "281"
+    },
+    {
+      "symbol": "STRKUSDT",
+      "baseAsset": "STRK",
+      "quoteAsset": "USDT",
+      "name": "Starknet",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "1657057.228",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.06489"
+    },
+    {
+      "symbol": "QNTUSDT",
+      "baseAsset": "QNT",
+      "quoteAsset": "USDT",
+      "name": "Quant",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "100000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "922327",
+        "marketMaxQty": "854.478075",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "210.99"
+    },
+    {
+      "symbol": "TRUMPUSDT",
+      "baseAsset": "TRUMP",
+      "quoteAsset": "USDT",
+      "name": "Official Trump",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "10000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "9222449",
+        "marketMaxQty": "139516.41060416",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "1.902"
+    },
+    {
+      "symbol": "ONDOUSDT",
+      "baseAsset": "ONDO",
+      "quoteAsset": "USDT",
+      "name": "Ondo",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "100",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "913205152",
+        "marketMaxQty": "552167.83875",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.4722"
+    },
+    {
+      "symbol": "XLMUSDT",
+      "baseAsset": "XLM",
+      "quoteAsset": "USDT",
+      "name": "Stellar",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "9000000",
+        "marketMaxQty": "1737399.6375",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.1867"
+    },
+    {
+      "symbol": "TIAUSDT",
+      "baseAsset": "TIA",
+      "quoteAsset": "USDT",
+      "name": "Celestia",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "246718.653875",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.6361"
+    },
+    {
+      "symbol": "DASHUSDT",
+      "baseAsset": "DASH",
+      "quoteAsset": "USDT",
+      "name": "Dash",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "100000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "90000",
+        "marketMaxQty": "2555.35479166",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "52.97"
+    },
+    {
+      "symbol": "WUSDT",
+      "baseAsset": "W",
+      "quoteAsset": "USDT",
+      "name": "Wormhole",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "2458275.01791666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.0151"
+    },
+    {
+      "symbol": "ZROUSDT",
+      "baseAsset": "ZRO",
+      "quoteAsset": "USDT",
+      "name": "LayerZero",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "56621.693625",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "2.114"
+    },
+    {
+      "symbol": "PENGUUSDT",
+      "baseAsset": "PENGU",
+      "quoteAsset": "USDT",
+      "name": "Pudgy Penguins",
+      "filters": {
+        "tickSize": "0.000001",
+        "minPrice": "0.000001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "92141578",
+        "marketMaxQty": "24843519.24166666",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.008385"
+    },
+    {
+      "symbol": "COMPUSDT",
+      "baseAsset": "COMP",
+      "quoteAsset": "USDT",
+      "name": "Compound",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "100000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "90000",
+        "marketMaxQty": "1773.97465833",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "25.77"
+    },
+    {
+      "symbol": "ICPUSDT",
+      "baseAsset": "ICP",
+      "quoteAsset": "USDT",
+      "name": "Internet Computer",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "100000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "922327",
+        "marketMaxQty": "55225.80795833",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "2.982"
+    },
+    {
+      "symbol": "SEIUSDT",
+      "baseAsset": "SEI",
+      "quoteAsset": "USDT",
+      "name": "Sei",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "2660713.22958333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.06389"
+    },
+    {
+      "symbol": "CRVUSDT",
+      "baseAsset": "CRV",
+      "quoteAsset": "USDT",
+      "name": "Curve DAO",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "10000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "922327",
+        "marketMaxQty": "207551.55666666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.3999"
+    },
+    {
+      "symbol": "POLUSDT",
+      "baseAsset": "POL",
+      "quoteAsset": "USDT",
+      "name": "Polygon",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "631526.90083333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.09679"
+    },
+    {
+      "symbol": "PYTHUSDT",
+      "baseAsset": "PYTH",
+      "quoteAsset": "USDT",
+      "name": "Pyth Network",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "582837.13375",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.08107"
+    },
+    {
+      "symbol": "BATUSDT",
+      "baseAsset": "BAT",
+      "quoteAsset": "USDT",
+      "name": "Basic Attention Token",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "900000",
+        "marketMaxQty": "123843.90833333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.1814"
+    },
+    {
+      "symbol": "RENDERUSDT",
+      "baseAsset": "RENDER",
+      "quoteAsset": "USDT",
+      "name": "Render",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "69474.38775",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "1.939"
+    },
+    {
+      "symbol": "JUPUSDT",
+      "baseAsset": "JUP",
+      "quoteAsset": "USDT",
+      "name": "Jupiter",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "202555.02083333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.3412"
+    },
+    {
+      "symbol": "LDOUSDT",
+      "baseAsset": "LDO",
+      "quoteAsset": "USDT",
+      "name": "Lido DAO",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "192319.36308333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.4167"
+    },
+    {
+      "symbol": "ZKUSDT",
+      "baseAsset": "ZK",
+      "quoteAsset": "USDT",
+      "name": "ZKsync",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "4523776.81833333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.01535"
+    },
+    {
+      "symbol": "EIGENUSDT",
+      "baseAsset": "EIGEN",
+      "quoteAsset": "USDT",
+      "name": "EigenLayer",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "292902.39416666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.2492"
+    },
+    {
+      "symbol": "ETHFIUSDT",
+      "baseAsset": "ETHFI",
+      "quoteAsset": "USDT",
+      "name": "ether.fi",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "170976.14666666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.7218"
+    },
+    {
+      "symbol": "STXUSDT",
+      "baseAsset": "STX",
+      "quoteAsset": "USDT",
+      "name": "Stacks",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "900000",
+        "marketMaxQty": "134077.27083333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.383"
+    },
+    {
+      "symbol": "BONKUSDT",
+      "baseAsset": "BONK",
+      "quoteAsset": "USDT",
+      "name": "Bonk",
+      "filters": {
+        "tickSize": "0.00000001",
+        "minPrice": "0.00000001",
+        "maxPrice": "1",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "36348600000",
+        "marketMaxQty": "36348600000",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.00000323"
+    },
+    {
+      "symbol": "ALGOUSDT",
+      "baseAsset": "ALGO",
+      "quoteAsset": "USDT",
+      "name": "Algorand",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "100000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "922327",
+        "marketMaxQty": "922327",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.1164"
+    },
+    {
+      "symbol": "SANDUSDT",
+      "baseAsset": "SAND",
+      "quoteAsset": "USDT",
+      "name": "The Sandbox",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "9000000",
+        "marketMaxQty": "904493.20416666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.05906"
+    },
+    {
+      "symbol": "RUNEUSDT",
+      "baseAsset": "RUNE",
+      "quoteAsset": "USDT",
+      "name": "THORChain",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "10000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "90000",
+        "marketMaxQty": "115124.23166666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.692"
+    },
+    {
+      "symbol": "SUSDT",
+      "baseAsset": "S",
+      "quoteAsset": "USDT",
+      "name": "Sonic",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "100",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "913205152",
+        "marketMaxQty": "1139437.96916666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.05756"
+    },
+    {
+      "symbol": "CAKEUSDT",
+      "baseAsset": "CAKE",
+      "quoteAsset": "USDT",
+      "name": "PancakeSwap",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "10000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "90000",
+        "marketMaxQty": "29300.41245833",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "2.267"
+    },
+    {
+      "symbol": "JTOUSDT",
+      "baseAsset": "JTO",
+      "quoteAsset": "USDT",
+      "name": "Jito",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "141554.20583333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.493"
+    },
+    {
+      "symbol": "IMXUSDT",
+      "baseAsset": "IMX",
+      "quoteAsset": "USDT",
+      "name": "Immutable",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "91124.42175",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.16"
+    },
+    {
+      "symbol": "WIFUSDT",
+      "baseAsset": "WIF",
+      "quoteAsset": "USDT",
+      "name": "dogwifhat",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "264257.93429166",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.2147"
+    },
+    {
+      "symbol": "FLOKIUSDT",
+      "baseAsset": "FLOKI",
+      "quoteAsset": "USDT",
+      "name": "Floki",
+      "filters": {
+        "tickSize": "0.00000001",
+        "minPrice": "0.00000001",
+        "maxPrice": "0.1",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "92233720368",
+        "marketMaxQty": "1339394840.2",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.00002523"
+    },
+    {
+      "symbol": "VETUSDT",
+      "baseAsset": "VET",
+      "quoteAsset": "USDT",
+      "name": "VeChain",
+      "filters": {
+        "tickSize": "0.000001",
+        "minPrice": "0.000001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "9000000",
+        "marketMaxQty": "1949776.40083333",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.007522"
+    },
+    {
+      "symbol": "MANAUSDT",
+      "baseAsset": "MANA",
+      "quoteAsset": "USDT",
+      "name": "Decentraland",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "900000",
+        "marketMaxQty": "593670.225",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.0895"
+    },
+    {
+      "symbol": "AXSUSDT",
+      "baseAsset": "AXS",
+      "quoteAsset": "USDT",
+      "name": "Axie Infinity",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "900000",
+        "marketMaxQty": "40360.12545833",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "1.074"
+    },
+    {
+      "symbol": "GALAUSDT",
+      "baseAsset": "GALA",
+      "quoteAsset": "USDT",
+      "name": "Gala",
+      "filters": {
+        "tickSize": "0.000001",
+        "minPrice": "0.000001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "92141578",
+        "marketMaxQty": "30602802.49166666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.002018"
+    },
+    {
+      "symbol": "APEUSDT",
+      "baseAsset": "APE",
+      "quoteAsset": "USDT",
+      "name": "ApeCoin",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "92141578",
+        "marketMaxQty": "373610.12316666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.1501"
+    },
+    {
+      "symbol": "THETAUSDT",
+      "baseAsset": "THETA",
+      "quoteAsset": "USDT",
+      "name": "Theta Network",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "10000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "90000",
+        "marketMaxQty": "145662.1725",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.2074"
+    },
+    {
+      "symbol": "GRTUSDT",
+      "baseAsset": "GRT",
+      "quoteAsset": "USDT",
+      "name": "The Graph",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "900000",
+        "marketMaxQty": "1215792.56666666",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.02526"
+    },
+    {
+      "symbol": "CHZUSDT",
+      "baseAsset": "CHZ",
+      "quoteAsset": "USDT",
+      "name": "Chiliz",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "9000000",
+        "marketMaxQty": "3543793.175",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.01442"
+    },
+    {
+      "symbol": "NEOUSDT",
+      "baseAsset": "NEO",
+      "quoteAsset": "USDT",
+      "name": "NEO",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "10000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "90000",
+        "marketMaxQty": "13347.45029166",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "2.305"
+    },
+    {
+      "symbol": "IOTAUSDT",
+      "baseAsset": "IOTA",
+      "quoteAsset": "USDT",
+      "name": "IOTA",
+      "filters": {
+        "tickSize": "0.0001",
+        "minPrice": "0.0001",
+        "maxPrice": "1000",
+        "stepSize": "1",
+        "minQty": "1",
+        "maxQty": "900000",
+        "marketMaxQty": "2229552.6125",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.0487"
+    },
+    {
+      "symbol": "ENSUSDT",
+      "baseAsset": "ENS",
+      "quoteAsset": "USDT",
+      "name": "Ethereum Name Service",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "10000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "9222449",
+        "marketMaxQty": "8901.62375",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "5.88"
+    },
+    {
+      "symbol": "JASMYUSDT",
+      "baseAsset": "JASMY",
+      "quoteAsset": "USDT",
+      "name": "JasmyCoin",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "5752127.085",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.0049"
+    },
+    {
+      "symbol": "PEOPLEUSDT",
+      "baseAsset": "PEOPLE",
+      "quoteAsset": "USDT",
+      "name": "ConstitutionDAO",
+      "filters": {
+        "tickSize": "0.00001",
+        "minPrice": "0.00001",
+        "maxPrice": "1000",
+        "stepSize": "0.1",
+        "minQty": "0.1",
+        "maxQty": "92141578",
+        "marketMaxQty": "4638945.44875",
+        "minNotional": "1",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "0.00877"
+    },
+    {
+      "symbol": "ORDIUSDT",
+      "baseAsset": "ORDI",
+      "quoteAsset": "USDT",
+      "name": "ORDI",
+      "filters": {
+        "tickSize": "0.001",
+        "minPrice": "0.001",
+        "maxPrice": "10000",
+        "stepSize": "0.01",
+        "minQty": "0.01",
+        "maxQty": "9222449",
+        "marketMaxQty": "11549.22875",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "3.996"
+    },
+    {
+      "symbol": "TRBUSDT",
+      "baseAsset": "TRB",
+      "quoteAsset": "USDT",
+      "name": "Tellor",
+      "filters": {
+        "tickSize": "0.01",
+        "minPrice": "0.01",
+        "maxPrice": "10000",
+        "stepSize": "0.001",
+        "minQty": "0.001",
+        "maxQty": "90000",
+        "marketMaxQty": "1789.66072916",
+        "minNotional": "5",
+        "maxNotional": "9000000",
+        "applyMinToMarket": true,
+        "applyMaxToMarket": false,
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "maxNumOrders": 200,
+        "maxNumAlgoOrders": 5
+      },
+      "lastPrice": "18.65"
     }
   ]
 }

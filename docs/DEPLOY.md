@@ -206,5 +206,5 @@ Chạy nền bằng systemd hoặc pm2 (`pm2 start "npm start" --name vnstock`),
 | Tên miền, nhà cung cấp VPS | Chi phí ~150.000–400.000đ/tháng cho cấu hình gợi ý |
 | Nhà cung cấp email (SMTP) | Gmail giới hạn ~500 email/ngày; dịch vụ chuyên dụng ổn định hơn |
 | Nguồn giá | Giá thật Binance (cần máy chủ gọi được Binance, đọc điều khoản dữ liệu) hay chỉ giả lập (`MARKET_FEED=sim`) |
-| Danh sách cặp giao dịch | Mặc định 30 cặp USDT lớn; Quản trị → Cặp giao dịch để niêm yết thêm hoặc huỷ niêm yết |
+| Danh sách cặp giao dịch | Mặc định 82 cặp USDT (khối lượng ≥ 1 triệu USDT / ngày trên Binance); Quản trị → Cặp giao dịch để niêm yết thêm hoặc huỷ niêm yết |
 | Pháp lý | Điều khoản, chính sách bảo mật dữ liệu cá nhân (Nghị định 13/2023/NĐ-CP) cần luật sư rà soát |

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Big, isMultiple, type Kline } from '@vss/shared';
+import { Big, DEFAULT_SYMBOLS, isMultiple, type Kline } from '@vss/shared';
 import type { Database } from '../src/db';
 import { parseFilters } from '../src/market/binance/rest';
 import { aggregateBars, bucketOf, MarketService } from '../src/market/marketService';
@@ -39,9 +39,9 @@ describe('Bộ lọc Binance và giả lập', () => {
     expect(f.maxNumOrders).toBe(200);
   });
 
-  it('file dự phòng có đủ 30 cặp mặc định với bộ lọc hợp lệ', () => {
+  it('file dự phòng có đủ các cặp mặc định với bộ lọc hợp lệ', () => {
     const list = fallbackSymbols();
-    expect(list).toHaveLength(30);
+    expect(list.map((s) => s.symbol)).toEqual(DEFAULT_SYMBOLS);
     for (const s of list) {
       expect(Number(s.filters.tickSize)).toBeGreaterThan(0);
       expect(Number(s.filters.stepSize)).toBeGreaterThan(0);
@@ -67,6 +67,21 @@ describe('Bộ lọc Binance và giả lập', () => {
   });
 });
 
+describe('seedSymbols trên sàn đang chạy', () => {
+  it('thêm cặp mặc định còn thiếu, không bật lại cặp đã huỷ niêm yết', async () => {
+    const db = await openTestDb();
+    await seedSymbols(db, null);
+    await db.many("DELETE FROM symbols WHERE symbol = 'TRBUSDT'");
+    await db.many("UPDATE symbols SET enabled = false WHERE symbol = 'ETCUSDT'");
+    await seedSymbols(db, null);
+    const rows = await db.many<{ symbol: string; enabled: boolean }>('SELECT symbol, enabled FROM symbols');
+    expect(rows).toHaveLength(DEFAULT_SYMBOLS.length);
+    expect(rows.find((r) => r.symbol === 'TRBUSDT')?.enabled).toBe(true);
+    expect(rows.find((r) => r.symbol === 'ETCUSDT')?.enabled).toBe(false);
+    await closeTestDb(db);
+  });
+});
+
 describe('MarketService', () => {
   let db: Database;
   beforeAll(async () => {
@@ -74,9 +89,9 @@ describe('MarketService', () => {
   });
   afterAll(() => closeTestDb(db));
 
-  it('tạo 30 cặp từ file dự phòng khi không có mạng; mất nguồn Binance thì chạy giả lập; ăn sổ lệnh được ghi nhớ', async () => {
+  it('tạo các cặp mặc định từ file dự phòng khi không có mạng; mất nguồn Binance thì chạy giả lập; ăn sổ lệnh được ghi nhớ', async () => {
     await seedSymbols(db, null);
-    expect((await db.one<{ n: number }>('SELECT count(*)::int AS n FROM symbols'))!.n).toBe(30);
+    expect((await db.one<{ n: number }>('SELECT count(*)::int AS n FROM symbols'))!.n).toBe(DEFAULT_SYMBOLS.length);
 
     // Nguồn binance nhưng không có kết nối (không gọi start) → sau simAfterMs chuyển sang giả lập
     const m = new MarketService(db, null, { feed: 'binance', simAfterMs: 0 });
@@ -86,7 +101,7 @@ describe('MarketService', () => {
     m.on('trades', (l: { symbol: string }[]) => ticks.push(...l.map((t) => t.symbol)));
     m.hooks.onTick = async () => undefined;
     for (let i = 0; i < 5; i++) await m.flushNow();
-    expect(m.rows()).toHaveLength(30);
+    expect(m.rows()).toHaveLength(DEFAULT_SYMBOLS.length);
     expect(Number(m.lastPrice('BTCUSDT'))).toBeGreaterThan(1000);
 
     const before = m.depth('BTCUSDT')!.asks[0]!;

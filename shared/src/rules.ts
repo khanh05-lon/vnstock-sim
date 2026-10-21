@@ -70,4 +70,11 @@ export const DEFAULT_SYMBOLS = [
   'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'TRX', 'AVAX', 'LINK',
   'DOT', 'TON', 'SUI', 'NEAR', 'LTC', 'BCH', 'UNI', 'AAVE', 'ATOM', 'APT',
   'ARB', 'OP', 'INJ', 'FIL', 'PEPE', 'SHIB', 'WLD', 'FET', 'HBAR', 'ETC',
+  // Thêm đợt 2: mọi cặp đang giao dịch trên Binance Spot, khối lượng ≥ 1 triệu USDT / ngày (đủ sổ lệnh để khớp mô phỏng)
+  'ZEC', 'ENA', 'TAO', 'STRK', 'QNT', 'TRUMP', 'ONDO', 'XLM', 'TIA', 'DASH',
+  'W', 'ZRO', 'PENGU', 'COMP', 'ICP', 'SEI', 'CRV', 'POL', 'PYTH', 'BAT',
+  'RENDER', 'JUP', 'LDO', 'ZK', 'EIGEN', 'ETHFI', 'STX', 'BONK', 'ALGO', 'SAND',
+  'RUNE', 'S', 'CAKE', 'JTO', 'IMX', 'WIF', 'FLOKI', 'VET', 'MANA', 'AXS',
+  'GALA', 'APE', 'THETA', 'GRT', 'CHZ', 'NEO', 'IOTA', 'ENS', 'JASMY', 'PEOPLE',
+  'ORDI', 'TRB',
 ].map((base) => `${base}USDT`);

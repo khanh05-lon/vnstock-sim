@@ -1,6 +1,6 @@
 # VNCoin — Sàn giao dịch coin Spot mô phỏng
 
-Web giao dịch coin kiểu **Binance Spot** ở chế độ **giao dịch ảo (paper trading)**: giá, sổ lệnh, giao dịch và nến lấy **thật từ Binance** (trễ dưới 1 giây), mỗi tài khoản nhận **10.000 USDT ảo** để tập mua bán 30 cặp USDT lớn với đúng bộ lọc, loại lệnh, trạng thái lệnh và biểu phí của Binance.
+Web giao dịch coin kiểu **Binance Spot** ở chế độ **giao dịch ảo (paper trading)**: giá, sổ lệnh, giao dịch và nến lấy **thật từ Binance** (trễ dưới 1 giây), mỗi tài khoản nhận **10.000 USDT ảo** để tập mua bán 82 cặp USDT với đúng bộ lọc, loại lệnh, trạng thái lệnh và biểu phí của Binance.
 
 > ⚠️ Không có tiền hay coin thật, không nạp rút on-chain. Lệnh khớp với sổ lệnh thật của Binance nhưng **không được gửi lên Binance**. Mất kết nối Binance thì hệ thống tự chuyển sang giá giả lập (nhãn "Giả lập"). Nội dung không phải khuyến nghị đầu tư.
 
@@ -47,7 +47,7 @@ npm run dev
 ```
 
 - Web: http://localhost:5173 · API: http://localhost:4000. Mở web trên điện thoại cùng mạng LAN: `npm run dev:mobile`.
-- Lần chạy đầu tự tạo 30 cặp USDT (bộ lọc lấy thật từ `exchangeInfo`, offline thì dùng file dự phòng `backend/src/market/fallbackSymbols.json`), tài khoản demo, tài khoản quản trị và ở dev cả tài khoản nhân viên thử từng vai trò (email / mật khẩu mẫu trong `backend/.env.example`). Trang đăng nhập có nút **"Trải nghiệm nhanh với tài khoản demo"**.
+- Lần chạy đầu tự tạo 82 cặp USDT (sàn đã chạy thì mỗi lần khởi động tự thêm cặp mặc định mới, không bật lại cặp đã huỷ niêm yết; bộ lọc lấy thật từ `exchangeInfo`, offline thì dùng file dự phòng `backend/src/market/fallbackSymbols.json`), tài khoản demo, tài khoản quản trị và ở dev cả tài khoản nhân viên thử từng vai trò (email / mật khẩu mẫu trong `backend/.env.example`). Trang đăng nhập có nút **"Trải nghiệm nhanh với tài khoản demo"**.
 - Xoá thư mục `backend/data` để tạo lại dữ liệu từ đầu.
 
 Các lệnh khác:
