@@ -1086,20 +1086,21 @@ export class SquareService {
     };
   }
 
-  async ban(userId: string, until: Date | null, permanent: boolean, reason: string) {
-    const p = await this.db.one('UPDATE square_profiles SET banned_until = $2, ban_permanent = $3, ban_reason = $4 WHERE user_id = $1 RETURNING user_id', [
-      userId,
-      until,
-      permanent,
-      reason,
-    ]);
+  /** Cấm tay chỉ kéo dài lệnh cấm đang có, không rút ngắn (rút ngắn = gỡ cấm, có thể cần duyệt 2 người). Trả hạn cấm thực tế */
+  async ban(userId: string, until: Date | null, permanent: boolean, reason: string): Promise<Date | null> {
+    const p = await this.db.one<{ banned_until: Date | null }>(
+      'UPDATE square_profiles SET banned_until = GREATEST(banned_until, $2), ban_permanent = ban_permanent OR $3, ban_reason = $4 WHERE user_id = $1 RETURNING banned_until',
+      [userId, until, permanent, reason],
+    );
     if (!p) throw notFound('Người dùng chưa có hồ sơ Cộng đồng');
+    until = p.banned_until && new Date(p.banned_until);
     await this.notifyUser(this.db, userId, 'BANNED', { detail: { until: iso(until), permanent, reason } });
     await this.deps.emailUser?.(userId, permanent ? 'Bạn bị cấm vĩnh viễn đăng bài' : 'Bạn bị tạm cấm đăng bài', [
       permanent ? 'Tài khoản của bạn bị cấm vĩnh viễn đăng bài và bình luận trong Cộng đồng.' : `Bạn bị cấm đăng bài và bình luận tới ${fmtTime(until!)}.`,
       `Lý do: ${reason}`,
       'Bạn vẫn đọc Cộng đồng và giao dịch bình thường.',
     ]);
+    return until;
   }
 
   async unban(userId: string, note: string) {

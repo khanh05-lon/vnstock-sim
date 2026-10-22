@@ -149,8 +149,8 @@ export function mountSquareAdmin(r: Router, deps: AdminDeps, approvals: Approval
       const userId = uuid.parse(req.params.id);
       const input = squareBanSchema.parse(req.body);
       const u = await square.modUser(userId);
+      if (u.banPermanent) throw badRequest('ALREADY', 'Người dùng đã bị cấm vĩnh viễn');
       if (input.permanent) {
-        if (u.banPermanent) throw badRequest('ALREADY', 'Người dùng đã bị cấm vĩnh viễn');
         const request = await approvals.create(admin, {
           kind: 'SQUARE_BAN',
           target: userId,
@@ -163,10 +163,9 @@ export function mountSquareAdmin(r: Router, deps: AdminDeps, approvals: Approval
       }
       if (input.days! > SQUARE_RULES.maxManualBanDays)
         throw badRequest('BAN_TOO_LONG', `Cấm tay tối đa ${SQUARE_RULES.maxManualBanDays} ngày; dài hơn hãy đề xuất cấm vĩnh viễn`);
-      const until = new Date(Date.now() + input.days! * 86_400_000);
-      await square.ban(userId, until, false, input.reason);
+      const until = await square.ban(userId, new Date(Date.now() + input.days! * 86_400_000), false, input.reason);
       await audit(db, admin, 'SQUARE_BAN', 'user', userId, { handle: u.handle, days: input.days, reason: input.reason });
-      res.json({ ok: true, until: until.toISOString() });
+      res.json({ ok: true, until: until?.toISOString() ?? null });
     }),
   );
 

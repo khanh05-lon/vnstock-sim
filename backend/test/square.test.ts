@@ -275,6 +275,9 @@ describe('gỡ bài, thang phạt, khiếu nại', () => {
     expect((await call('POST', `/admin/approvals/${r.body.request.id}/approve`, mod2.token, {})).status).toBe(200);
     expect((await post(gus, 'xin chào')).body.error.code).toBe('SQUARE_BANNED');
     expect((await call('GET', `/admin/square/users/${gus.id}`, mod.token)).body).toMatchObject({ banPermanent: true, handle: 'gus_alt' });
+    // Cấm tay không được rút ngắn cấm vĩnh viễn (lách duyệt 2 người)
+    expect((await call('POST', `/admin/square/users/${gus.id}/ban`, mod.token, { days: 1, reason: 'Rút ngắn' })).body.error?.code).toBe('ALREADY');
+    expect((await call('GET', `/admin/square/users/${gus.id}`, mod.token)).body.banPermanent).toBe(true);
     const u = await call('POST', `/admin/square/users/${gus.id}/unban`, mod2.token, { note: 'Đã cam kết' });
     expect(u.status).toBe(202);
     expect((await call('POST', `/admin/approvals/${u.body.request.id}/approve`, mod.token, {})).status).toBe(200);
@@ -282,6 +285,11 @@ describe('gỡ bài, thang phạt, khiếu nại', () => {
     // Cấm ngắn: gỡ trực tiếp
     expect((await call('POST', `/admin/square/users/${gus.id}/ban`, mod.token, { days: 2, reason: 'Spam' })).status).toBe(200);
     expect((await call('POST', `/admin/square/users/${gus.id}/unban`, mod.token, { note: 'Nhầm' })).status).toBe(200);
+    // Cấm tay ngắn hơn không rút ngắn được lệnh cấm đang dài hơn
+    await call('POST', `/admin/square/users/${gus.id}/ban`, mod.token, { days: 20, reason: 'Spam' });
+    await call('POST', `/admin/square/users/${gus.id}/ban`, mod.token, { days: 1, reason: 'Spam' });
+    const until = (await call('GET', `/admin/square/users/${gus.id}`, mod.token)).body.banUntil;
+    expect(new Date(until).getTime() - Date.now()).toBeGreaterThan(19 * 86_400_000);
   });
 
   it('đặt lại tên phản cảm: đổi handle + 1 vi phạm; báo cáo hồ sơ đóng lại', async () => {
