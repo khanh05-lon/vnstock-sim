@@ -1,0 +1,37 @@
+# Render Blueprint: Dashboard → New → Blueprint → chọn repo này.
+# Chạy bằng Dockerfile (API phục vụ luôn giao diện) + PostgreSQL của Render.
+# Gói free: web ngủ sau 15 phút không có người vào (khởi động lại ~1 phút), Postgres free hết hạn sau 30 ngày.
+services:
+  - type: web
+    name: vncoin
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vncoin-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      # Không đổi khoá này sau khi đã có dữ liệu: khoá 2FA / hồ sơ KYC cũ sẽ không giải mã được
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "1"
+      # Render hỏi khi tạo Blueprint
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: vncoin-db
+    plan: free
+    region: singapore
+    databaseName: vncoin
+    user: vncoin

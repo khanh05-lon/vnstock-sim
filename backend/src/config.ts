@@ -30,7 +30,8 @@ if (!jwtSecret || jwtSecret.startsWith('change-me')) {
 }
 
 /** Địa chỉ công khai của web, dùng để tạo link trong email (đặt lại mật khẩu) */
-const publicUrl = (process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
+// RENDER_EXTERNAL_URL: Render tự cấp (https://<tên>.onrender.com) khi chưa đặt PUBLIC_URL
+const publicUrl = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
 if (isProd && !publicUrl) throw new Error('NODE_ENV=production bắt buộc đặt PUBLIC_URL (vd. https://vncoin.example.com)');
 
 /** TRUST_PROXY: số proxy tin cậy đứng trước app (1 khi chạy sau Caddy/Nginx) để lấy đúng IP người dùng */
