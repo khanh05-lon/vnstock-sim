@@ -12,10 +12,14 @@
     "dev": "concurrently -k -n api,web -c yellow,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "dev:mobile": "concurrently -k -n api,web -c yellow,cyan \"npm run dev -w backend\" \"npm run dev:lan -w frontend\"",
     "build": "npm run build -w frontend",
+    "start": "cd backend && FRONTEND_DIST=../frontend/dist node --import tsx src/index.ts",
     "test": "npm run test -w backend && npm run test -w frontend",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
